@@ -1,6 +1,6 @@
-# AI-Assisted Security Assessment & Vulnerability Analysis Platform
+# Aletheia: AI-Assisted Security Assessment & Vulnerability Analysis Platform
 
-Final project — combines existing security tools (Nmap, OWASP ZAP, custom HTTP prober, DNS) with AI analysis
+Final project — **Aletheia** combines existing security tools (Nmap, OWASP ZAP, custom HTTP prober, DNS) with AI analysis
 (OpenAI-compatible LLMs via OpenRouter/DeepSeek/GLM/Ollama), while keeping a **human assessor in charge** of what
 counts as a confirmed vulnerability.
 

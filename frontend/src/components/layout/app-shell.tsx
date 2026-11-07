@@ -1,11 +1,45 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom"
-import { Crosshair, LayoutDashboard, Radar, Settings, ShieldAlert, ShieldCheck, LogOut } from "lucide-react"
+import { NavLink, Outlet } from "react-router-dom"
+import {
+  Crosshair,
+  LayoutDashboard,
+  LogOut,
+  Moon,
+  Radar,
+  Settings,
+  ShieldAlert,
+  Sun,
+} from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
+import logo from "@/assets/aletheia-logo.png"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
 import { useAuth } from "@/lib/auth"
-import type { Role } from "@/lib/types"
+import { useTheme } from "@/lib/theme"
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -15,73 +49,126 @@ const NAV_ITEMS = [
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const
 
-const ROLE_BADGE_VARIANT: Record<Role, "default" | "secondary" | "outline"> = {
-  admin: "default",
-  assessor: "secondary",
-  viewer: "outline",
+function BrandHeader() {
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton size="lg" className="pointer-events-none" tabIndex={-1}>
+          <img src={logo} alt="Aletheia logo" className="size-8 shrink-0 object-contain" />
+          <div className="grid flex-1 text-left leading-tight">
+            <span className="truncate font-semibold">Aletheia</span>
+            <span className="truncate text-xs text-muted-foreground">Security assessment platform</span>
+          </div>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  )
+}
+
+function NavMenu() {
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>Platform</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+            <SidebarMenuItem key={to}>
+              <NavLink to={to} end={to === "/"}>
+                {({ isActive }) => (
+                  <SidebarMenuButton isActive={isActive} tooltip={label}>
+                    <Icon className="size-4" />
+                    <span>{label}</span>
+                  </SidebarMenuButton>
+                )}
+              </NavLink>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
+}
+
+function initials(name: string, email: string) {
+  const source = name.trim() || email
+  return source.slice(0, 2).toUpperCase()
+}
+
+function UserFooter() {
+  const { user, logout } = useAuth()
+  if (!user) return null
+
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton size="lg" tooltip={user.full_name || user.email}>
+              <Avatar className="size-8">
+                <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+                  {initials(user.full_name, user.email)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="grid flex-1 text-left leading-tight">
+                <span className="truncate text-sm font-medium">{user.full_name || user.email}</span>
+                <span className="truncate text-xs text-muted-foreground capitalize">{user.role}</span>
+              </div>
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width)">
+            <DropdownMenuLabel className="font-normal">
+              <p className="text-sm font-medium">{user.full_name || user.email}</p>
+              <p className="text-xs text-muted-foreground">{user.email}</p>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={logout} variant="destructive">
+              <LogOut className="size-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  )
+}
+
+function ThemeToggle() {
+  const { theme, toggle } = useTheme()
+  return (
+    <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle color theme">
+      {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+    </Button>
+  )
 }
 
 export function AppShell() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
-
   return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-60 flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
-        <div className="flex items-center gap-2 px-4 py-5">
-          <ShieldCheck className="size-6 text-sidebar-primary" />
-          <div>
-            <p className="text-sm font-semibold leading-tight">SecAssess</p>
-            <p className="text-xs text-muted-foreground">AI-assisted assessment platform</p>
-          </div>
-        </div>
-        <Separator />
-        <nav className="flex flex-1 flex-col gap-1 p-2">
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
-                  isActive
-                    ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                    : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-                }`
-              }
-            >
-              <Icon className="size-4" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-
-      <div className="flex flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b px-6">
+    <SidebarProvider>
+      <Sidebar collapsible="icon">
+        <SidebarHeader>
+          <BrandHeader />
+        </SidebarHeader>
+        <SidebarContent>
+          <NavMenu />
+        </SidebarContent>
+        <SidebarFooter>
+          <UserFooter />
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+      <SidebarInset>
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
+          <SidebarTrigger aria-label="Toggle sidebar" />
+          <Separator orientation="vertical" className="mr-1 !h-5" />
           <p className="text-sm text-muted-foreground">Security Assessment &amp; Vulnerability Analysis</p>
-          {user && (
-            <div className="flex items-center gap-3">
-              <span className="text-sm">{user.full_name || user.email}</span>
-              <Badge variant={ROLE_BADGE_VARIANT[user.role]}>{user.role}</Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  logout()
-                  navigate("/login")
-                }}
-              >
-                <LogOut className="size-4" />
-                Sign out
-              </Button>
-            </div>
-          )}
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
         </header>
         <main className="flex-1 overflow-auto p-6">
           <Outlet />
         </main>
-      </div>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }

@@ -1,8 +1,8 @@
 import { useState } from "react"
 import type { FormEvent } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { ShieldCheck } from "lucide-react"
 
+import logo from "@/assets/aletheia-logo.png"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -34,16 +34,20 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background p-4">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_0%,--theme(--color-primary/10%),transparent_70%)]"
+      />
+      <Card className="relative w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <ShieldCheck className="mx-auto size-10 text-primary" />
-          <CardTitle className="text-xl">SecAssess Platform</CardTitle>
-          <CardDescription>AI-assisted security assessment — sign in to continue</CardDescription>
+          <img src={logo} alt="Aletheia logo" className="mx-auto size-16 object-contain" />
+          <CardTitle className="text-2xl font-semibold tracking-tight">Aletheia</CardTitle>
+          <CardDescription>AI-assisted security assessment. Sign in to continue.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
+            <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
@@ -55,7 +59,7 @@ export function LoginPage() {
                 placeholder="assessor@example.com"
               />
             </div>
-            <div className="space-y-2">
+            <div className="grid gap-2">
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
@@ -71,8 +75,8 @@ export function LoginPage() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? "Signing in…" : "Sign in"}
+            <Button type="submit" className="w-full active:scale-[0.99]" disabled={submitting}>
+              {submitting ? "Signing in" : "Sign in"}
             </Button>
           </form>
         </CardContent>

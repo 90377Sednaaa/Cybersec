@@ -1,10 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta
+      name="description"
+      content="Aletheia: AI-assisted security assessment and vulnerability analysis platform. Human assessors confirm every finding."
+    />
+    <title>Aletheia - AI-Assisted Security Assessment</title>
+    <script>
+      // Apply the stored theme before first paint (dark is the default).
+      try {
+        if (localStorage.getItem("aletheia-theme") === "light") {
+          document.documentElement.classList.remove("dark")
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

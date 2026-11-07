@@ -130,8 +130,8 @@ function RegisterTargetDialog() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="passive_safe">Passive / safe (headers, spider, DNS — production OK)</SelectItem>
-                <SelectItem value="full_intrusive">Full / intrusive (active scan, brute force — test targets only)</SelectItem>
+                <SelectItem value="passive_safe">Passive / safe (headers, spider, DNS, production OK)</SelectItem>
+                <SelectItem value="full_intrusive">Full / intrusive (active scan, brute force, test targets only)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -152,7 +152,7 @@ function RegisterTargetDialog() {
               rows={2}
               value={outScope}
               onChange={(e) => setOutScope(e.target.value)}
-              placeholder="/logout — never automated"
+              placeholder="/logout, never automated"
             />
           </div>
           {error && (
@@ -219,8 +219,13 @@ export function TargetsPage() {
               )}
               {!isLoading && data?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    No targets registered yet.
+                  <TableCell colSpan={6} className="h-32 text-center">
+                    <div className="flex flex-col items-center gap-1.5">
+                      <p className="text-sm font-medium">No targets registered yet</p>
+                      <p className="text-xs text-muted-foreground">
+                        Register the web application you are authorized to assess to begin.
+                      </p>
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
@@ -234,12 +239,12 @@ export function TargetsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {target.in_scope_assets.length > 0 ? target.in_scope_assets.join(", ") : "—"}
+                    {target.in_scope_assets.length > 0 ? target.in_scope_assets.join(", ") : "None"}
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {target.out_of_scope_assets.length > 0 ? target.out_of_scope_assets.join(", ") : "—"}
+                    {target.out_of_scope_assets.length > 0 ? target.out_of_scope_assets.join(", ") : "None"}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{target.authorization_ref || "—"}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{target.authorization_ref || "None"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

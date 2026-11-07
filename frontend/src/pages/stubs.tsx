@@ -13,7 +13,7 @@ function StubPage({ icon: Icon, title, milestone, children }: {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        <p className="text-sm text-muted-foreground">Scaffolded — implementation scheduled for {milestone}.</p>
+        <p className="text-sm text-muted-foreground">Scaffolded. Implementation scheduled for {milestone}.</p>
       </div>
       <Card>
         <CardHeader>
