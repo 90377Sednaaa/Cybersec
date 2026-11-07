@@ -1,10 +1,60 @@
-# Aletheia: AI-Assisted Security Assessment & Vulnerability Analysis Platform
+<div align="center">
 
-Final project — **Aletheia** combines existing security tools (Nmap, OWASP ZAP, custom HTTP prober, DNS) with AI analysis
-(OpenAI-compatible LLMs via OpenRouter/DeepSeek/GLM/Ollama), while keeping a **human assessor in charge** of what
-counts as a confirmed vulnerability.
+<img src="frontend/src/assets/aletheia-logo.png" alt="Aletheia logo" width="120" />
 
-**Canonical plan & decision record: [docs/PLAN.md](docs/PLAN.md)** — read that first.
+# Aletheia
+
+**AI-Assisted Security Assessment & Vulnerability Analysis Platform**
+
+Combine battle-tested security tools with AI analysis, while a human assessor stays in charge
+of what counts as a confirmed vulnerability.
+
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.116-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)
+![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-latest-000000?logo=shadcnui&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-embedded-003B57?logo=sqlite&logoColor=white)
+
+</div>
+
+## What it does
+
+Aletheia walks an authorized web application through a complete assessment pipeline:
+
+**Define Scope → Reconnaissance → Scanning → Security Assessment → AI Analysis → Findings Verification (human) → Risk Assessment → Report Generation**
+
+- **Tools do the scanning.** Nmap, OWASP ZAP, a custom HTTP prober, and DNS utilities feed structured results into the platform.
+- **AI does the reading.** An LLM turns raw scan output into structured candidate findings, prioritizes risk, and drafts summaries.
+- **Humans do the confirming.** Nothing counts as a vulnerability until an assessor verifies it - every AI-generated finding stays marked as a candidate until then.
+
+> The canonical plan and decision record is **[docs/PLAN.md](docs/PLAN.md)** - read that before changing architecture.
+
+## Tech stack
+
+| Layer | Technologies |
+|---|---|
+| **Backend** | Python 3.13, FastAPI, SQLAlchemy 2.0, Pydantic v2, SQLite, PyJWT + bcrypt, Server-Sent Events |
+| **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui, TanStack Query, Recharts, react-router |
+| **Security tools** | Nmap (ports/services), OWASP ZAP (spider + active scan), custom HTTP prober (headers, TLS, cookies, directories), dnspython (DNS recon) |
+| **AI / LLM** | Provider-agnostic OpenAI-compatible client; OpenRouter primary (DeepSeek, GLM, ...), Ollama offline fallback; per-task model config; secret-redaction layer |
+| **Reports** | Server-rendered HTML → PDF via Playwright headless Chromium |
+| **Runtime** | Native Windows development, SQLite storage; docker-compose only as a final stretch goal |
+
+### AI-powered functionality
+
+| Feature | Status |
+|---|---|
+| Scan-result interpretation into structured findings (JSON-schema constrained) | Core |
+| Executive summary + per-finding explanation and remediation for reports | Core |
+| Risk prioritization across findings (reasoning model) | Stretch |
+| Per-finding "ask the analyst" Q&A, grounded in evidence | Stretch |
+
+### Assessment coverage
+
+Five categories committed (brief requires three): input validation & injection, security configuration & HTTPS,
+exposed files & directories, information disclosure, session management *(stretch)*.
 
 ## Repository layout
 
@@ -58,7 +108,7 @@ After signing in, register a target to work with (e.g. Juice Shop at `http://loc
 
 | Step | Status |
 |---|---|
-| 1. Repo scaffold: FastAPI + models + JWT auth + Vite/shadcn shell | ✅ **this commit** |
+| 1. Repo scaffold: FastAPI + models + JWT auth + Vite/shadcn shell | ✅ done |
 | 2. Target registry + authorization + intensity gate | ✅ backend + UI (gate enforcement lands with orchestrator) |
 | 3. Prober + Nmap wrapper + jobs/SSE | ⬜ milestone 4 (M1) |
 | 4. ZAP integration + orchestrator pipeline | ⬜ milestone 4 (M1) |
