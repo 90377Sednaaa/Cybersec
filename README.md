@@ -27,8 +27,6 @@ python -m venv .venv
 
 - API docs: http://127.0.0.1:8000/docs
 - Health: http://127.0.0.1:8000/health
-- On first start a bootstrap admin is seeded: **admin@example.com / admin123** (dev only — change it or set
-  `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `SECRET_KEY` in `backend/.env`, see `backend/.env.example`)
 
 ### 2. Frontend
 
@@ -39,7 +37,22 @@ npm run dev
 ```
 
 - App: http://localhost:5173 (dev server proxies `/api` → `127.0.0.1:8000`)
-- Sign in with the bootstrap admin account, register a target (e.g. Juice Shop at `http://localhost:3000`)
+
+### 3. Sign in
+
+A bootstrap admin account is created automatically on first backend startup:
+
+| Field | Value |
+|---|---|
+| Email | `admin@example.com` |
+| Password | `admin123` |
+| Role | `admin` (can create assessor/viewer accounts via the users API) |
+
+These are development defaults. Change them by setting `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `SECRET_KEY` in
+`backend/.env` **before the first start** (see `backend/.env.example`), or afterwards through the users API.
+There is no public registration; the admin creates all other accounts.
+
+After signing in, register a target to work with (e.g. Juice Shop at `http://localhost:3000`).
 
 ## Current status (build order from PLAN.md §13)
 
