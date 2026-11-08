@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sV --top-ports 1000 -oX - http://localhost:3000" start="1730990000" version="7.95">
+<hostinfo />
+<host starttime="1730990001" endtime="1730990009">
+  <status state="up" reason="reset" />
+  <address addr="127.0.0.1" addrtype="ipv4" />
+  <hostnames>
+    <hostname name="localhost" type="PTR" />
+  </hostnames>
+  <ports>
+    <port protocol="tcp" portid="3000">
+      <state state="open" reason="syn-ack" reason_ttl="0" />
+      <service name="http" product="Express" method="probed" conf="10" version="4.21.2" />
+    </port>
+    <port protocol="tcp" portid="3001">
+      <state state="closed" reason="reset" reason_ttl="0" />
+    </port>
+  </ports>
+</host>
+<runstats>
+  <finished time="1730990009" timestr="Thu Nov  7 21:53:29 2026" elapsed="9.14" summary="Nmap done: 1 IP address (1 host up) scanned in 9.14 seconds" exit="success" />
+</runstats>
+</nmaprun>
