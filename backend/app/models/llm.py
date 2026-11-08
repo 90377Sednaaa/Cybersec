@@ -15,6 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.config import settings
 from app.database import Base
+from app.models.user import utcnow
 
 
 class LLMTask(str, enum.Enum):
@@ -62,3 +63,20 @@ class LLMTaskConfig(Base):
     temperature: Mapped[float] = mapped_column(Float, default=0.2)
 
     provider = relationship("LLMProvider", back_populates="task_configs")
+
+
+class AIOutput(Base):
+    """Stored AI output (PLAN.md section 9: ai_outputs): which model produced
+    what, when, and for which assessment/finding. Doubles as the "AI outputs"
+    evidence deliverable for the final report - a full audit trail of what the
+    AI said, kept separate from human-verified findings."""
+
+    __tablename__ = "ai_outputs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task: Mapped[LLMTask] = mapped_column(Enum(LLMTask, native_enum=False))
+    assessment_id: Mapped[int | None] = mapped_column(ForeignKey("assessments.id"), nullable=True)
+    finding_id: Mapped[int | None] = mapped_column(ForeignKey("findings.id"), nullable=True)
+    model: Mapped[str] = mapped_column(String(255), default="")
+    content: Mapped[str] = mapped_column(Text, default="")  # JSON stored verbatim
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

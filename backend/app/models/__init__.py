@@ -6,7 +6,7 @@ from app.models.assessment import Assessment, AssessmentStatus
 from app.models.job import Job, JobStatus
 from app.models.finding import Finding, FindingStatus, Severity
 from app.models.evidence import Evidence, EvidenceKind
-from app.models.llm import LLMProvider, LLMTask, LLMTaskConfig
+from app.models.llm import AIOutput, LLMProvider, LLMTask, LLMTaskConfig
 
 __all__ = [
     "Role",
@@ -25,4 +25,5 @@ __all__ = [
     "LLMProvider",
     "LLMTask",
     "LLMTaskConfig",
+    "AIOutput",
 ]
