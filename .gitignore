@@ -18,3 +18,7 @@ Thumbs.db
 .idea/
 .vscode/
 backend/test_platform.db
+
+# Evidence uploads are runtime artifacts, never source (M4 T4.2)
+backend/evidence/*
+!backend/evidence/.gitkeep
