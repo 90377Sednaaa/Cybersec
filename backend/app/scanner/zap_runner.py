@@ -22,6 +22,24 @@ from app.scanner.registry import register
 POLL_SECONDS = 2.0
 MAX_POLLS = 300  # 10 minutes hard cap per phase
 
+# ZAP alerts span many of our categories; map by alert-name keywords rather
+# than hardcoding everything to injection. Default is injection because that
+# is what most active-scan plugins probe for.
+_CATEGORY_KEYWORDS: list[tuple[tuple[str, ...], str]] = [
+    (("cookie", "session", "csrf"), "Session management"),
+    (("header", "hsts", "csp", "https", "tls", "certificate"), "Security configuration & HTTPS"),
+    (("directory browsing", "backup", "cross-domain", "sensitive file", ".env", "git"), "Exposed files & directories"),
+    (("disclosure", "information leak", "banner", "debug", "trace"), "Information disclosure"),
+]
+
+
+def zap_category(alert_title: str) -> str:
+    lower = (alert_title or "").lower()
+    for keywords, category in _CATEGORY_KEYWORDS:
+        if any(k in lower for k in keywords):
+            return category
+    return "Input validation & injection"
+
 
 class ZapUnavailable(RunnerError):
     pass

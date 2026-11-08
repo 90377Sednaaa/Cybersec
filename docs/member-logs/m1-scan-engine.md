@@ -92,3 +92,26 @@ that made this fast *and* defensible:
 - ZAP active-scan is only as good as ZAP's policy defaults; no custom scan policy yet.
 - The nmap progress estimate is bytes-streamed heuristic, not true phase progress.
 - Directory probing is a fixed wordlist, not a fuzzer — deliberate (safe-by-default, demo-scoped).
+
+## Self-review findings (same day, post-build)
+
+A structured self-review of the finished module found **four real defects and two design weaknesses** — all
+fixed with regression tests before the module was called done. Listed here deliberately: finding and fixing
+your own bugs is the review discipline the project wants to demonstrate.
+
+| # | Severity | Defect found | Fix |
+|---|---|---|---|
+| 1 | High | **Nmap received the full URL** (`http://localhost:3000`) as its scan target — nmap expects a hostname, so every live nmap job would have failed even with nmap installed. Tests missed it because they covered the graceful-failure path, not the invocation. | `build_nmap_target_args()` extracts hostname + optional `-p port` from the base_url (pure function + regression test) |
+| 2 | High | **Out-of-scope assets were not enforced by the prober** — the wordlist probe ignored `target.out_of_scope_assets`, violating T1.4's own acceptance criterion and brushing the scope-safety hard rule. | `is_path_allowed()` / `allowed_probe_paths()` pure filters (prefix-aware, URL-entry tolerant), wired into the runner with a scope-filter log line + regression test |
+| 3 | Medium | **TLS expiry findings could never fire** — the runner stripped the `datetime` from the TLS facts *before* `check_tls` read it, so its `isinstance` guard always failed. Untested because no https target existed in tests. | `check_tls` now receives the full facts; the datetime is stripped only at JSON serialization |
+| 4 | Medium | **No timeout on the nmap subprocess** — a hung scan would hang the job forever (ZAP had a 10-minute cap; nmap had none). | `asyncio.wait_for` around output consumption with a 900 s cap; process killed on expiry, job fails with an actionable message |
+| 5 | Low | Full-intensity profile included `-O` (OS detection), which requires admin/Npcap privileges on Windows — non-admin runs would fail. | `-O` removed; profile stays conservative |
+| 6 | Low | All ZAP alerts were hardcoded to the injection category regardless of alert type. | Keyword-based `zap_category()` mapping (cookies/session → session management, headers/TLS → config & HTTPS, backups/directories → exposed files, disclosure/banner → information disclosure; default injection) |
+
+Also corrected: a test named `test_gate_and_cancel_endpoints` that never tested cancel (racing a real pipeline
+inside TestClient is timing-flaky — cancel is covered by the live smoke run instead) is now honestly named
+`test_gate_and_role_endpoints`.
+
+Known remaining weaknesses (accepted, documented): plain ZAP spider under-covers SPA targets like Juice Shop
+(the ajax-spider add-on is the known fix, deferred until ZAP is installed); SSE subscriber queues are unbounded
+(memory risk only at unrealistic log volumes); API timestamps serialize without a timezone suffix.

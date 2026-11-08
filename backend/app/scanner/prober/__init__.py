@@ -51,13 +51,19 @@ class ProberRunner(BaseRunner):
             header_facts, header_findings = checks.check_security_headers(response.headers)
             cookie_list, cookie_findings = checks.check_cookies(response.headers)
             disclosure_facts, disclosure_findings = checks.check_disclosure(response.headers, response.text)
-            tls_findings = checks.check_tls({k: v for k, v in (tls_info or {}).items() if k != "not_after_dt"})
+            # Pass the full TLS facts (including the datetime) so expiry checks work;
+            # the datetime is stripped again when serializing raw output.
+            tls_findings = checks.check_tls(tls_info or {})
             ctx.progress(0.6)
 
             probes: list[tuple[str, int]] = []
             if ctx.is_full:
-                ctx.log(f"Probing {len(checks.PROBE_PATHS)} common paths (full intensity)")
-                for i, (path, _sev, _why) in enumerate(checks.PROBE_PATHS):
+                probe_paths = checks.allowed_probe_paths(ctx.target.out_of_scope_assets)
+                skipped = len(checks.PROBE_PATHS) - len(probe_paths)
+                if skipped:
+                    ctx.log(f"Scope filter: {skipped} probe path(s) skipped (out of scope)")
+                ctx.log(f"Probing {len(probe_paths)} common paths (full intensity)")
+                for i, (path, _sev, _why) in enumerate(probe_paths):
                     if ctx.cancelled():
                         raise RunnerError("Cancelled")
                     try:
@@ -67,7 +73,7 @@ class ProberRunner(BaseRunner):
                             ctx.log(f"  hit: {path} -> {probe.status_code}")
                     except httpx.HTTPError:
                         continue
-                    ctx.progress(0.6 + 0.35 * (i + 1) / len(checks.PROBE_PATHS))
+                    ctx.progress(0.6 + 0.35 * (i + 1) / max(1, len(probe_paths)))
             exposed_findings = checks.check_exposed_paths(ctx.target.base_url, probes)
 
         candidate_findings = header_findings + cookie_findings + disclosure_findings + tls_findings + exposed_findings

@@ -99,6 +99,8 @@ def normalize_job(db: Session, assessment: Assessment, job: Job) -> int:
             created += 1 if finding else 0
 
     if job.tool == "zap":
+        from app.scanner.zap_runner import zap_category
+
         for a in raw.get("alerts", []):
             if not a.get("title"):
                 continue
@@ -107,7 +109,7 @@ def normalize_job(db: Session, assessment: Assessment, job: Job) -> int:
                 db,
                 assessment,
                 job,
-                category="Input validation & injection",
+                category=zap_category(a["title"]),
                 title=a["title"],
                 description=(a.get("description") or "")[:1500] or a["title"],
                 severity=severity,

@@ -2,7 +2,8 @@
 
 Pure functions that take HTTP/TLS facts and return (raw_facts, candidate_findings).
 Kept free of DB/session concerns so they can be unit-tested against canned
-responses.
+responses. Includes the scope-safety filter (out-of-scope paths are never
+probed).
 
 Candidate findings are *deterministic* rule results (missing header = missing
 header) and are inserted with status `ai_candidate`: per the platform rules
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import ssl
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -148,6 +150,24 @@ def check_tls(cert: dict | None) -> list[dict]:
             }
         )
     return findings
+
+
+def is_path_allowed(path: str, out_of_scope_assets: list[str] | None) -> bool:
+    """Scope-safety filter (T1.4 acceptance: the prober never touches
+    out-of-scope paths). Entries may be full URLs or paths; prefix matching on
+    the normalized path. Pure function for unit testing."""
+    for entry in out_of_scope_assets or []:
+        blocked = urlsplit(entry).path if "://" in entry else entry
+        blocked = (blocked or "").rstrip("/")
+        if not blocked:
+            continue
+        if path == blocked or path.startswith(blocked + "/"):
+            return False
+    return True
+
+
+def allowed_probe_paths(out_of_scope_assets: list[str] | None) -> list[tuple[str, str, str]]:
+    return [(p, s, w) for p, s, w in PROBE_PATHS if is_path_allowed(p, out_of_scope_assets)]
 
 
 def check_exposed_paths(base_url: str, hits: list[tuple[str, int]]) -> list[dict]:

@@ -31,6 +31,37 @@ def test_registry_has_all_four_tools():
     assert get_runner("nmap").name == "nmap"
 
 
+def test_nmap_target_args_extract_host_not_url():
+    """Regression: nmap must receive a hostname (and optional -p), never a URL string."""
+    import pytest as _pytest
+
+    from app.scanner.base import RunnerError
+    from app.scanner.nmap_runner import build_nmap_target_args
+
+    assert build_nmap_target_args("http://localhost:3000") == ["-p", "3000", "localhost"]
+    assert build_nmap_target_args("https://example.com/app") == ["example.com"]
+    with _pytest.raises(RunnerError):
+        build_nmap_target_args("not-a-url")
+
+
+def test_out_of_scope_paths_are_never_probed():
+    """Regression: the scope-safety filter must drop blocked paths (prefix-aware,
+    tolerant of full-URL entries)."""
+    from app.scanner.prober.checks import allowed_probe_paths, is_path_allowed
+
+    out = ["http://example.com/admin/", "/server-status", "/logout"]
+    assert is_path_allowed("/.env", out) is True
+    assert is_path_allowed("/admin/", out) is False
+    assert is_path_allowed("/admin/sub/thing", out) is False
+    assert is_path_allowed("/server-status", out) is False
+    assert is_path_allowed("/administrator/", out) is True  # different path, not a prefix match
+
+    paths = [p for p, _s, _w in allowed_probe_paths(out)]
+    assert "/admin/" not in paths
+    assert "/server-status" not in paths
+    assert "/.env" in paths
+
+
 def test_prober_passive_checks_flag_missing_headers():
     """Pure check functions against a canned response-like object."""
     import httpx

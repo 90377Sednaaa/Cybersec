@@ -3,12 +3,14 @@
 Runs nmap as a subprocess with XML output on stdout, parses the XML into a
 hosts/ports/services structure, and stores it as the job's raw output.
 
-Intensity profiles (deliberately conservative - no intrusive NSE scripts):
+Intensity profiles (deliberately conservative - no intrusive NSE scripts,
+no -O OS detection which requires admin/Npcap privileges on Windows):
     passive_safe:  top 1000 ports, service version detection
-    full_intrusive: top 5000 ports, faster timing, version + OS detection
+    full_intrusive: top 5000 ports, faster timing, version detection
 
 When the nmap executable is missing the job fails with an actionable message
-instead of crashing the pipeline.
+instead of crashing the pipeline. A hard time cap prevents a hung scan from
+hanging the job forever.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import asyncio
 import json
 import shutil
 import xml.etree.ElementTree as ET
+from urllib.parse import urlsplit
 
 from app.scanner.base import BaseRunner, RunnerError, ScanContext
 from app.scanner.registry import register
@@ -24,8 +27,24 @@ from app.scanner.registry import register
 # Intensity -> extra argv
 PROFILES = {
     "passive_safe": ["--top-ports", "1000", "-sV"],
-    "full_intrusive": ["--top-ports", "5000", "-T4", "-sV", "-O"],
+    "full_intrusive": ["--top-ports", "5000", "-T4", "-sV"],
 }
+
+NMAP_TIME_CAP_SECONDS = 900.0
+
+
+def build_nmap_target_args(base_url: str) -> list[str]:
+    """nmap wants a host (and optional -p), never a URL. Extract both from the
+    registered base_url. Pure function for unit testing."""
+    parts = urlsplit(base_url)
+    host = parts.hostname
+    if not host:
+        raise RunnerError(f"Invalid base_url '{base_url}' - no hostname to scan")
+    args: list[str] = []
+    if parts.port:
+        args += ["-p", str(parts.port)]
+    args.append(host)
+    return args
 
 
 def parse_nmap_xml(xml_text: str) -> dict:
@@ -87,7 +106,7 @@ class NmapRunner(BaseRunner):
             )
 
         profile = PROFILES["full_intrusive" if ctx.is_full else "passive_safe"]
-        argv = [binary, *profile, "-oX", "-", str(ctx.target.base_url)]
+        argv = [binary, *profile, "-oX", "-", *build_nmap_target_args(str(ctx.target.base_url))]
         ctx.job.command = " ".join(argv)
         ctx.log(f"$ {ctx.job.command}")
         ctx.progress(0.1)
@@ -97,26 +116,38 @@ class NmapRunner(BaseRunner):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = b"", b""
-        # Read in chunks so a long scan can stream progress instead of appearing hung.
-        chunks: list[bytes] = []
-        assert process.stdout is not None
-        while True:
-            if ctx.cancelled():
-                process.kill()
-                await process.wait()
-                raise RunnerError("Cancelled")
-            chunk = await process.stdout.read(65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            done = sum(len(c) for c in chunks)
-            ctx.progress(min(0.9, 0.1 + done / 200_000))
-        stdout = b"".join(chunks)
-        stderr = (await process.stderr.read()).decode(errors="replace")
+
+        async def consume_stdout() -> bytes:
+            chunks: list[bytes] = []
+            assert process.stdout is not None
+            while True:
+                if ctx.cancelled():
+                    process.kill()
+                    await process.wait()
+                    raise RunnerError("Cancelled")
+                chunk = await process.stdout.read(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                done = sum(len(c) for c in chunks)
+                ctx.progress(min(0.9, 0.1 + done / 200_000))
+            return b"".join(chunks)
+
+        try:
+            stdout_bytes, stderr = await asyncio.wait_for(
+                asyncio.gather(consume_stdout(), process.stderr.read()), timeout=NMAP_TIME_CAP_SECONDS
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            raise RunnerError(
+                f"nmap exceeded the {int(NMAP_TIME_CAP_SECONDS)}s time cap and was terminated"
+            ) from None
         await process.wait()
         ctx.progress(0.95)
 
+        stdout = stdout_bytes.decode(errors="replace")
+        stderr = stderr.decode(errors="replace")
         if process.returncode != 0:
             raise RunnerError(f"nmap exited with code {process.returncode}: {stderr.strip()[:400]}")
 

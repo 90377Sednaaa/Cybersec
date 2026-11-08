@@ -117,8 +117,10 @@ def test_prober_full_run_produces_candidates(local_site):
             assert f.verified_by_id is None
 
 
-def test_gate_and_cancel_endpoints(client, auth):
-    """T1.7: full intensity against a passive_safe target is a 409 before any job exists."""
+def test_gate_and_role_endpoints(client, auth):
+    """T1.7: full intensity against a passive_safe target is a 409 before any job
+    exists; viewers are 403 on creation. (Cancel is exercised in the live smoke
+    run - racing a real pipeline inside TestClient is timing-flaky.)"""
     resp = client.post(
         "/api/targets",
         json={"name": "Gate", "base_url": "http://127.0.0.1:9", "allowed_intensity": "passive_safe"},
