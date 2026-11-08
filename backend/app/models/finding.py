@@ -47,4 +47,6 @@ class Finding(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     assessment = relationship("Assessment", back_populates="findings")
-    evidence = relationship("Evidence", back_populates="finding", order_by="Evidence.id")
+    evidence = relationship(
+        "Evidence", back_populates="finding", order_by="Evidence.id", cascade="all, delete-orphan"
+    )
