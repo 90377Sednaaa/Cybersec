@@ -123,3 +123,4 @@ Build log for M1 (approach, decisions, defense notes): [docs/member-logs/m1-scan
 
 M1 scan engine · M2 AI pipeline · M3 frontend · M4 findings/reports/auth · M5 docs/QA/deployment — see PLAN.md §8.
 Detailed per-member tasks, expected outputs, and the sequenced integration plan: **[docs/TASK_PLAN.md](docs/TASK_PLAN.md)**.
+New team member? Start here: **[docs/ONBOARDING.md](docs/ONBOARDING.md)**.
