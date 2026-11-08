@@ -24,5 +24,5 @@ work out (hint: the baseline task it replaces is the fallback)?
 
 ## Decision
 
-Filled in at the weekly sync: accepted / rejected, one-line reason, and the steward's note about contract
+Filled in at the daily sync: accepted / rejected, one-line reason, and the steward's note about contract
 or timeline impact.

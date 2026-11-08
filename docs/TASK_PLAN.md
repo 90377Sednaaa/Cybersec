@@ -34,7 +34,7 @@ The wave skeleton is deliberately fixed: it is what makes everyone's ideas safe 
 ## Proposing a change (lightweight RFC)
 
 1. Copy `docs/proposals/TEMPLATE.md` to `docs/proposals/NN-short-name.md` and fill it in — ten minutes.
-2. Raise it at the weekly sync (or async in chat if it's small and touches only your own area).
+2. Raise it at the daily sync (or async in chat if it's small and touches only your own area).
 3. **Accepted:** the steward logs it in the *Adopted changes* table below, updates the contracts
    **additively**, and adjusts affected tasks/dates.
 4. **Rejected:** it gets a one-line reason in the same table — refine and re-propose if you disagree.
@@ -48,14 +48,23 @@ their mocks/types the same day.
 
 | Wave | Name | Who | Duration | Entry condition | Exit condition |
 |---|---|---|---|---|---|
-| 1 | Contract freeze | All | ~3 days | Repo scaffold merged (done) | This document's API sketches reviewed + signed off by all 5; ownership matrix accepted |
-| 2 | Parallel build | All | ~2–3 weeks | Wave 1 exit | Each member's Wave-2 tasks pass their own acceptance criteria |
-| 3 | Integration | M5 leads, pairs rotate | ~1 week, strictly ordered I1→I4 | Wave 2 exit | Full pipeline runs end-to-end on Juice Shop |
-| 4 | Hardening & evidence | All, M5 leads | ~1 week | Wave 3 exit | Demo rehearsal passes; evidence pack + report draft exist |
+| 1 | Contract freeze | All | Day 1, morning | Repo scaffold merged (done) | This document's API sketches reviewed + signed off by all 5; ownership matrix accepted |
+| 2 | Parallel build | All | Days 2–4 | Wave 1 exit | Each member's Wave-2 tasks pass their own acceptance criteria |
+| 3 | Integration | M5 leads, pairs rotate | Day 5, strictly ordered I1→I4 | Wave 2 exit | Full pipeline runs end-to-end on Juice Shop |
+| 4 | Hardening & evidence | All, M5 leads | Days 6–7 | Wave 3 exit | Demo rehearsal passes; evidence pack + report draft exist |
 
-Mapping to the course milestones: Wave 1+2 = milestones 3–5 (initial dev, security integration, AI integration),
-Wave 3 = milestone 6 (finalization), Wave 4 = milestone 7 (final presentation). M5's proposal deliverable (milestone 1)
-starts immediately and does not wait for waves.
+**One-week vibecode sprint.** This plan runs in a single week with AI-assisted development. That changes where
+time actually goes: writing code is no longer the bottleneck — verification, integration, and decision latency
+are. Three consequences:
+
+- **Daily 15-minute sync** instead of weekly (proposals included — small ones get decided same-day).
+- **Small slices, pushed immediately.** The standing commit-push rule is what makes a 7-day sprint recoverable;
+  nothing lives only on someone's machine overnight.
+- **Every stretch goal is auto-deferred** unless integration step I4 (full rehearsal) has already passed. If
+  Wave 2 is behind at the end of Day 3, the cut line in the timeline below is applied without ceremony.
+
+Mapping to the course milestones: all seven land inside the week — milestone 1 (proposal) on Day 1, milestones
+3–5 across Days 1–5, milestone 6 on Days 5–6, milestone 7 on Day 7.
 
 ---
 
@@ -252,15 +261,25 @@ violations. All list endpoints require auth; role rules per M4 T4.5 checklist.
 
 ---
 
-## Timeline (relative weeks; anchor to real dates when known)
+## Timeline (one-week sprint)
 
-| Week | Milestone (brief) | Waves | Key outputs |
+| Day | Waves | Course milestone | Key outputs |
 |---|---|---|---|
-| W1 | 1 Proposal + 2 System design | Wave 1 | Proposal submitted; contracts signed off; M5.1 setup script done |
-| W2–W3 | 3 Initial development / 4 Security integration | Wave 2 | M1 runners + orchestrator; M4 findings API; M2 client + redaction; M3 pages on mocks |
-| W4 | 5 AI integration | Wave 2 → I1, I2 | Assessments live (I1); verification works (I2); M2 interpreter wired |
-| W5 | 6 Finalization | I3, I4 | AI summaries in report; full rehearsal passes; dashboard on live data |
-| W6 | 7 Final presentation | Wave 4 | Evidence pack, final report, presentation, dry run |
+| **Day 1 morning** | Wave 1 | 1 Proposal, 2 System design | 30-minute contract sign-off call; M5.0 proposal drafted (AI-assisted) and submitted; M5.1 environment setup script running |
+| **Day 1 afternoon – Day 4** | Wave 2 | 3 Initial development, 4 Security integration | M1 runners + orchestrator; M4 findings API; M2 client + redaction; M3 pages on mocks — daily 15-min sync, everything pushed the day it's built |
+| **Day 5** | Wave 3 | 5 AI integration, 6 Finalization | I1 assessments live → I2 verification works → I3 AI wired. Strictly sequential, fix-forward: a failing step blocks the next |
+| **Day 6** | I4 + Wave 4 | 6 Finalization | Full 8-step rehearsal on Juice Shop; evidence pack captured during the rehearsal; dashboard on live data |
+| **Day 7** | Wave 4 | 7 Final presentation | Final report + presentation assembled from the platform's own generated report; dry run; buffer for whatever Day 6 found |
+
+**Cut line (decided at the Day-3 sync, applied without ceremony).** Defer in this order:
+
+1. All stretch tasks (T2.6, T4.6) and every idea-slot item
+2. Session-management category (already marked stretch in PLAN.md)
+3. T3.5 report trigger UI → minimum viable version on Day 6
+4. Anything else not required by the brief
+
+The line we do not cross: the brief's minimums — 3 assessment categories, 2 AI features, 2 tools, a working
+verification flow, dashboard, and report. Everything in this plan beyond that exists to be cut.
 
 ---
 
