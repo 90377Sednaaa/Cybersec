@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
-from app.api import assessments, auth, evidence, findings, misc, targets, users
+from app.api import assessments, auth, evidence, findings, misc, settings_llm, targets, users
 from app.config import settings
 from app.core.security import hash_password
 from app.database import Base, SessionLocal, engine
@@ -58,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(assessments.router, prefix="/api")
     app.include_router(findings.router, prefix="/api")
     app.include_router(evidence.router, prefix="/api")  # M4 T4.2 (steward: merge as routine)
+    app.include_router(settings_llm.router, prefix="/api")  # M2 T2.2 (steward: merge as routine)
     return app
 
 

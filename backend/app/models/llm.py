@@ -7,9 +7,10 @@ API keys are encrypted at rest with Fernet (key derived from settings.secret_key
 import base64
 import enum
 import hashlib
+from datetime import datetime
 
 from cryptography.fernet import Fernet
-from sqlalchemy import Boolean, Enum, ForeignKey, Float, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.config import settings
@@ -44,6 +45,9 @@ class LLMProvider(Base):
     base_url: Mapped[str] = mapped_column(String(2048))  # OpenAI-compatible base, e.g. https://openrouter.ai/api/v1
     api_key_encrypted: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # discretion audit: when the admin acknowledged external processing
+    # (additive column, M2 T2.2)
+    acknowledged_external_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     task_configs = relationship("LLMTaskConfig", back_populates="provider")
 

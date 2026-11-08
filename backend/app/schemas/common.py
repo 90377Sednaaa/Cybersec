@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models import (
     AssessmentStatus,
@@ -102,6 +102,9 @@ class LLMProviderIn(BaseModel):
     base_url: str
     api_key: str = ""
     enabled: bool = True
+    # discretion: enabling a provider means redacted scan data may be sent to
+    # the external service; the admin must acknowledge that explicitly.
+    acknowledged_external_processing: bool | None = None
 
 
 class LLMProviderOut(BaseModel):
@@ -112,3 +115,42 @@ class LLMProviderOut(BaseModel):
     base_url: str
     enabled: bool
     has_api_key: bool
+    acknowledged_external_at: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_has_api_key(cls, data):
+        if not isinstance(data, dict):
+            return {"has_api_key": bool(getattr(data, "api_key_encrypted", "")), **vars(data)}
+        return data
+
+
+class LLMTaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    task: str
+    provider_id: int | None
+    model: str
+    temperature: float
+
+
+class LLMTaskUpdate(BaseModel):
+    provider_id: int | None
+    model: str = ""
+    temperature: float = 0.2
+
+
+class LLMSettingsOut(BaseModel):
+    providers: list[LLMProviderOut]
+    task_configs: list[LLMTaskOut]
+
+
+class LLMTestConnectionIn(BaseModel):
+    provider_id: int
+
+
+class LLMTestConnectionOut(BaseModel):
+    ok: bool
+    model: str = ""
+    latency_ms: int | None = None
+    error: str = ""
