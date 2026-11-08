@@ -38,14 +38,15 @@ def _add_job(raw_output: str, tool: str = "prober") -> int:
         return job.id
 
 def _viewer_auth(client, auth: dict[str, str]) -> dict[str, str]:
-    client.post(
+    created = client.post(
         "/api/users",
-        json={"email": "viewer@example.com", "password": "viewerpw123", "role": "viewer"},
+        json={"email": "viewer-evidence@example.com", "password": "viewerpw123", "role": "viewer"},
         headers=auth,
     )
+    assert created.status_code in (201, 409)  # fresh or already created by an earlier test
     token = client.post(
         "/api/auth/login",
-        data={"username": "viewer@example.com", "password": "viewerpw123"},
+        data={"username": "viewer-evidence@example.com", "password": "viewerpw123"},
     ).json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 

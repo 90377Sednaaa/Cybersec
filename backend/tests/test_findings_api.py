@@ -57,15 +57,20 @@ def _add_assessment(target_id: int) -> int:
         return assessment.id
 
 def _viewer_auth(client, auth: dict[str, str]) -> dict[str, str]:
-    """Create a viewer via the admin users API, log in, return auth headers."""
-    client.post(
+    """Create a viewer via the admin users API, log in, return auth headers.
+
+    File-unique email: the DB persists across the whole pytest run, so two
+    test files must not fight over the same viewer account.
+    """
+    created = client.post(
         "/api/users",
-        json={"email": "viewer@example.com", "password": "viewerpw123", "role": "viewer"},
+        json={"email": "viewer-findings@example.com", "password": "viewerpw123", "role": "viewer"},
         headers=auth,
     )
+    assert created.status_code in (201, 409)  # fresh or already created by an earlier test
     token = client.post(
         "/api/auth/login",
-        data={"username": "viewer@example.com", "password": "viewerpw123"},
+        data={"username": "viewer-findings@example.com", "password": "viewerpw123"},
     ).json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
