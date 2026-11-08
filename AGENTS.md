@@ -22,9 +22,10 @@ contradict it silently. Grading context: Documentation 30 / Implementation 50 / 
 ## Layout
 
 ```
-backend/   FastAPI app — app/main.py (factory + seeding), app/models, app/api, app/core, app/schemas
+backend/   FastAPI app — app/main.py (factory + seeding), app/models, app/api, app/core, app/schemas,
+           app/scanner (M1: runners via @register, orchestrator, normalizer, event bus), tests/
 frontend/  React SPA — src/lib (api, auth, theme, types), src/pages, src/components
-docs/      PLAN.md (confirmed decisions) and project deliverables
+docs/      PLAN.md (decisions), TASK_PLAN.md (per-member plan), member-logs/ (build logs), proposals/
 ```
 
 ## Commands
@@ -38,6 +39,12 @@ python -m venv .venv                      # setup (once)
 ```
 
 API docs: http://127.0.0.1:8000/docs — health: http://127.0.0.1:8000/health
+
+Backend tests (from `backend/`, dev deps in requirements-dev.txt):
+
+```bash
+.venv\Scripts\python -m pytest tests -q   # must pass before claiming backend work done
+```
 
 Frontend (from `frontend/`):
 
@@ -92,6 +99,13 @@ the users API.
 
 ## Current state / next up
 
-The build-order status table lives in [README.md](README.md). Next milestone: the scan engine (M1: prober +
-Nmap wrapper + jobs/SSE, then ZAP integration + the orchestrator pipeline). Nmap, OWASP ZAP, and Playwright
-are not yet installed on this machine — the setup checklist is in PLAN.md §11.
+The build-order status table lives in [README.md](README.md). **M1 (scan engine) is complete and tested**:
+runners (nmap/dns/prober/zap) registered in `app/scanner`, orchestrator with SSE + cancel, intensity gate
+enforced server-side (409), normalizer emitting `ai_candidate` findings, contracts frozen in
+`app/schemas/assessment.py`. Build log + defense notes: `docs/member-logs/m1-scan-engine.md`.
+
+Next: **M5.1** environment setup (install Nmap + ZAP daemon so the nmap/zap jobs run live — ZAP runner
+currently degrades gracefully without it), **M2** AI pipeline (the interpreter wires in as the
+post-normalize step of `orchestrator.run_pipeline`; raw-result shapes are in `job.raw_output`), **M3**
+assessments UI (wizard + SSE live view; endpoints are live under `/api/assessments`). Nmap, OWASP ZAP, and
+Playwright are still not installed — checklist in PLAN.md §11.

@@ -77,6 +77,7 @@ python -m venv .venv
 
 - API docs: http://127.0.0.1:8000/docs
 - Health: http://127.0.0.1:8000/health
+- Run backend tests: `.venv\Scripts\python -m pytest tests -q` (requirements-dev.txt)
 
 ### 2. Frontend
 
@@ -109,12 +110,14 @@ After signing in, register a target to work with (e.g. Juice Shop at `http://loc
 | Step | Status |
 |---|---|
 | 1. Repo scaffold: FastAPI + models + JWT auth + Vite/shadcn shell | ✅ done |
-| 2. Target registry + authorization + intensity gate | ✅ backend + UI (gate enforcement lands with orchestrator) |
-| 3. Prober + Nmap wrapper + jobs/SSE | ⬜ milestone 4 (M1) |
-| 4. ZAP integration + orchestrator pipeline | ⬜ milestone 4 (M1) |
-| 5. Findings verification workflow | ⬜ milestone 6 (M4) |
+| 2. Target registry + authorization + intensity gate | ✅ done — gate enforced server-side (409), re-checked at scheduling |
+| 3. Prober + Nmap wrapper + jobs/SSE | ✅ done — 7 backend tests passing; live nmap run pending Nmap install |
+| 4. ZAP integration + orchestrator pipeline | 🔶 code complete — ZAP runner degrades gracefully; live test pending ZAP daemon install |
+| 5. Findings verification workflow | ⬜ milestone 6 (M4) — read-only findings list already seeded (`/api/findings`) |
 | 6. AI pipeline (client → settings → interpretation → summaries) | ⬜ milestone 5 (M2) |
 | 7. Dashboard + PDF report | ⬜ milestone 7 (M3/M4) |
+
+Build log for M1 (approach, decisions, defense notes): [docs/member-logs/m1-scan-engine.md](docs/member-logs/m1-scan-engine.md).
 
 ## Team modules
 
