@@ -7,6 +7,7 @@ from app.models.job import Job, JobStatus
 from app.models.finding import Finding, FindingStatus, Severity
 from app.models.evidence import Evidence, EvidenceKind
 from app.models.llm import AIOutput, LLMProvider, LLMTask, LLMTaskConfig
+from app.models.report import Report, ReportStatus  # M4 T4.4 (steward: merge as routine)
 
 __all__ = [
     "Role",
@@ -26,4 +27,6 @@ __all__ = [
     "LLMTask",
     "LLMTaskConfig",
     "AIOutput",
+    "Report",
+    "ReportStatus",
 ]
