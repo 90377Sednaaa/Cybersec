@@ -2,9 +2,15 @@
 
 Per-member work plan with detailed expected outputs, sequenced so parallel work never breaks the build.
 
+> **Read this first: this plan is a baseline, not a cage.** Everything in the member sections below is the
+> *agreed default* — the minimum that must exist for the platform to hit the brief. It is not a ceiling.
+> Your module, your call: if you have a better tool, design, or an idea that isn't in here at all, propose it
+> (see "Proposing a change" below) and it can replace or extend anything negotiable.
+
 **How sequencing works:** work runs in **waves**. Every wave has an entry condition and an exit condition.
 Nobody starts Wave N until Wave N−1's exit condition is met. Wave 1 freezes the interface contracts (API shapes,
 file ownership) — after that, members build in parallel against frozen contracts and integrate in a fixed order.
+The wave skeleton is deliberately fixed: it is what makes everyone's ideas safe to build, whatever they turn out to be.
 
 **Ground rules (all members):**
 
@@ -13,6 +19,28 @@ file ownership) — after that, members build in parallel against frozen contrac
 - Only a file's owner edits it (ownership matrix below). Shared files are changed by small hand-offs to the
   integration steward (M5), never edited in place by two people.
 - Never weaken the platform rules: human verification, intensity gate, authorized targets only, secret redaction.
+
+---
+
+## Negotiable vs fixed
+
+| Negotiable — propose anything | Fixed — protects everyone |
+|---|---|
+| Task approaches, tools, libraries within your ownership area | Platform hard rules: human verification, intensity gate, authorized targets only, secret redaction |
+| Stretch goals: replace the listed ones or add your own | Wave sequence and frozen contracts after Wave 1 (additive changes only) |
+| Extra features beyond the brief | File ownership boundaries (re-negotiate via proposal, never change silently) |
+| Internal design, prompts, checklists, naming | `main` staying green; Conventional Commits |
+
+## Proposing a change (lightweight RFC)
+
+1. Copy `docs/proposals/TEMPLATE.md` to `docs/proposals/NN-short-name.md` and fill it in — ten minutes.
+2. Raise it at the weekly sync (or async in chat if it's small and touches only your own area).
+3. **Accepted:** the steward logs it in the *Adopted changes* table below, updates the contracts
+   **additively**, and adjusts affected tasks/dates.
+4. **Rejected:** it gets a one-line reason in the same table — refine and re-propose if you disagree.
+
+Adopted proposals carry the same weight as this document; anyone building against a changed contract rebuilds
+their mocks/types the same day.
 
 ---
 
@@ -56,9 +84,12 @@ Model additions after Wave 1 are **additive only** (new nullable columns / new t
 **Mission:** turn "Run assessment" into a live, safe pipeline: recon → discovery → scanning → normalized results
 handed to the AI interpreter, with progress streaming to the UI.
 
-**Expected output (summary):** a working orchestrator that runs Nmap + DNS + prober + ZAP against a registered
+**Minimum expected output (summary):** a working orchestrator that runs Nmap + DNS + prober + ZAP against a registered
 target (respecting its intensity gate), persists jobs and raw output, streams live progress over SSE, and emits
 raw-result records that M2's interpreter can consume. Wire-through: "New Assessment" in the UI works end-to-end.
+
+**Idea slots (yours to fill or ignore):** additional runners (Nuclei, deeper fingerprinting), smarter scheduling or
+re-scan diffing, a scan-profile designer, anything that makes the pipeline faster or more thorough.
 
 | Task | Build | Expected output / acceptance |
 |---|---|---|
@@ -80,9 +111,13 @@ raw-result records that M2's interpreter can consume. Wire-through: "New Assessm
 **Mission:** the OpenAI-compatible LLM layer: provider settings with encrypted keys, secret redaction, and the two
 core AI features (interpretation → candidate findings, summaries for reports).
 
-**Expected output (summary):** a Settings page backend + UI spec that lets an admin paste an OpenRouter key and get
+**Minimum expected output (summary):** a Settings page backend + UI spec that lets an admin paste an OpenRouter key and get
 a working "test connection"; a redaction module with tests; an interpreter that converts M1's raw results into
 `ai_candidate` findings via M4's findings API; a summarizer whose output M4's report template renders.
+
+**Idea slots (yours to fill or ignore):** prompt-evaluation harness for comparing models, an attack-surface
+narrative generator, smarter prompt caching to cut token cost, extra AI features from the brief's list
+(recommending next tests), or your own.
 
 | Task | Build | Expected output / acceptance |
 |---|---|---|
@@ -103,9 +138,13 @@ a working "test connection"; a redaction module with tests; an interpreter that 
 **Mission:** every page real: assessment wizard with live progress, findings verification workflow, settings,
 dashboard on live data — all in both themes, with loading/empty/error states.
 
-**Expected output (summary):** the four placeholder pages become working features wired to frozen contracts (built
+**Minimum expected output (summary):** the four placeholder pages become working features wired to frozen contracts (built
 against local mocks first, then integrated in Wave 3); dashboard reflects real data; all rubric-visible UX
 (skeletons, empty states, HelpHints, severity colors) present.
+
+**Idea slots (yours to fill or ignore):** keyboard-driven navigation, an assessment timeline visualization,
+toast notifications for finished scans, a findings "investigation" view, demo-friendly UI touches — anything
+that makes the app feel sharp, within the shadcn design system.
 
 | Task | Build | Expected output / acceptance |
 |---|---|---|
@@ -125,9 +164,12 @@ against local mocks first, then integrated in Wave 3); dashboard reflects real d
 **Mission:** the verification backbone and the graded deliverable generator: findings API with the enforced state
 machine, evidence capture, severity model, and the PDF report.
 
-**Expected output (summary):** findings endpoints where only assessors/admins can change status (server-enforced),
+**Minimum expected output (summary):** findings endpoints where only assessors/admins can change status (server-enforced),
 evidence auto-captured from M1 jobs plus manual uploads, OWASP Risk Rating mapping, and a one-click PDF report
 containing findings, evidence, risks, recommendations, and M2's summaries.
+
+**Idea slots (yours to fill or ignore):** CVSS vector scoring alongside the 4-tier scale, finding de-duplication
+across re-scans, assessment-over-assessment diffs, customizable report templates, findings export formats.
 
 | Task | Build | Expected output / acceptance |
 |---|---|---|
@@ -148,9 +190,12 @@ containing findings, evidence, risks, recommendations, and M2's summaries.
 **Mission:** the deliverables engine and the person who keeps main green: proposal, system design docs, environment
 setup, evidence pack, and the final report/presentation assembly.
 
-**Expected output (summary):** proposal + system design docs submitted on time, every dev machine able to run the
+**Minimum expected output (summary):** proposal + system design docs submitted on time, every dev machine able to run the
 full stack via a setup script, an evidence pack that maps 1:1 to rubric lines, and the final report + presentation
 skeleton built from the platform's own generated report.
+
+**Idea slots (yours to fill or ignore):** GitHub Actions CI to enforce "main stays green", automated screenshot
+capture for the evidence pack, a demo video, a risk-matrix visualization for the presentation.
 
 | Task | Build | Expected output / acceptance |
 |---|---|---|
@@ -216,3 +261,14 @@ violations. All list endpoints require auth; role rules per M4 T4.5 checklist.
 | W4 | 5 AI integration | Wave 2 → I1, I2 | Assessments live (I1); verification works (I2); M2 interpreter wired |
 | W5 | 6 Finalization | I3, I4 | AI summaries in report; full rehearsal passes; dashboard on live data |
 | W6 | 7 Final presentation | Wave 4 | Evidence pack, final report, presentation, dry run |
+
+---
+
+## Adopted changes (idea log)
+
+Every accepted proposal lands here and becomes part of the plan. Rejected proposals get a one-line reason so
+nobody re-litigates the same idea blindly.
+
+| Date | Proposal (link to `docs/proposals/…`) | By | Decision | Impact on plan/contracts |
+|---|---|---|---|---|
+| *—* | *none yet — the table starts empty on purpose* | | | |
