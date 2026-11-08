@@ -34,8 +34,9 @@ the security-relevant ones; viewers are read-only by design.
 | `/api/findings/{id}/evidence` | GET | any | `get_current_user` |
 | `/api/findings/{id}/evidence` | POST | admin, assessor | `require_role` (viewer 403, tested) |
 | `/api/evidence/{id}/download` | GET | any | `get_current_user` |
-| `/api/assessments/{id}/report` | POST | admin, assessor | `require_role` *(T4.4, landing next)* |
-| `/api/reports/{id}` | GET | any | `get_current_user` *(T4.4)* |
+| `/api/assessments/{id}/report` | POST | admin, assessor | `require_role(admin, assessor)` (viewer 403, tested) |
+| `/api/assessments/{id}/reports` | GET | any | `get_current_user` |
+| `/api/reports/{id}` | GET | any | `get_current_user` (PDF download; 409 while pending/failed) |
 
 Audit method: every row above was read from the route decorators in
 `backend/app/api/*.py` on 2026-11-09 and cross-checked against the tests in

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Security Assessment Report</title>
+<style>
+  :root {
+    --severity-critical: #b91c1c;
+    --severity-high: #ea580c;
+    --severity-medium: #ca8a04;
+    --severity-low: #2563eb;
+    --severity-info: #64748b;
+    --ink: #1e293b;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --accent: #2563eb;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: var(--ink); font-size: 11pt; line-height: 1.5; margin: 0; }
+  h1 { font-size: 20pt; margin: 0 0 4pt; }
+  h2 { font-size: 14pt; margin: 18pt 0 6pt; border-bottom: 2px solid var(--accent); padding-bottom: 3pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; margin: 12pt 0 4pt; page-break-after: avoid; }
+  p { margin: 4pt 0; }
+  .muted { color: var(--muted); }
+  .cover { text-align: center; padding-top: 140pt; page-break-after: always; }
+  .cover .platform { color: var(--accent); font-weight: 600; letter-spacing: 1pt; text-transform: uppercase; font-size: 10pt; }
+  .cover h1 { font-size: 26pt; margin: 8pt 0; }
+  .cover table { margin: 26pt auto 0; border-collapse: collapse; }
+  .cover td { padding: 3pt 10pt; font-size: 11pt; }
+  .cover td.k { color: var(--muted); text-align: right; }
+  .cover td.v { font-weight: 600; text-align: left; }
+  table.grid { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt; page-break-inside: avoid; }
+  table.grid th, table.grid td { border: 1px solid var(--line); padding: 4pt 6pt; text-align: left; vertical-align: top; font-size: 10pt; }
+  table.grid th { background: #f1f5f9; }
+  .pill { display: inline-block; padding: 1pt 8pt; border-radius: 10pt; color: #fff; font-size: 9pt; font-weight: 600; }
+  .pill.critical, .pill.severity-critical { background: var(--severity-critical); }
+  .pill.high, .pill.severity-high { background: var(--severity-high); }
+  .pill.medium, .pill.severity-medium { background: var(--severity-medium); }
+  .pill.low, .pill.severity-low { background: var(--severity-low); }
+  .pill.info, .pill.severity-info { background: var(--severity-info); }
+  .pill.status { background: #f1f5f9; color: var(--ink); border: 1px solid var(--line); font-weight: 400; }
+  .finding { border: 1px solid var(--line); border-radius: 6pt; padding: 10pt 12pt; margin: 0 0 10pt; page-break-inside: avoid; }
+  .finding header { display: flex; justify-content: space-between; align-items: baseline; gap: 8pt; }
+  .finding h3 { margin: 0; }
+  .meta { color: var(--muted); font-size: 9pt; margin-top: 2pt; }
+  .evidence { background: #0f172a; color: #e2e8f0; font-family: Consolas, monospace; font-size: 8.5pt; padding: 8pt 10pt; border-radius: 4pt; white-space: pre-wrap; word-break: break-word; margin: 6pt 0 0; }
+  .evlabel { font-size: 9pt; color: var(--muted); margin-top: 6pt; }
+  .note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 4pt; padding: 8pt 10pt; font-size: 10pt; }
+  .placeholder { border: 1px dashed var(--line); border-radius: 4pt; padding: 10pt 12pt; color: var(--muted); font-size: 10pt; }
+  .page-break { page-break-before: always; }
+  footer { margin-top: 18pt; border-top: 1px solid var(--line); padding-top: 6pt; color: var(--muted); font-size: 9pt; }
+  .chart { margin: 8pt 0 4pt; }
+  .chart .axis { font-size: 9pt; fill: var(--muted); }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="platform">{{ platform }}</div>
+  <h1>Security Assessment Report</h1>
+  <p class="muted">Findings, verification and risk rating</p>
+  <table>
+    <tr><td class="k">Target</td><td class="v">{{ target.name }}</td></tr>
+    <tr><td class="k">Base URL</td><td class="v">{{ target.base_url }}</td></tr>
+    <tr><td class="k">Assessment</td><td class="v">#{{ assessment.id }} ({{ assessment.status }})</td></tr>
+    <tr><td class="k">Intensity</td><td class="v">{{ assessment.intensity }}</td></tr>
+    <tr><td class="k">Authorization</td><td class="v">{{ target.authorization_ref if target.authorization_ref else 'registered target' }}</td></tr>
+    <tr><td class="k">Generated</td><td class="v">{{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+  </table>
+</section>
+
+<h2>1. Executive summary</h2>
+{% if ai_summary %}
+<p>{{ ai_summary }}</p>
+{% else %}
+<div class="placeholder">
+  AI executive summary pending: the summary is generated from <strong>verified</strong> findings
+  by the AI pipeline (M2). This report contains {{ total_findings }} candidate finding(s),
+  of which {{ verified_count }} are human-verified and {{ unverified_count }} are still unverified
+  (ai_candidate / needs_evidence / false_positive). Unverified findings are labeled and must not
+  be treated as confirmed vulnerabilities.
+</div>
+{% endif %}
+
+<h2>2. Findings overview</h2>
+<svg class="chart" width="560" height="{{ 60 + 24 * severity_order | length }}" role="img" aria-label="Findings by severity">
+  {% set max_count = counts.values() | max if counts.values() else 0 %}
+  {% for tier in severity_order %}
+    {% set c = counts[tier] %}
+    {% set w = (330 * c / max_count) | round | int if max_count > 0 else 0 %}
+    <g transform="translate(0, {{ 24 * loop.index0 }})">
+      <text class="axis" x="0" y="14">{{ tier | capitalize }}</text>
+      <rect x="90" y="3" width="330" height="16" rx="3" fill="#f1f5f9"></rect>
+      {% if w > 0 %}<rect x="90" y="3" width="{{ w }}" height="16" rx="3" fill="var(--severity-{{ tier }})"></rect>{% endif %}
+      <text class="axis" x="430" y="14">{{ c }}</text>
+    </g>
+  {% endfor %}
+</svg>
+<table class="grid">
+  <tr><th>Severity</th><th>Findings</th><th>Verified</th><th>Representative score</th></tr>
+  {% for tier in severity_order %}
+  <tr>
+    <td><span class="pill {{ tier }}">{{ tier | capitalize }}</span></td>
+    <td>{{ counts[tier] }}</td>
+    <td>{{ verified_counts[tier] }}</td>
+    <td>{{ {'critical': '9.5', 'high': '8.0', 'medium': '5.5', 'low': '2.5', 'info': '0.0'}[tier] }} (band)</td>
+  </tr>
+  {% endfor %}
+  <tr><th>Total</th><th>{{ total_findings }}</th><th>{{ verified_count }}</th><th>0 to 10 scale</th></tr>
+</table>
+
+<h2>3. Methodology and framework references</h2>
+<p>
+  Risk is rated with the OWASP Risk Rating Methodology: every finding is judged on
+  likelihood (threat agent and vulnerability factors) and impact (technical and business
+  factors), each rated low / medium / high, and the pair maps onto the severity tiers
+  used in this report (Info, Low, Medium, High, Critical). Numeric scores use a 0 to 10
+  scale with bands: info 0.0 to 0.9, low 1.0 to 3.9, medium 4.0 to 6.9, high 7.0 to 8.9,
+  critical 9.0 to 10.0.
+</p>
+<p class="muted">
+  Only a human assessor confirms a finding: candidates produced by the scan pipeline or
+  the AI interpreter stay marked unverified until an assessor accepts them (the platform
+  enforces this server-side, with who/when attribution). References: OWASP Risk Rating
+  Methodology, OWASP Top 10, OWASP Cheat Sheet Series. Full note: docs/risk-methodology.md.
+</p>
+
+<h2>4. Scope</h2>
+<table class="grid">
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>Target</td><td>{{ target.name }} ({{ target.base_url }})</td></tr>
+  <tr><td>Allowed intensity</td><td>{{ target.allowed_intensity }} (assessment ran at: {{ assessment.intensity }})</td></tr>
+  <tr><td>Authorization</td><td>{{ target.authorization_ref if target.authorization_ref else 'registered target record #' ~ assessment.id }}</td></tr>
+  <tr><td>In-scope assets</td><td>{{ target.in_scope_assets | join(', ') if target.in_scope_assets else '-' }}</td></tr>
+  <tr><td>Out-of-scope assets</td><td>{{ target.out_of_scope_assets | join(', ') if target.out_of_scope_assets else '-' }}</td></tr>
+  <tr><td>Categories assessed</td><td>{{ assessment.categories | join(', ') }}</td></tr>
+  <tr><td>Pipeline jobs</td><td>{% for j in jobs %}{{ j.tool }} ({{ j.status }}){% if not loop.last %}, {% endif %}{% endfor %}{% if not jobs %}-{% endif %}</td></tr>
+</table>
+
+<h2 class="page-break">5. Findings by severity</h2>
+<p class="muted">
+  {{ total_findings }} finding(s): {{ verified_count }} verified by an assessor,
+  {{ unverified_count }} unverified. Evidence excerpts are truncated; full evidence
+  (HTTP transcripts, tool output, uploads) is attached to each finding in the platform.
+</p>
+{% for tier, rows in findings_by_severity %}
+  <h3><span class="pill severity-{{ tier }}">{{ tier | capitalize }}</span> ({{ rows | length }})</h3>
+  {% for f in rows %}
+  <div class="finding">
+    <header>
+      <h3>#{{ f.id }} {{ f.title }}</h3>
+      <span><span class="pill status">score {{ '%.1f' | format(f.score) }}</span> <span class="pill status">{{ f.status }}</span></span>
+    </header>
+    <div class="meta">Category: {{ f.category }} · Severity: {{ f.severity }}{% if f.verified_by %} · Verified by {{ f.verified_by }}{% endif %}</div>
+    {% if f.description %}<p>{{ f.description }}</p>{% endif %}
+    {% if f.assessor_notes %}<p><strong>Assessor notes:</strong> {{ f.assessor_notes }}</p>{% endif %}
+    {% if f.remediation %}<p><strong>Remediation:</strong> {{ f.remediation }}</p>{% endif %}
+    {% for e in f.evidence %}
+      <div class="evlabel">{{ e.kind }} · {{ e.label }}{% if e.tool %} · tool: {{ e.tool }}{% endif %}</div>
+      {% if e.excerpt %}<div class="evidence">{{ e.excerpt }}</div>{% endif %}
+    {% endfor %}
+  </div>
+  {% endfor %}
+{% else %}
+<p>No findings were recorded for this assessment.</p>
+{% endfor %}
+
+<h2 class="page-break">6. Risk table</h2>
+<table class="grid">
+  <tr><th>#</th><th>Finding</th><th>Severity</th><th>Score</th><th>Status</th></tr>
+  {% for tier, rows in findings_by_severity %}
+    {% for f in rows %}
+    <tr>
+      <td>{{ f.id }}</td>
+      <td>{{ f.title }}<br><span class="muted">{{ f.category }}</span></td>
+      <td><span class="pill severity-{{ tier }}">{{ tier }}</span></td>
+      <td>{{ '%.1f' | format(f.score) }}</td>
+      <td>{{ f.status }}</td>
+    </tr>
+    {% endfor %}
+  {% endfor %}
+</table>
+
+<h2>7. Recommendations</h2>
+{% if recommendations %}
+<ol>
+  {% for r in recommendations %}<li>{{ r }}</li>{% endfor %}
+</ol>
+{% else %}
+<p class="muted">No remediation drafts recorded yet.</p>
+{% endif %}
+<div class="note">
+  <strong>Note on unverified findings:</strong> remediation items derived from
+  ai_candidate findings are drafts. Treat them as advisory until an assessor verifies
+  the finding in the platform.
+</div>
+
+<footer>
+  Generated by {{ platform }} · Assessment #{{ assessment.id }} · {{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }}
+  · Human-verification enforced server-side · OWASP Risk Rating methodology
+</footer>
+
+</body>
+</html>
