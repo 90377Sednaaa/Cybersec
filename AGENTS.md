@@ -68,6 +68,13 @@ the users API.
   verified work sitting in the working tree. Run the relevant verification (build, tests) before committing.
   Stage files explicitly by path (never `git add -A` / `git commit -a`) so unrelated working-tree changes are
   not swept into your commit.
+- **Git sync — pull before work and before pushing:** start every session or task with `git status -sb` then
+  `git pull --rebase`. Multiple members and multiple agent sessions push to `main` daily; users forget to pull,
+  so the local clone is often stale — pushing from it causes rejected pushes or messy merge commits. Re-check
+  `git log --oneline -3` immediately before committing (another session may have committed in the meantime).
+  With uncommitted task edits in flight, the order is: **commit first, then `git pull --rebase`, then push**
+  (rebase needs a clean tree). If a pull brings conflicts: stop, resolve carefully or ask the user — never
+  force-push, never commit with unresolved conflict markers.
 - **UI:** shadcn/ui + Tailwind v4. One accent (the Aletheia brand blue) locked across the app; severity colors
   (`--severity-critical|high|medium|low|info`) are semantic state colors, not decoration. Every UI change must
   work in **both** light and dark themes (dark is the default — verify both). No em-dashes in UI copy. Verify

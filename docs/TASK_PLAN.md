@@ -14,6 +14,9 @@ The wave skeleton is deliberately fixed: it is what makes everyone's ideas safe 
 
 **Ground rules (all members):**
 
+- **Pull before you start and before you push** (`git status -sb`, then `git pull --rebase`). The repo moves
+  fast — five members plus agent sessions push to `main` daily, and a stale clone causes rejected pushes and
+  avoidable conflicts. If a pull brings conflicts, resolve them before building on top.
 - Conventional Commits with detailed bodies; push after every finished task; stage by explicit path.
 - `main` must always build: backend `uvicorn` boots + frontend `npm run build` passes before every push.
 - Only a file's owner edits it (ownership matrix below). Shared files are changed by small hand-offs to the
