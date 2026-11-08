@@ -20,6 +20,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.redaction import redact_messages
 from app.models.llm import LLMProvider, LLMTask, LLMTaskConfig, decrypt_secret
 
 DEFAULT_TIMEOUT_SECONDS = 60.0
@@ -58,11 +59,15 @@ def chat(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     response_format: dict | None = None,
+    deny_list: list[str] | None = None,
     transport: httpx.BaseTransport | None = None,
 ) -> ChatResult:
     """Send one chat completion. `transport` is a test seam (httpx.MockTransport)."""
     cfg = resolve_task_config(db, task)
     provider: LLMProvider = cfg.provider
+    # hard gate: nothing reaches a provider without passing the redaction layer
+    messages = redact_messages(messages, deny_list)
+
     body: dict = {
         "model": cfg.model,
         "messages": messages,
