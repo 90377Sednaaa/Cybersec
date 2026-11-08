@@ -119,3 +119,4 @@ After signing in, register a target to work with (e.g. Juice Shop at `http://loc
 ## Team modules
 
 M1 scan engine · M2 AI pipeline · M3 frontend · M4 findings/reports/auth · M5 docs/QA/deployment — see PLAN.md §8.
+Detailed per-member tasks, expected outputs, and the sequenced integration plan: **[docs/TASK_PLAN.md](docs/TASK_PLAN.md)**.
