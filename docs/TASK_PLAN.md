@@ -86,6 +86,26 @@ Mapping to the course milestones: all seven land inside the week — milestone 1
 
 Model additions after Wave 1 are **additive only** (new nullable columns / new tables), scoped to the owning module.
 
+### Cross-module tweaks (they will happen — make them safe)
+
+The ownership matrix assigns **accountability, not exclusivity**. In a one-week sprint members will touch each
+other's code to unblock their own workflow — not everyone works the same way, and that's fine. What keeps a
+tweak from breaking someone else's module:
+
+1. **Contracts are the protection, not edit permissions.** A change that preserves the frozen API shapes and
+   behavior is safe by definition, wherever it lands. A change that *needs* to alter a contract is a proposal
+   (see RFC process) — never a drive-by edit.
+2. **Tweak etiquette:** minimal diff; match the module's existing patterns (no restyling, no refactoring, no
+   "improvements" to surrounding code); comment anything non-obvious; commit as `fix(<module>): ...` naming
+   the task it unblocked; post it in chat so the owner sees it the same day.
+3. **Owner veto at the next daily sync:** the owner either adopts the tweak (it becomes theirs to maintain) or
+   reverts it with a one-line reason. Either outcome is fine — the unblocking already happened.
+4. **AI-agent guardrail:** most tweaks will be written by AI agents. When an agent works outside your own
+   area, your instruction to it must include: *minimal change, preserve contracts, match existing style, do
+   not refactor*. This is codified in AGENTS.md so every member's agent follows the same etiquette.
+5. **If a tweak grows:** the moment a cross-module change exceeds ~30 lines or touches a contract, stop and
+   propose it instead — big changes through the front door, small ones through the side.
+
 ---
 
 ## M1 — Scan engine & orchestration

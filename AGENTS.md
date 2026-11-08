@@ -70,6 +70,12 @@ the users API.
   `tanstack-query` hold stack-specific references; `.agents/skills/fastapi` covers backend patterns.
 - **Python:** SQLAlchemy 2.0 typed mappings (`Mapped` / `mapped_column`); enums stored with
   `native_enum=False`; all request/response shapes go through Pydantic schemas at the API boundary.
+- **Working across modules:** the ownership matrix in `docs/TASK_PLAN.md` assigns accountability, not
+  exclusivity — members tweak each other's code to unblock their own workflow, and that is allowed. When
+  editing code owned by another member: make the **minimal** change that unblocks the task, preserve all
+  API/DB contract shapes, match the existing code's style, do **not** refactor or "improve" surrounding code,
+  and commit as `fix(<module>): ...` with a note to the owner. Contract changes go through the proposal
+  process (see TASK_PLAN.md), never drive-by edits.
 - **TypeScript:** `import type` for type-only imports (`verbatimModuleSyntax`); no constructor parameter
   properties (`erasableSyntaxOnly`); `@/` path alias; `cn` imported from the `cn` package (shadcn v4 style).
 
