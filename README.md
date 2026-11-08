@@ -114,10 +114,11 @@ After signing in, register a target to work with (e.g. Juice Shop at `http://loc
 | 3. Prober + Nmap wrapper + jobs/SSE | ✅ done — 7 backend tests passing; live nmap run pending Nmap install |
 | 4. ZAP integration + orchestrator pipeline | 🔶 code complete — ZAP runner degrades gracefully; live test pending ZAP daemon install |
 | 5. Findings verification workflow | ⬜ milestone 6 (M4) — read-only findings list already seeded (`/api/findings`) |
-| 6. AI pipeline (client → settings → interpretation → summaries) | ⬜ milestone 5 (M2) |
+| 6. AI pipeline (client → settings → interpretation → summaries) | ✅ done — T2.1–T2.5; 67 AI tests passing; redaction gate enforced before every call |
 | 7. Dashboard + PDF report | ⬜ milestone 7 (M3/M4) |
 
 Build log for M1 (approach, decisions, defense notes): [docs/member-logs/m1-scan-engine.md](docs/member-logs/m1-scan-engine.md).
+Build log for M2 (approach, decisions, defense notes): [docs/member-logs/m2-ai-pipeline.md](docs/member-logs/m2-ai-pipeline.md).
 
 ## Team modules
 
