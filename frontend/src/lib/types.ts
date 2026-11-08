@@ -43,3 +43,57 @@ export const ASSESSMENT_CATEGORIES = [
   "Information disclosure",
   "Session management",
 ] as const
+
+// ---- Assessments (mirrors backend/app/schemas/assessment.py) ----
+
+export type AssessmentStatus =
+  | "draft"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+
+export type JobStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+
+export interface AssessmentCreate {
+  target_id: number
+  intensity?: ScanIntensity | null
+  categories?: string[]
+}
+
+export interface Job {
+  id: number
+  assessment_id: number | null
+  tool: string
+  command: string
+  status: JobStatus
+  progress: number
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface Assessment {
+  id: number
+  target_id: number
+  intensity: ScanIntensity
+  categories: string[]
+  status: AssessmentStatus
+  started_at: string | null
+  finished_at: string | null
+  notes: string
+}
+
+export interface AssessmentDetail extends Assessment {
+  jobs: Job[]
+}
+
+export type ScanEvent =
+  | { type: "log"; job_id: number; line: string }
+  | { type: "job"; job_id: number; status: JobStatus; progress: number }
+  | { type: "assessment"; status: AssessmentStatus }
+  | { type: "snapshot"; assessment: AssessmentDetail }
