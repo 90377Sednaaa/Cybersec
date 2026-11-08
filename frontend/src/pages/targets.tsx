@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import type { FormEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
@@ -42,6 +42,7 @@ function parseAssetList(raw: string): string[] {
 function RegisterTargetDialog() {
   const { hasRole } = useAuth()
   const queryClient = useQueryClient()
+  const nameInputRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState("")
@@ -91,7 +92,15 @@ function RegisterTargetDialog() {
           Register target
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent
+        className="max-w-lg"
+        onOpenAutoFocus={(event) => {
+          // Radix would otherwise focus the first tabbable element, the Name
+          // HelpHint button, whose tooltip then opens over the dialog title.
+          event.preventDefault()
+          nameInputRef.current?.focus()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Register target</DialogTitle>
           <DialogDescription>
@@ -108,7 +117,7 @@ function RegisterTargetDialog() {
                 or "Team Portal".
               </HelpHint>
             </div>
-            <Input id="target-name" required value={name} onChange={(e) => setName(e.target.value)} />
+            <Input id="target-name" ref={nameInputRef} required value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="grid gap-2">
             <div className="flex items-center gap-1">
