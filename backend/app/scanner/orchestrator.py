@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 
+from app.ai.interpret import interpret_assessment
 from app.database import SessionLocal
 from app.models import Assessment, AssessmentStatus, Job, JobStatus, ScanIntensity
 from app.models.user import utcnow
@@ -95,7 +96,11 @@ async def run_pipeline(assessment_id: int, handle: PipelineHandle) -> None:
             assessment.status = AssessmentStatus.cancelled
         else:
             created = normalize_assessment(db, assessment, jobs)
+            # M2 hook (T2.4): run AI interpretation AFTER the note is composed -
+            # the interpreter appends its outcome to assessment.notes and must
+            # not be able to clobber the pipeline summary.
             assessment.notes = f"Pipeline complete; {created} candidate finding(s) emitted by rule-based normalizer."
+            await _run_interpret(db, handle, assessment, jobs, target)
             assessment.status = AssessmentStatus.completed
         assessment.finished_at = utcnow()
         db.commit()
@@ -111,6 +116,42 @@ async def run_pipeline(assessment_id: int, handle: PipelineHandle) -> None:
     finally:
         pipelines.pop(assessment_id, None)
         db.close()
+
+
+async def _run_interpret(db, handle: PipelineHandle, assessment, jobs, target) -> None:
+    """M2 hook (T2.4): AI interpretation after normalization. Degrades to a note
+    when nothing is configured; provider errors never fail a completed scan."""
+    def emit_log(line: str) -> None:
+        broadcast(handle, {"type": "log", "job_id": None, "line": line})
+
+    try:
+        def run() -> None:
+            with SessionLocal() as ai_db:
+                created = interpret_assessment(
+                    ai_db,
+                    assessment,
+                    jobs,
+                    deny_list=target_deny_list(target),
+                    emit_log=emit_log,
+                )
+                if created:
+                    assessment.notes = (assessment.notes or "") + f" AI interpretation added {created} candidate finding(s)."
+
+        await asyncio.to_thread(run)
+    except Exception as exc:  # noqa: BLE001 - AI must never break a completed scan
+        emit_log(f"[error] AI interpretation unavailable: {format_exception(exc)}")
+        assessment.notes = (assessment.notes or "") + f" AI interpretation skipped: {format_exception(exc)}"
+
+
+def target_deny_list(target) -> list[str]:
+    """Target-specific terms redacted from every AI prompt: identifiers the
+    target owner gave us (name, host, scope assets, authorization reference)."""
+    if target is None:
+        return []
+    terms = [target.name, target.base_url, target.authorization_ref or ""]
+    terms.extend(target.in_scope_assets or [])
+    terms.extend(target.out_of_scope_assets or [])
+    return [t for t in terms if t and len(t) >= 3]
 
 
 async def _run_job(db, handle: PipelineHandle, assessment, target, job: Job) -> None:
