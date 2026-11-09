@@ -97,3 +97,109 @@ export type ScanEvent =
   | { type: "job"; job_id: number; status: JobStatus; progress: number }
   | { type: "assessment"; status: AssessmentStatus }
   | { type: "snapshot"; assessment: AssessmentDetail }
+
+
+  // ---- Findings, evidence, reports (mirrors schemas/common.py + schemas/findings.py) ----
+
+export type Severity = "info" | "low" | "medium" | "high" | "critical"
+
+// ai_candidate is NOT confirmed. Only a human assessor can set "verified".
+export type FindingStatus =
+  | "ai_candidate"
+  | "needs_evidence"
+  | "verified"
+  | "false_positive"
+
+export type EvidenceKind = "http_transcript" | "tool_output" | "upload"
+
+export type ReportStatus = "pending" | "ready" | "failed"
+
+export interface Finding {
+  id: number
+  assessment_id: number | null
+  category: string
+  title: string
+  description: string
+  severity: Severity
+  score: number
+  status: FindingStatus
+  ai_confidence: number
+  remediation: string
+  assessor_notes: string
+}
+
+// Body for PATCH /api/findings/{id}. At least one field is required.
+export interface FindingUpdate {
+  status?: FindingStatus
+  severity?: Severity
+  score?: number // 0 to 10
+  assessor_notes?: string // max 4000 chars
+}
+
+export interface Evidence {
+  id: number
+  finding_id: number
+  kind: EvidenceKind
+  label: string
+  content: string
+  tool: string
+  captured_at: string
+}
+
+// GET /api/findings/{id}
+export interface FindingDetail extends Finding {
+  verified_by_id: number | null
+  verified_at: string | null
+  verified_by: string | null // email of the verifying user
+  evidence: Evidence[]
+}
+
+export interface Report {
+  id: number
+  assessment_id: number
+  status: ReportStatus
+  error: string
+  created_at: string
+  finished_at: string | null
+}
+
+// ---- LLM settings (mirrors schemas/common.py) ----
+
+export interface LLMProvider {
+  id: number
+  name: string
+  base_url: string
+  enabled: boolean
+  has_api_key: boolean // the key itself is never returned
+  acknowledged_external_at: string | null
+}
+
+// Body for creating/updating a provider. api_key is write-only.
+export interface LLMProviderInput {
+  name: string
+  base_url: string
+  api_key?: string
+  enabled?: boolean
+  // Required when enabling a provider: admin acknowledges that redacted
+  // scan data may be sent to an external AI service.
+  acknowledged_external_processing?: boolean | null
+}
+
+export interface LLMTaskConfig {
+  task: string
+  provider_id: number | null
+  model: string
+  temperature: number
+}
+
+export interface LLMSettings {
+  providers: LLMProvider[]
+  task_configs: LLMTaskConfig[]
+}
+
+export interface LLMTestResult {
+  ok: boolean
+  model: string
+  latency_ms: number | null
+  error: string
+}
