@@ -124,6 +124,21 @@ for `backend/evidence/` + `backend/reports/`.
   `31e0841` T4.5 (rebased cleanly over M3's UI commits mid-push),
   `0bd5c09`+`551cdfa` T4.4.
 
+## Self-review findings (post-completion defect pass, 2026-11-10)
+
+A structured review of the finished M4 diff (base `dbf4e74` → HEAD, review-agent pass plus a live
+null-value probe against the running API) found **one real defect**, fixed with a regression test
+before this log entry:
+
+| # | Severity | Defect found | Fix |
+|---|---|---|---|
+| 1 | Medium | **PATCH with explicit JSON nulls returned 500** — `{"severity": null}` passed schema validation (Optional fields), `exclude_unset` kept the explicitly-sent null, and `setattr` wrote `None` into NOT NULL columns, so the commit raised `IntegrityError`. Every test passed because none sent explicit nulls. | Nulls are filtered out after the dump — they mean "not provided"; clearing notes uses `""`. Regression test `test_patch_explicit_nulls_treated_as_absent`. Commit `eb27fae`. |
+
+Checked and clean (no findings): state-machine check ordering (a 409 never half-applies), attribution
+source (JWT only), viewer 403 coverage, evidence path-escape guard, size/extension checks with
+nothing written on reject, Jinja autoescape (no `| safe` anywhere), report-job defensive catch,
+risk doc/code consistency, route conflicts, explicit-null `status` handling.
+
 ## Honest limitations (say these before the examiner finds them)
 
 1. **The http_transcript adapter is not yet wired into M1's normalizer.** The
