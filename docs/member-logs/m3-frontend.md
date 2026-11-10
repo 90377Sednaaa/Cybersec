@@ -12,10 +12,15 @@ first on the cut line, so it comes last).
 | Task | Delivered | Files | Status |
 |---|---|---|---|
 | T3.0 Contract | Types mirroring the backend schemas (assessments/jobs/SSE events, findings/evidence/reports, LLM settings), component conventions, mock data | `src/lib/types.ts`, `frontend/CONVENTIONS.md`, `src/mocks/data.ts` | in progress (awaiting teammate sign-off) |
-| T3.1 Assessments page | Wizard, run view with live SSE log, cancel | `src/pages/assessments.tsx` | pending |
+
+| T3.1 Assessments page | List with live status polling, new-assessment dialog (server-enforced intensity gate mirrored in the UI), run detail panel with per-job progress cards, authenticated SSE live log, cancel button | `src/pages/assessments.tsx`, `src/pages/assessment-run.tsx`, `src/lib/scan-events.ts` | done |
+
 | T3.2 Findings page | Filterable table, detail drawer, verify / false-positive / needs-evidence actions | `src/pages/findings.tsx` | pending |
+
 | T3.3 Settings page | Provider management, per-task models, test connection | `src/pages/settings.tsx` | pending |
+
 | T3.4 Dashboard live data | Real counts, severity chart, recent assessments | `src/pages/dashboard.tsx` | pending |
+
 | T3.5 Report trigger UI | Generate button + download link | assessment detail | pending |
 
 ## The approach
@@ -29,6 +34,11 @@ first on the cut line, so it comes last).
   severity colors, and read-only UI for viewers.
 
 ## Key decisions and trade-offs (defense talking points)
+
+- The SSE endpoint needs the Authorization header, which the browser's `EventSource` cannot send, so `scan-events.ts` reads the stream with `fetch` + `ReadableStream` and parses the `data:` blocks itself.
+- Scan log lines are rendered as plain text (never HTML) so scan output cannot inject markup into the page.
+- The Cancel button is hidden for viewers; the backend also enforces this with a 403.
+
 
 - `ScanEvent` is a TypeScript discriminated union (by `type`) instead of one object with optional
   fields as in the Python schema. Same payloads, but the compiler knows which fields exist for each event type.
