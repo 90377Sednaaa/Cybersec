@@ -75,6 +75,18 @@ the users API.
   With uncommitted task edits in flight, the order is: **commit first, then `git pull --rebase`, then push**
   (rebase needs a clean tree). If a pull brings conflicts: stop, resolve carefully or ask the user — never
   force-push, never commit with unresolved conflict markers.
+- **Milestone status upkeep — update this file every time a member completes a milestone:** `AGENTS.md`
+  is the first thing every agent session reads, so a stale "Current state / next up" is a defect, not
+  cosmetic. When a member completes a milestone — a team module (M1-M5, `TASK_PLAN.md` §8) or a numbered
+  course milestone (`PLAN.md` §10) — the same work must refresh the snapshot below before it is pushed:
+  flip that module's row, name the tasks/files that shipped, update "Next up" and the integration-wave
+  state, and re-date the snapshot with the verification results (build + test counts). Put it in the
+  module's final commit or an immediately following `docs(agents): ...` commit; never leave it for a
+  later session. Smaller tasks that change what is "next" should update that line too. If the milestone
+  also changes a build-order row in [README.md](README.md), sync that row in the same commit so the two
+  never disagree. The status section is living content; everything else in this file, `PLAN.md`, and
+  `TASK_PLAN.md` stays a decision record that changes only by team consensus. Member build logs in
+  `docs/member-logs/` belong to their owner — remind them to refresh the log, do not rewrite it for them.
 - **UI:** shadcn/ui + Tailwind v4. One accent (the Aletheia brand blue) locked across the app; severity colors
   (`--severity-critical|high|medium|low|info`) are semantic state colors, not decoration. Every UI change must
   work in **both** light and dark themes (dark is the default — verify both). No em-dashes in UI copy. Verify
@@ -106,13 +118,35 @@ the users API.
 
 ## Current state / next up
 
-The build-order status table lives in [README.md](README.md). **M1 (scan engine) is complete and tested**:
-runners (nmap/dns/prober/zap) registered in `app/scanner`, orchestrator with SSE + cancel, intensity gate
-enforced server-side (409), normalizer emitting `ai_candidate` findings, contracts frozen in
-`app/schemas/assessment.py`. Build log + defense notes: `docs/member-logs/m1-scan-engine.md`.
+**Snapshot: 2026-11-10.** Living content — see "Milestone status upkeep" in Conventions. The build-order
+table in [README.md](README.md) is kept in sync by the M5 steward.
 
-Next: **M5.1** environment setup (install Nmap + ZAP daemon so the nmap/zap jobs run live — ZAP runner
-currently degrades gracefully without it), **M2** AI pipeline (the interpreter wires in as the
-post-normalize step of `orchestrator.run_pipeline`; raw-result shapes are in `job.raw_output`), **M3**
-assessments UI (wizard + SSE live view; endpoints are live under `/api/assessments`). Nmap, OWASP ZAP, and
-Playwright are still not installed — checklist in PLAN.md §11.
+| Module | State | What landed |
+|---|---|---|
+| **M1** Scan engine | done | nmap/dns/prober/zap runners, orchestrator with SSE + cancel, server-side intensity gate (409), normalizer emitting `ai_candidate`; contracts frozen in `app/schemas/assessment.py`. Log: `docs/member-logs/m1-scan-engine.md`. |
+| **M2** AI pipeline | done | T2.0-T2.5: OpenAI-compatible client, Fernet-encrypted provider settings + discretion gate, redaction before every call, interpreter, summarizer + `ai_outputs` audit. 67 AI tests. Log: `docs/member-logs/m2-ai-pipeline.md`. |
+| **M3** Frontend | in progress | Only T3.0 landed (`src/lib/types.ts`, `frontend/CONVENTIONS.md`, `src/mocks/data.ts`). `/assessments`, `/findings`, `/settings` still render `src/pages/stubs.tsx`; `dashboard.tsx` hardcodes zeros. T3.1-T3.5 pending. Log: `docs/member-logs/m3-frontend.md`. |
+| **M4** Findings & reports | code complete, log lags | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. `docs/member-logs/m4-findings-reports.md` still says "in progress" with every task "pending"; the owner should refresh it. |
+| **M5** Docs/QA/deploy | pending | Router hand-offs merged (T5.4 partial). No `docs/proposal.md`, `docs/system-design.md`, `docs/qa-checklist.md`, evidence pack, or `scripts/setup-dev.ps1` yet. |
+
+Verification on this snapshot: `npm run build` passes, lint reports 0 errors, `pytest tests -q` reports
+**151 passed**; a live smoke test returned 200 for `/health`, login, and every M1/M2/M4 list endpoint.
+The backend is ready — the frontend is the bottleneck. Integration waves I1-I4 (`TASK_PLAN.md`) have not
+run because M3 is unfinished.
+
+**Next up, in order:**
+1. **M3 T3.1-T3.5** — assessments wizard + SSE live view, findings verification UI, settings page, live
+   dashboard, report trigger. This unblocks I1-I3.
+2. **M5 T5.1** — install Nmap, the OWASP ZAP daemon, and Playwright Chromium (`PLAN.md` §11). None are
+   installed yet: the ZAP runner degrades gracefully and the report job fails with an actionable log
+   line until they are.
+3. **M4 log refresh, then I1-I4 rehearsal** and the M5 evidence pack.
+
+**Known integration blockers for M3** (resolve these before building the pages):
+- `GET /api/assessments/{id}/events` is guarded by `HTTPBearer`, but native `EventSource` cannot send an
+  `Authorization` header and there is no query-token fallback. Use fetch-based streaming with the header,
+  or raise an auth change through the proposal process.
+- `api<T>()` in `src/lib/api.ts` always parses JSON, so it cannot consume SSE text or the
+  `application/pdf` report/evidence downloads. Add dedicated authenticated fetch helpers.
+- `src/mocks/data.ts` uses task names `interpret`/`summarize`; the backend `LLMTask` enum is
+  `interpretation`/`summary`/`prioritization`/`qa`. Fix before T3.3 reuses those mocks.
