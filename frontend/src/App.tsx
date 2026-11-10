@@ -6,7 +6,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { useAuth } from "@/lib/auth"
 import { DashboardPage } from "@/pages/dashboard"
 import { LoginPage } from "@/pages/login"
-import { AssessmentsPage, FindingsPage, SettingsPage } from "@/pages/stubs"
+import { AssessmentsPage } from "@/pages/assessments"
+import { FindingsPage, SettingsPage } from "@/pages/stubs"
 import { TargetsPage } from "@/pages/targets"
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
