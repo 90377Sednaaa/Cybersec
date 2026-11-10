@@ -85,6 +85,9 @@ def update_finding(
 ) -> Finding:
     finding = _get_finding_or_404(db, finding_id)
     changes = payload.model_dump(exclude_unset=True)
+    # Explicit JSON nulls mean "not provided" - the columns are NOT NULL and a
+    # null would crash the commit with a 500. Clearing notes is done with "".
+    changes = {field: value for field, value in changes.items() if value is not None}
     if not changes:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "PATCH body is empty")
 

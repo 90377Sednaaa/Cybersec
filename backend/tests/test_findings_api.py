@@ -212,6 +212,21 @@ def test_patch_empty_body_422(client, auth):
     finding_id = _add_finding()
     assert client.patch(f"/api/findings/{finding_id}", json={}, headers=auth).status_code == 422
 
+def test_patch_explicit_nulls_treated_as_absent(client, auth):
+    """Explicit JSON nulls are NOT NULL columns - they must be ignored (or
+    422), never crash the commit with a 500. Regression for a review finding."""
+    finding_id = _add_finding()
+    for body in ({"severity": None}, {"score": None}, {"assessor_notes": None},
+                 {"severity": None, "status": "verified"}):
+        resp = client.patch(f"/api/findings/{finding_id}", json=body, headers=auth)
+        assert resp.status_code in (200, 422), f"{body} -> {resp.status_code}"
+        if resp.status_code == 200 and "status" in body:
+            # null severity ignored, but the real field in the same body applies
+            assert resp.json()["status"] == "verified"
+            assert resp.json()["severity"] == "high"  # original value kept
+    detail = client.get(f"/api/findings/{finding_id}", headers=auth).json()
+    assert detail["severity"] == "high" and detail["score"] == 7.0  # nothing nulled
+
 def test_patch_unknown_finding_404(client, auth):
     assert client.patch("/api/findings/99999", json={"status": "verified"}, headers=auth).status_code == 404
 
