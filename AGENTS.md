@@ -126,7 +126,7 @@ table in [README.md](README.md) is kept in sync by the M5 steward.
 | **M1** Scan engine | done | nmap/dns/prober/zap runners, orchestrator with SSE + cancel, server-side intensity gate (409), normalizer emitting `ai_candidate`; contracts frozen in `app/schemas/assessment.py`. Log: `docs/member-logs/m1-scan-engine.md`. |
 | **M2** AI pipeline | done | T2.0-T2.5: OpenAI-compatible client, Fernet-encrypted provider settings + discretion gate, redaction before every call, interpreter, summarizer + `ai_outputs` audit. 67 AI tests. Log: `docs/member-logs/m2-ai-pipeline.md`. |
 | **M3** Frontend | in progress | Only T3.0 landed (`src/lib/types.ts`, `frontend/CONVENTIONS.md`, `src/mocks/data.ts`). `/assessments`, `/findings`, `/settings` still render `src/pages/stubs.tsx`; `dashboard.tsx` hardcodes zeros. T3.1-T3.5 pending. Log: `docs/member-logs/m3-frontend.md`. |
-| **M4** Findings & reports | code complete, log lags | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. `docs/member-logs/m4-findings-reports.md` still says "in progress" with every task "pending"; the owner should refresh it. |
+| **M4** Findings & reports | done | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. Log refreshed to final state: `docs/member-logs/m4-findings-reports.md` (was "in progress"; completed by the owner after this snapshot's audit). M3 hand-off spec: `docs/m3-findings-page-spec.md`. |
 | **M5** Docs/QA/deploy | pending | Router hand-offs merged (T5.4 partial). No `docs/proposal.md`, `docs/system-design.md`, `docs/qa-checklist.md`, evidence pack, or `scripts/setup-dev.ps1` yet. |
 
 Verification on this snapshot: `npm run build` passes, lint reports 0 errors, `pytest tests -q` reports
@@ -140,7 +140,7 @@ run because M3 is unfinished.
 2. **M5 T5.1** — install Nmap, the OWASP ZAP daemon, and Playwright Chromium (`PLAN.md` §11). None are
    installed yet: the ZAP runner degrades gracefully and the report job fails with an actionable log
    line until they are.
-3. **M4 log refresh, then I1-I4 rehearsal** and the M5 evidence pack.
+3. **I1-I4 rehearsal** and the M5 evidence pack (M4's log refresh is done: `docs/member-logs/m4-findings-reports.md` is final as of 2026-11-10).
 
 **Known integration blockers for M3** (resolve these before building the pages):
 - `GET /api/assessments/{id}/events` is guarded by `HTTPBearer`, but native `EventSource` cannot send an
