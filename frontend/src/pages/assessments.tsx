@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { HelpHint } from "@/components/help-hint"
+import { AssessmentRunSheet } from "@/pages/assessment-run"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { ASSESSMENT_CATEGORIES } from "@/lib/types"
@@ -220,6 +221,7 @@ export function AssessmentsPage() {
 
   const targetNames = new Map(targets.data?.map((t) => [t.id, t.name]))
   const { data, isLoading, error } = assessments
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
   return (
     <div className="space-y-6">
@@ -283,7 +285,11 @@ export function AssessmentsPage() {
                 </TableRow>
               )}
               {data?.map((assessment) => (
-                <TableRow key={assessment.id}>
+                                <TableRow
+                  key={assessment.id}
+                  className="cursor-pointer"
+                  onClick={() => setSelectedId(assessment.id)}
+                >
                   <TableCell className="font-mono text-xs">#{assessment.id}</TableCell>
                   <TableCell className="font-medium">
                     {targetNames.get(assessment.target_id) ?? `Target #${assessment.target_id}`}
@@ -306,7 +312,9 @@ export function AssessmentsPage() {
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
+         </Card>
+
+      <AssessmentRunSheet assessmentId={selectedId} onClose={() => setSelectedId(null)} />
     </div>
   )
 }
