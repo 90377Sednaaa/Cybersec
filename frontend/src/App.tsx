@@ -4,11 +4,15 @@ import type { ReactNode } from "react"
 import { AppShell } from "@/components/layout/app-shell"
 import { Spinner } from "@/components/ui/spinner"
 import { useAuth } from "@/lib/auth"
+
 import { DashboardPage } from "@/pages/dashboard"
 import { LoginPage } from "@/pages/login"
 import { AssessmentsPage } from "@/pages/assessments"
-import { FindingsPage, SettingsPage } from "@/pages/stubs"
+import { FindingsPage } from "@/pages/findings"
+import { SettingsPage } from "@/pages/stubs"
 import { TargetsPage } from "@/pages/targets"
+
+
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
