@@ -1,9 +1,13 @@
-import { useQuery } from "@tanstack/react-query"
+import { useEffect, useRef } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { api } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
+import { useScanEvents } from "@/lib/scan-events"
 import type { AssessmentDetail, AssessmentStatus, Job, JobStatus } from "@/lib/types"
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline"
@@ -56,6 +60,10 @@ export function AssessmentRunSheet({
   assessmentId: number | null
   onClose: () => void
 }) {
+  const { hasRole } = useAuth()
+  const queryClient = useQueryClient()
+  const logRef = useRef<HTMLDivElement>(null)
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["assessment", assessmentId],
     queryFn: () => api<AssessmentDetail>(`/api/assessments/${assessmentId}`),
@@ -63,7 +71,30 @@ export function AssessmentRunSheet({
     refetchInterval: (query) => (query.state.data?.status === "running" ? 2000 : false),
   })
 
+  // Any state-change event refreshes the progress cards immediately.
+  const { lines, connected } = useScanEvents(assessmentId, (event) => {
+    if (event.type !== "log") {
+      queryClient.invalidateQueries({ queryKey: ["assessment", assessmentId] })
+      queryClient.invalidateQueries({ queryKey: ["assessments"] })
+    }
+  })
+
+  const cancel = useMutation({
+    mutationFn: () => api<{ status: string }>(`/api/assessments/${assessmentId}/cancel`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["assessment", assessmentId] })
+      queryClient.invalidateQueries({ queryKey: ["assessments"] })
+    },
+  })
+
+  useEffect(() => {
+    const el = logRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [lines.length])
+
   const finishedJobs = data?.jobs.filter((j) => j.status === "completed" || j.status === "failed").length ?? 0
+  const jobTool = new Map(data?.jobs.map((j) => [j.id, j.tool]))
+  const canCancel = hasRole("admin", "assessor")
 
   return (
     <Sheet
@@ -75,7 +106,7 @@ export function AssessmentRunSheet({
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>Assessment #{assessmentId}</SheetTitle>
-          <SheetDescription>Pipeline jobs for this run and their progress.</SheetDescription>
+          <SheetDescription>Pipeline jobs, progress and live output for this run.</SheetDescription>
         </SheetHeader>
 
         <div className="space-y-4 px-4 pb-4">
@@ -95,7 +126,24 @@ export function AssessmentRunSheet({
                 <span className="text-xs text-muted-foreground">
                   {finishedJobs} of {data.jobs.length} jobs finished
                 </span>
+                {data.status === "running" && canCancel && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="ml-auto"
+                    disabled={cancel.isPending}
+                    onClick={() => cancel.mutate()}
+                  >
+                    {cancel.isPending ? "Cancelling…" : "Cancel run"}
+                  </Button>
+                )}
               </div>
+
+              {cancel.error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{cancel.error.message}</AlertDescription>
+                </Alert>
+              )}
 
               <div className="space-y-1">
                 <p className="text-sm font-medium">Categories</p>
@@ -112,6 +160,29 @@ export function AssessmentRunSheet({
                 {data.jobs.map((job) => (
                   <JobCard key={job.id} job={job} />
                 ))}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Live log</p>
+                  <span className="text-xs text-muted-foreground">{connected ? "● live" : "○ not connected"}</span>
+                </div>
+                <div ref={logRef} className="h-64 overflow-y-auto rounded-md border bg-muted/40 p-2 font-mono text-xs">
+                  {lines.length === 0 ? (
+                    <p className="text-muted-foreground">
+                      {connected
+                        ? "Waiting for output…"
+                        : "No live output. Logs stream only while a run is active."}
+                    </p>
+                  ) : (
+                    lines.map((line) => (
+                      <div key={line.id} className="whitespace-pre-wrap break-all">
+                        <span className="text-muted-foreground">[{jobTool.get(line.jobId) ?? `job ${line.jobId}`}]</span>{" "}
+                        {line.text}
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </>
           )}
