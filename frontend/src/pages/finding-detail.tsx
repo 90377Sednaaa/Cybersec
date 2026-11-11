@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { FindingReview } from "@/pages/finding-review"
 import { api } from "@/lib/api"
 import { SEVERITY_CLASS, STATUS_LABEL, STATUS_VARIANT, capitalize } from "@/lib/finding-style"
 import type { Evidence, EvidenceKind, FindingDetail } from "@/lib/types"
@@ -136,7 +137,9 @@ export function FindingDetailSheet({
                 <TabsContent value="remediation" className="pt-2">
                   <Field label="Recommended fix">{data.remediation || "No remediation guidance yet."}</Field>
                 </TabsContent>
-              </Tabs>
+                           </Tabs>
+
+              <FindingReview key={data.id} finding={data} />
             </>
           )}
         </div>
