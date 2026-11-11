@@ -21,6 +21,7 @@ import { HelpHint } from "@/components/help-hint"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import type { LLMProvider, LLMProviderInput, LLMSettings } from "@/lib/types"
+import { TaskModelsCard, TestConnectionButton } from "@/pages/settings-tasks"
 
 function formatDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : "—"
@@ -256,10 +257,13 @@ export function SettingsPage() {
                     {formatDate(provider.acknowledged_external_at)}
                   </TableCell>
                   {isAdmin && (
-                    <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => openDialog(provider)}>
-                        Edit
-                      </Button>
+                                       <TableCell>
+                      <div className="flex items-start gap-2">
+                        <TestConnectionButton providerId={provider.id} />
+                        <Button variant="ghost" size="sm" onClick={() => openDialog(provider)}>
+                          Edit
+                        </Button>
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>
@@ -267,7 +271,9 @@ export function SettingsPage() {
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
+       </Card>
+
+      <TaskModelsCard configs={data?.task_configs ?? []} providers={data?.providers ?? []} isAdmin={isAdmin} />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
