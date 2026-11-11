@@ -9,7 +9,7 @@ import { DashboardPage } from "@/pages/dashboard"
 import { LoginPage } from "@/pages/login"
 import { AssessmentsPage } from "@/pages/assessments"
 import { FindingsPage } from "@/pages/findings"
-import { SettingsPage } from "@/pages/stubs"
+import { SettingsPage } from "@/pages/settings"
 import { TargetsPage } from "@/pages/targets"
 
 
