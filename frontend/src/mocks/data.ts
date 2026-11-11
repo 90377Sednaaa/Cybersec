@@ -188,8 +188,8 @@ export const mockLLMSettings: LLMSettings = {
     },
   ],
   task_configs: [
-    { task: "interpret", provider_id: 1, model: "example-model", temperature: 0.2 },
-    { task: "summarize", provider_id: 1, model: "example-model", temperature: 0.2 },
+    { task: "interpretation", provider_id: 1, model: "example-model", temperature: 0.2 },
+    { task: "summary", provider_id: 1, model: "example-model", temperature: 0.2 },
   ],
 }
 

@@ -15,7 +15,7 @@ first on the cut line, so it comes last).
 
 | T3.1 Assessments page | List with live status polling, new-assessment dialog (server-enforced intensity gate mirrored in the UI), run detail panel with per-job progress cards, authenticated SSE live log, cancel button | `src/pages/assessments.tsx`, `src/pages/assessment-run.tsx`, `src/lib/scan-events.ts` | done |
 
-| T3.2 Findings page | Filterable table, detail drawer, verify / false-positive / needs-evidence actions | `src/pages/findings.tsx` | pending |
+| T3.2 Findings page | Filterable findings table, detail panel (overview / evidence / remediation tabs), assessor verify / false-positive / needs-evidence actions with notes | `src/pages/findings.tsx`, `src/pages/finding-detail.tsx`, `src/pages/finding-review.tsx`, `src/lib/finding-style.ts` | done |
 
 | T3.3 Settings page | Provider management, per-task models, test connection | `src/pages/settings.tsx` | pending |
 
@@ -34,6 +34,10 @@ first on the cut line, so it comes last).
   severity colors, and read-only UI for viewers.
 
 ## Key decisions and trade-offs (defense talking points)
+
+- The action buttons mirror the backend's ALLOWED_TRANSITIONS table so only legal moves are offered, but the server stays the authority (illegal moves return 409; viewers get 403).
+- Verifier identity is never sent by the browser: the server stamps verified_by/verified_at from the login token, so a verified finding always names a human.
+- AI-produced findings are shown as "AI candidate (unconfirmed)" everywhere until an assessor verifies them.
 
 - The SSE endpoint needs the Authorization header, which the browser's `EventSource` cannot send, so `scan-events.ts` reads the stream with `fetch` + `ReadableStream` and parses the `data:` blocks itself.
 - Scan log lines are rendered as plain text (never HTML) so scan output cannot inject markup into the page.
