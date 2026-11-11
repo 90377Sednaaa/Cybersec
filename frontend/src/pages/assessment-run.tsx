@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useScanEvents } from "@/lib/scan-events"
+import { AssessmentReports } from "@/pages/assessment-reports"
 import type { AssessmentDetail, AssessmentStatus, Job, JobStatus } from "@/lib/types"
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline"
@@ -180,10 +181,12 @@ export function AssessmentRunSheet({
                         <span className="text-muted-foreground">[{jobTool.get(line.jobId) ?? `job ${line.jobId}`}]</span>{" "}
                         {line.text}
                       </div>
-                    ))
+                                    ))
                   )}
                 </div>
               </div>
+
+              <AssessmentReports assessmentId={data.id} assessmentStatus={data.status} />
             </>
           )}
         </div>
