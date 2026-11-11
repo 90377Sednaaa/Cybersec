@@ -16,7 +16,7 @@ const STATUS_VARIANT: Record<ReportStatus, "default" | "secondary" | "destructiv
 }
 
 function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : "—"
+  return iso ? new Date(iso).toLocaleString() : "-"
 }
 
 // The download endpoint needs the Authorization header, so a plain <a href> cannot be used.

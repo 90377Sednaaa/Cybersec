@@ -24,7 +24,7 @@ import type { LLMProvider, LLMProviderInput, LLMSettings } from "@/lib/types"
 import { TaskModelsCard, TestConnectionButton } from "@/pages/settings-tasks"
 
 function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : "—"
+  return iso ? new Date(iso).toLocaleString() : "-"
 }
 
 function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDone: () => void }) {

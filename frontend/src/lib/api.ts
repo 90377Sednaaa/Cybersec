@@ -28,13 +28,13 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (typeof body === "string" && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json")
   }
-  // URLSearchParams bodies set their own x-www-form-urlencoded content type —
+  // URLSearchParams bodies set their own x-www-form-urlencoded content type -
   // never override it, or FastAPI's OAuth2 form parsing breaks.
   const token = getToken()
   if (token) headers.set("Authorization", `Bearer ${token}`)
 
   const res = await fetch(path, { ...options, headers })
-  if (res.status === 401 && getToken()) {
+  if (res.status === 401 && getToken() && !path.includes("/auth/token")) {
     clearToken()
     window.location.href = "/login"
     throw new ApiError(401, "Session expired")
@@ -44,7 +44,17 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     try {
       const data: unknown = await res.json()
       const detail = (data as { detail?: unknown }).detail
-      message = typeof detail === "string" ? detail : JSON.stringify(detail ?? data)
+      if (typeof detail === "string") {
+        message = detail
+      } else if (Array.isArray(detail)) {
+        message = detail
+          .map((item: { msg?: string }) => item.msg || JSON.stringify(item))
+          .join("; ")
+      } else if (detail !== undefined && detail !== null) {
+        message = JSON.stringify(detail)
+      } else {
+        message = JSON.stringify(data)
+      }
     } catch {
       // non-JSON error body; fall back to statusText
     }

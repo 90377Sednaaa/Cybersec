@@ -7,7 +7,14 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FindingReview } from "@/pages/finding-review"
 import { api } from "@/lib/api"
-import { SEVERITY_CLASS, STATUS_LABEL, STATUS_VARIANT, capitalize } from "@/lib/finding-style"
+import {
+  SEVERITY_CLASS,
+  STATUS_CLASS,
+  STATUS_LABEL,
+  STATUS_VARIANT,
+  capitalize,
+  displayScore,
+} from "@/lib/finding-style"
 import type { Evidence, EvidenceKind, FindingDetail } from "@/lib/types"
 
 const KIND_LABEL: Record<EvidenceKind, string> = {
@@ -17,7 +24,7 @@ const KIND_LABEL: Record<EvidenceKind, string> = {
 }
 
 function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : "—"
+  return iso ? new Date(iso).toLocaleString() : "-"
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -88,7 +95,9 @@ export function FindingDetailSheet({
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge className={SEVERITY_CLASS[data.severity]}>{capitalize(data.severity)}</Badge>
-                <Badge variant={STATUS_VARIANT[data.status]}>{STATUS_LABEL[data.status]}</Badge>
+                <Badge variant={STATUS_VARIANT[data.status]} className={STATUS_CLASS[data.status]}>
+                  {STATUS_LABEL[data.status]}
+                </Badge>
               </div>
 
               {data.status === "ai_candidate" && (
@@ -110,10 +119,10 @@ export function FindingDetailSheet({
                 <TabsContent value="overview" className="space-y-4 pt-2">
                   <Field label="Description">{data.description || "No description."}</Field>
                   <div className="grid grid-cols-2 gap-4">
-                    <Field label="Category">{data.category || "—"}</Field>
-                    <Field label="Assessment">{data.assessment_id ? `#${data.assessment_id}` : "—"}</Field>
-                    <Field label="Risk score">{data.score.toFixed(1)} / 10</Field>
-                    <Field label="AI confidence">{Math.round(data.ai_confidence * 100)}%</Field>
+                    <Field label="Category">{data.category || "-"}</Field>
+                    <Field label="Assessment">{data.assessment_id ? `#${data.assessment_id}` : "-"}</Field>
+                    <Field label="Risk score">{displayScore(data.score, data.severity)} / 10</Field>
+                    <Field label="Confidence">{Math.round(data.ai_confidence * 100)}%</Field>
                   </div>
                   <Field label="Assessor notes">{data.assessor_notes || "No notes yet."}</Field>
                   <Field label="Verification">

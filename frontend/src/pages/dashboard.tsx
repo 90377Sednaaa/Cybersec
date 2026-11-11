@@ -222,7 +222,7 @@ export function DashboardPage() {
               </span>
               <span className="flex items-center gap-3">
                 <span className="text-xs text-muted-foreground">
-                  {assessment.started_at ? new Date(assessment.started_at).toLocaleString() : "—"}
+                  {assessment.started_at ? new Date(assessment.started_at).toLocaleString() : "-"}
                 </span>
                 <Badge variant={STATUS_VARIANT[assessment.status]}>{assessment.status}</Badge>
               </span>

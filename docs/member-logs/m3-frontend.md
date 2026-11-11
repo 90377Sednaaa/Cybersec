@@ -4,24 +4,23 @@
 > at the end it is the oral-defense script (approach, decisions, verification evidence, honest
 > limitations), mirroring the structure of the M1 log.
 
-**Status: in progress.** Task order: T3.0 → T3.1 → T3.2 → T3.3 → T3.4 → T3.5 (report trigger UI is
-first on the cut line, so it comes last).
+**Status: done.** Task order: T3.0 → T3.1 → T3.2 → T3.3 → T3.4 → T3.5.
 
 ## What was built (per task)
 
 | Task | Delivered | Files | Status |
 |---|---|---|---|
-| T3.0 Contract | Types mirroring the backend schemas (assessments/jobs/SSE events, findings/evidence/reports, LLM settings), component conventions, mock data | `src/lib/types.ts`, `frontend/CONVENTIONS.md`, `src/mocks/data.ts` | in progress (awaiting teammate sign-off) |
+| T3.0 Contract | Types mirroring the backend schemas (assessments/jobs/SSE events, findings/evidence/reports, LLM settings), component conventions, mock data | `src/lib/types.ts`, `frontend/CONVENTIONS.md`, `src/mocks/data.ts` | done |
 
 | T3.1 Assessments page | List with live status polling, new-assessment dialog (server-enforced intensity gate mirrored in the UI), run detail panel with per-job progress cards, authenticated SSE live log, cancel button | `src/pages/assessments.tsx`, `src/pages/assessment-run.tsx`, `src/lib/scan-events.ts` | done |
 
 | T3.2 Findings page | Filterable findings table, detail panel (overview / evidence / remediation tabs), assessor verify / false-positive / needs-evidence actions with notes | `src/pages/findings.tsx`, `src/pages/finding-detail.tsx`, `src/pages/finding-review.tsx`, `src/lib/finding-style.ts` | done |
 
-| T3.3 Settings page | Provider management, per-task models, test connection | `src/pages/settings.tsx` | pending |
+| T3.3 Settings page | Provider management, per-task models, test connection | `src/pages/settings.tsx`, `src/pages/settings-tasks.tsx` | done |
 
-| T3.4 Dashboard live data | Real counts, severity chart, recent assessments | `src/pages/dashboard.tsx` | pending |
+| T3.4 Dashboard live data | Real counts, severity chart, recent assessments | `src/pages/dashboard.tsx` | done |
 
-| T3.5 Report trigger UI | Generate button + download link | assessment detail | pending |
+| T3.5 Report trigger UI | Generate button + download link | `src/pages/assessment-reports.tsx` | done |
 
 ## The approach
 

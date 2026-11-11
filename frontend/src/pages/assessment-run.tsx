@@ -23,7 +23,7 @@ const STATUS_VARIANT: Record<AssessmentStatus | JobStatus, BadgeVariant> = {
 }
 
 function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : "—"
+  return iso ? new Date(iso).toLocaleString() : "-"
 }
 
 function JobCard({ job }: { job: Job }) {

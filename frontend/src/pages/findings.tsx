@@ -13,9 +13,11 @@ import {
   SEVERITIES,
   SEVERITY_CLASS,
   STATUSES,
+  STATUS_CLASS,
   STATUS_LABEL,
   STATUS_VARIANT,
   capitalize,
+  displayScore,
 } from "@/lib/finding-style"
 import { ASSESSMENT_CATEGORIES } from "@/lib/types"
 import type { Finding } from "@/lib/types"
@@ -24,11 +26,13 @@ import { FindingDetailSheet } from "@/pages/finding-detail"
 const ALL = "all"
 
 function FilterSelect({
+  id,
   label,
   value,
   onChange,
   options,
 }: {
+  id: string
   label: string
   value: string
   onChange: (value: string) => void
@@ -36,9 +40,9 @@ function FilterSelect({
 }) {
   return (
     <div className="grid gap-1.5">
-      <Label>{label}</Label>
+      <Label htmlFor={id}>{label}</Label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-52">
+        <SelectTrigger id={id} className="w-52">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -105,18 +109,21 @@ export function FindingsPage() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-4">
             <FilterSelect
+              id="filter-status"
               label="Status"
               value={status}
               onChange={setStatus}
               options={STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
             />
             <FilterSelect
+              id="filter-severity"
               label="Severity"
               value={severity}
               onChange={setSeverity}
               options={SEVERITIES.map((s) => ({ value: s, label: capitalize(s) }))}
             />
             <FilterSelect
+              id="filter-category"
               label="Category"
               value={category}
               onChange={setCategory}
@@ -139,7 +146,7 @@ export function FindingsPage() {
                 <TableHead>Category</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Score</TableHead>
-                <TableHead>AI confidence</TableHead>
+                <TableHead>Confidence</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -183,9 +190,11 @@ export function FindingsPage() {
                   <TableCell className="max-w-xs whitespace-normal font-medium">{finding.title}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{finding.category}</TableCell>
                   <TableCell>
-                    <Badge variant={STATUS_VARIANT[finding.status]}>{STATUS_LABEL[finding.status]}</Badge>
+                    <Badge variant={STATUS_VARIANT[finding.status]} className={STATUS_CLASS[finding.status]}>
+                      {STATUS_LABEL[finding.status]}
+                    </Badge>
                   </TableCell>
-                  <TableCell className="text-xs">{finding.score.toFixed(1)}</TableCell>
+                  <TableCell className="text-xs font-mono">{displayScore(finding.score, finding.severity)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {Math.round(finding.ai_confidence * 100)}%
                   </TableCell>

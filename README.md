@@ -113,9 +113,10 @@ After signing in, register a target to work with (e.g. Juice Shop at `http://loc
 | 2. Target registry + authorization + intensity gate | ✅ done — gate enforced server-side (409), re-checked at scheduling |
 | 3. Prober + Nmap wrapper + jobs/SSE | ✅ done — 7 backend tests passing; live nmap run pending Nmap install |
 | 4. ZAP integration + orchestrator pipeline | 🔶 code complete — ZAP runner degrades gracefully; live test pending ZAP daemon install |
-| 5. Findings verification workflow | ✅ done — M4 T4.1-T4.3: server-enforced state machine, role guards, evidence capture, OWASP risk mapping |
+| 5. Findings verification workflow | ✅ done — M4 T4.1-T4.3 backend + M3 T3.2 UI: state machine, role guards, evidence drawer, notes, verification actions |
 | 6. AI pipeline (client → settings → interpretation → summaries) | ✅ done — T2.1–T2.5; 67 AI tests passing; redaction gate enforced before every call |
-| 7. Dashboard + PDF report | 🔶 PDF backend done (M4 T4.4); live dashboard + report trigger UI pending (M3 T3.4/T3.5) |
+| 7. Dashboard + PDF report | ✅ done — M4 T4.4 PDF backend + M3 T3.4 live dashboard + M3 T3.5 report trigger UI |
+| 8. Assessment wizard + live scan view | ✅ done — M3 T3.1: wizard with server-side intensity gate mirrored in the UI, authenticated SSE live log, per-job progress, cancel |
 
 Build log for M1 (approach, decisions, defense notes): [docs/member-logs/m1-scan-engine.md](docs/member-logs/m1-scan-engine.md).
 Build log for M2 (approach, decisions, defense notes): [docs/member-logs/m2-ai-pipeline.md](docs/member-logs/m2-ai-pipeline.md).
