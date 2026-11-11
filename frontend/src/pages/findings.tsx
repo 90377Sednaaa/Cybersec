@@ -21,7 +21,7 @@ import {
 } from "@/lib/finding-style"
 import { ASSESSMENT_CATEGORIES } from "@/lib/types"
 import type { Finding } from "@/lib/types"
-import { FindingDetailSheet } from "@/pages/finding-detail"
+import { FindingDetailModal } from "@/pages/finding-detail"
 
 const ALL = "all"
 
@@ -205,7 +205,7 @@ export function FindingsPage() {
         </CardContent>
       </Card>
 
-      <FindingDetailSheet findingId={selectedId} onClose={() => setSelectedId(null)} />
+      <FindingDetailModal findingId={selectedId} onClose={() => setSelectedId(null)} />
     </div>
   )
 }

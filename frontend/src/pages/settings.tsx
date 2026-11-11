@@ -16,10 +16,12 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { HelpHint } from "@/components/help-hint"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { PROVIDER_PRESETS, findMatchingPresetId } from "@/lib/llm-presets"
 import type { LLMProvider, LLMProviderInput, LLMSettings } from "@/lib/types"
 import { TaskModelsCard, TestConnectionButton } from "@/pages/settings-tasks"
 
@@ -29,12 +31,26 @@ function formatDate(iso: string | null): string {
 
 function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDone: () => void }) {
   const queryClient = useQueryClient()
-  const [name, setName] = useState(provider?.name ?? "")
-  const [baseUrl, setBaseUrl] = useState(provider?.base_url ?? "")
+  const defaultPreset = PROVIDER_PRESETS[0]
+  const initialPreset = provider
+    ? findMatchingPresetId(provider.name, provider.base_url)
+    : defaultPreset.id
+  const [presetId, setPresetId] = useState(initialPreset)
+  const [name, setName] = useState(provider?.name ?? defaultPreset.name)
+  const [baseUrl, setBaseUrl] = useState(provider?.base_url ?? defaultPreset.baseUrl)
   const [apiKey, setApiKey] = useState("")
   const [enabled, setEnabled] = useState(provider?.enabled ?? false)
   const [acknowledged, setAcknowledged] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function handlePresetChange(newPresetId: string) {
+    setPresetId(newPresetId)
+    const selected = PROVIDER_PRESETS.find((p) => p.id === newPresetId)
+    if (selected && newPresetId !== "custom") {
+      setName(selected.name)
+      setBaseUrl(selected.baseUrl)
+    }
+  }
 
   // Enabling needs an explicit acknowledgment unless one was already recorded.
   const needsAcknowledgment = enabled && !provider?.acknowledged_external_at
@@ -67,6 +83,32 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid gap-2">
+        <div className="flex items-center gap-1">
+          <Label htmlFor="provider-preset">Provider Preset</Label>
+          <HelpHint label="Quick preset">
+            Choose a common provider to automatically fill the standard endpoint URL.
+          </HelpHint>
+        </div>
+        <Select value={presetId} onValueChange={handlePresetChange}>
+          <SelectTrigger id="provider-preset">
+            <SelectValue placeholder="Select a preset..." />
+          </SelectTrigger>
+          <SelectContent>
+            {PROVIDER_PRESETS.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {presetId !== "custom" && (
+          <p className="text-xs text-muted-foreground">
+            {PROVIDER_PRESETS.find((p) => p.id === presetId)?.note}
+          </p>
+        )}
+      </div>
+
+      <div className="grid gap-2">
         <Label htmlFor="provider-name">Name</Label>
         <Input id="provider-name" value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
@@ -75,7 +117,7 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
         <div className="flex items-center gap-1">
           <Label htmlFor="provider-url">Base URL</Label>
           <HelpHint label="OpenAI-compatible endpoint">
-            The address of an OpenAI-compatible API, for example OpenRouter or a local Ollama server.
+            The address of an OpenAI-compatible API. Preset endpoints are pre-filled, but you can customize ports or paths.
           </HelpHint>
         </div>
         <Input
@@ -100,10 +142,19 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
           id="provider-key"
           type="password"
           autoComplete="off"
-          placeholder={provider?.has_api_key ? "Leave blank to keep the current key" : "Paste the key"}
+          placeholder={
+            provider?.has_api_key
+              ? "Leave blank to keep the current key"
+              : (PROVIDER_PRESETS.find((p) => p.id === presetId)?.placeholderKey || "Paste the key")
+          }
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
         />
+        {presetId === "ollama" && (
+          <p className="text-xs text-muted-foreground">
+            Local Ollama typically does not require an API key unless you run behind a reverse proxy.
+          </p>
+        )}
       </div>
 
       <label className="flex items-center gap-2 text-sm">

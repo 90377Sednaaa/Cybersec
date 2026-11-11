@@ -8,6 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { HelpHint } from "@/components/help-hint"
 import { api } from "@/lib/api"
+import {
+  TEMPERATURE_PRESETS,
+  getModelsForProvider,
+  getTemperaturePresetId,
+} from "@/lib/llm-presets"
 import type { LLMProvider, LLMTaskConfig, LLMTestResult } from "@/lib/types"
 
 const NONE = "none"
@@ -75,6 +80,23 @@ function TaskRow({
   const [temperature, setTemperature] = useState(String(config.temperature))
   const [error, setError] = useState<string | null>(null)
 
+  const selectedProvider = providers.find((p) => String(p.id) === providerId)
+  const availableModels = getModelsForProvider(selectedProvider?.name, selectedProvider?.base_url)
+
+  const isModelInList = availableModels.includes(model)
+  const [isCustomModel, setIsCustomModel] = useState(!isModelInList && model.trim() !== "")
+  const [tempPreset, setTempPreset] = useState(getTemperaturePresetId(config.temperature))
+
+  function handleProviderChange(newProviderId: string) {
+    setProviderId(newProviderId)
+    const newProv = providers.find((p) => String(p.id) === newProviderId)
+    const newModels = getModelsForProvider(newProv?.name, newProv?.base_url)
+    if (newModels.length > 0 && !newModels.includes(model)) {
+      setModel(newModels[0])
+      setIsCustomModel(false)
+    }
+  }
+
   const temperatureValue = Number(temperature)
   const temperatureValid =
     temperature.trim() !== "" && Number.isFinite(temperatureValue) && temperatureValue >= 0 && temperatureValue <= 2
@@ -109,7 +131,7 @@ function TaskRow({
         </div>
       </TableCell>
       <TableCell>
-        <Select value={providerId} onValueChange={setProviderId} disabled={!isAdmin}>
+        <Select value={providerId} onValueChange={handleProviderChange} disabled={!isAdmin}>
           <SelectTrigger className="w-48">
             <SelectValue />
           </SelectTrigger>
@@ -124,26 +146,83 @@ function TaskRow({
           </SelectContent>
         </Select>
       </TableCell>
-      <TableCell>
-        <Input
-          className="w-56"
-          placeholder="model name"
-          value={model}
-          disabled={!isAdmin}
-          onChange={(e) => setModel(e.target.value)}
-        />
+      <TableCell className="min-w-[220px]">
+        <div className="space-y-1.5">
+          <Select
+            value={isCustomModel ? "custom" : (availableModels.includes(model) ? model : "custom")}
+            onValueChange={(val) => {
+              if (val === "custom") {
+                setIsCustomModel(true)
+              } else {
+                setIsCustomModel(false)
+                setModel(val)
+              }
+            }}
+            disabled={!isAdmin || providerId === NONE}
+          >
+            <SelectTrigger className="w-52">
+              <SelectValue placeholder="Select model..." />
+            </SelectTrigger>
+            <SelectContent>
+              {availableModels.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+              <SelectItem value="custom">Custom model...</SelectItem>
+            </SelectContent>
+          </Select>
+          {isCustomModel && (
+            <Input
+              className="w-52 text-xs font-mono"
+              placeholder="e.g. org/model-name"
+              value={model}
+              disabled={!isAdmin || providerId === NONE}
+              onChange={(e) => setModel(e.target.value)}
+            />
+          )}
+        </div>
       </TableCell>
-      <TableCell>
-        <Input
-          className="w-20"
-          type="number"
-          step="0.1"
-          min="0"
-          max="2"
-          value={temperature}
-          disabled={!isAdmin}
-          onChange={(e) => setTemperature(e.target.value)}
-        />
+      <TableCell className="min-w-[170px]">
+        <div className="space-y-1">
+          <Select
+            value={tempPreset}
+            onValueChange={(val) => {
+              setTempPreset(val)
+              const preset = TEMPERATURE_PRESETS.find((p) => p.id === val)
+              if (preset && preset.value >= 0) {
+                setTemperature(String(preset.value))
+              }
+            }}
+            disabled={!isAdmin}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TEMPERATURE_PRESETS.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {tempPreset === "custom" && (
+            <Input
+              className="w-24 text-xs font-mono"
+              type="number"
+              step="0.05"
+              min="0"
+              max="2"
+              value={temperature}
+              disabled={!isAdmin}
+              onChange={(e) => setTemperature(e.target.value)}
+            />
+          )}
+          <p className="text-[10px] text-muted-foreground leading-tight max-w-[160px]">
+            {TEMPERATURE_PRESETS.find((p) => p.id === tempPreset)?.hint}
+          </p>
+        </div>
       </TableCell>
       {isAdmin && (
         <TableCell>

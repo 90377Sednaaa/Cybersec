@@ -3,7 +3,13 @@ import { useQuery } from "@tanstack/react-query"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FindingReview } from "@/pages/finding-review"
 import { api } from "@/lib/api"
@@ -58,7 +64,7 @@ function EvidenceItem({ item }: { item: Evidence }) {
   )
 }
 
-export function FindingDetailSheet({
+export function FindingDetailModal({
   findingId,
   onClose,
 }: {
@@ -72,19 +78,21 @@ export function FindingDetailSheet({
   })
 
   return (
-    <Sheet
+    <Dialog
       open={findingId !== null}
       onOpenChange={(open) => {
         if (!open) onClose()
       }}
     >
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-        <SheetHeader>
-          <SheetTitle>{data?.title ?? `Finding #${findingId}`}</SheetTitle>
-          <SheetDescription>Details, evidence and recommended fix for this finding.</SheetDescription>
-        </SheetHeader>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-semibold tracking-tight">
+            {data?.title ?? `Finding #${findingId}`}
+          </DialogTitle>
+          <DialogDescription>Details, evidence and recommended fix for this finding.</DialogDescription>
+        </DialogHeader>
 
-        <div className="space-y-4 px-4 pb-4">
+        <div className="space-y-4 pt-1">
           {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
           {error && (
             <Alert variant="destructive">
@@ -146,13 +154,16 @@ export function FindingDetailSheet({
                 <TabsContent value="remediation" className="pt-2">
                   <Field label="Recommended fix">{data.remediation || "No remediation guidance yet."}</Field>
                 </TabsContent>
-                           </Tabs>
+              </Tabs>
 
               <FindingReview key={data.id} finding={data} />
             </>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
+
+// Backward-compatible alias for existing imports
+export const FindingDetailSheet = FindingDetailModal
