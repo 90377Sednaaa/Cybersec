@@ -236,7 +236,7 @@ export function TargetsPage() {
               authorized to test and sets the boundaries the scan engine must respect.
             </HelpHint>
           </div>
-          <p className="text-sm text-muted-foreground">Authorized targets and testing boundaries (feature 01).</p>
+          <p className="text-sm text-muted-foreground">Authorized targets and testing boundaries.</p>
         </div>
         <RegisterTargetDialog />
       </div>

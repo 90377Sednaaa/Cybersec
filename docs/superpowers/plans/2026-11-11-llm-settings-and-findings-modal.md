@@ -98,7 +98,7 @@
 - Modify: `.workbuddy-ai/memory/2026-11-11.md`
 
 - [x] **Step 1: Refresh documentation**
-- [ ] **Step 2: Commit and push via Conventional Commit**
+- [x] **Step 2: Commit and push via Conventional Commit**
 
 ```bash
 git add frontend/src/lib/llm-presets.ts frontend/src/pages/settings.tsx frontend/src/pages/settings-tasks.tsx frontend/src/pages/finding-detail.tsx frontend/src/pages/findings.tsx docs/

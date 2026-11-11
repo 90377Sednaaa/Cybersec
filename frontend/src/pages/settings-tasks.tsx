@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { cn } from "cn"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -160,7 +161,7 @@ function TaskRow({
             }}
             disabled={!isAdmin || providerId === NONE}
           >
-            <SelectTrigger className="w-52">
+            <SelectTrigger className="w-56">
               <SelectValue placeholder="Select model..." />
             </SelectTrigger>
             <SelectContent>
@@ -174,7 +175,7 @@ function TaskRow({
           </Select>
           {isCustomModel && (
             <Input
-              className="w-52 text-xs font-mono"
+              className="w-56 text-xs font-mono"
               placeholder="e.g. org/model-name"
               value={model}
               disabled={!isAdmin || providerId === NONE}
@@ -183,43 +184,50 @@ function TaskRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="min-w-[170px]">
-        <div className="space-y-1">
-          <Select
-            value={tempPreset}
-            onValueChange={(val) => {
-              setTempPreset(val)
-              const preset = TEMPERATURE_PRESETS.find((p) => p.id === val)
-              if (preset && preset.value >= 0) {
-                setTemperature(String(preset.value))
-              }
-            }}
-            disabled={!isAdmin}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TEMPERATURE_PRESETS.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <TableCell className="min-w-[220px]">
+        <div className="space-y-1.5">
+          <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
+            {TEMPERATURE_PRESETS.map((p) => {
+              const active = tempPreset === p.id
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={!isAdmin}
+                  onClick={() => {
+                    setTempPreset(p.id)
+                    if (p.value >= 0) {
+                      setTemperature(String(p.value))
+                    }
+                  }}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-medium rounded-sm transition-all text-center",
+                    active
+                      ? "bg-background text-foreground shadow-xs font-semibold"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {p.shortLabel}
+                </button>
+              )
+            })}
+          </div>
           {tempPreset === "custom" && (
-            <Input
-              className="w-24 text-xs font-mono"
-              type="number"
-              step="0.05"
-              min="0"
-              max="2"
-              value={temperature}
-              disabled={!isAdmin}
-              onChange={(e) => setTemperature(e.target.value)}
-            />
+            <div className="flex items-center gap-1.5 pt-0.5">
+              <Input
+                className="w-20 text-xs font-mono h-7"
+                type="number"
+                step="0.05"
+                min="0"
+                max="2"
+                value={temperature}
+                disabled={!isAdmin}
+                onChange={(e) => setTemperature(e.target.value)}
+              />
+              <span className="text-[10px] text-muted-foreground font-mono">0.0 - 2.0</span>
+            </div>
           )}
-          <p className="text-[10px] text-muted-foreground leading-tight max-w-[160px]">
+          <p className="text-[11px] text-muted-foreground leading-tight max-w-[210px]">
             {TEMPERATURE_PRESETS.find((p) => p.id === tempPreset)?.hint}
           </p>
         </div>
@@ -267,8 +275,7 @@ export function TaskModelsCard({
                 <div className="flex items-center gap-1">
                   Temperature
                   <HelpHint label="Temperature">
-                    Lower values (about 0.2) give more consistent answers; higher values give more varied ones.
-                    Allowed range: 0 to 2.
+                    Low (0.0) is deterministic for scan analysis; Medium (0.4) is balanced for report writing; High (0.7) is creative.
                   </HelpHint>
                 </div>
               </TableHead>

@@ -89,7 +89,7 @@ export function FindingsPage() {
           </HelpHint>
         </div>
         <p className="text-sm text-muted-foreground">
-          Identified weaknesses with severity, evidence and recommended remediation (features 05 and 06).
+          Identified weaknesses with severity, evidence and recommended remediation.
         </p>
       </div>
 

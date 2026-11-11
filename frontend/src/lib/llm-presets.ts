@@ -18,9 +18,11 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModels: [
       "anthropic/claude-3.5-sonnet",
       "deepseek/deepseek-chat",
+      "deepseek/deepseek-r1",
       "meta-llama/llama-3.3-70b-instruct",
+      "openai/gpt-4o",
       "openai/gpt-4o-mini",
-      "google/gemini-2.0-flash-exp:free",
+      "google/gemini-2.0-flash-001",
     ],
     note: "Access 200+ models from Claude, DeepSeek, Llama, and OpenAI with one key.",
   },
@@ -37,9 +39,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "openai",
     name: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
-    placeholderKey: "sk-...",
+    placeholderKey: "sk-proj-...",
     keyRequired: true,
-    defaultModels: ["gpt-4o", "gpt-4o-mini", "o3-mini"],
+    defaultModels: ["gpt-4o", "gpt-4o-mini", "o3-mini", "o1-mini"],
     note: "Standard OpenAI GPT-4o and reasoning models.",
   },
   {
@@ -70,42 +72,71 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     baseUrl: "",
     placeholderKey: "Paste provider API key",
     keyRequired: true,
-    defaultModels: ["gpt-4o-mini", "deepseek-chat"],
+    defaultModels: ["gpt-4o-mini", "deepseek-chat", "llama-3.3-70b-instruct"],
     note: "Any self-hosted vLLM, LM Studio, or OpenAI-compatible proxy.",
   },
 ]
 
+export function detectProviderFromKey(key: string): string | null {
+  const trimmed = key.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith("sk-or-v1-") || trimmed.startsWith("sk-or-")) {
+    return "openrouter"
+  }
+  if (trimmed.startsWith("gsk_")) {
+    return "groq"
+  }
+  if (trimmed.startsWith("sk-proj-") || trimmed.startsWith("sk-admin-")) {
+    return "openai"
+  }
+  // DeepSeek keys are 32 hex chars prefixed with sk-
+  if (/^sk-[0-9a-fA-F]{32}$/.test(trimmed)) {
+    return "deepseek"
+  }
+  if (trimmed.startsWith("sk-")) {
+    return "openai"
+  }
+  return null
+}
+
+export type TemperaturePresetId = "low" | "medium" | "high" | "custom"
+
 export interface TemperaturePreset {
-  id: string
+  id: TemperaturePresetId
   label: string
+  shortLabel: string
   value: number
   hint: string
 }
 
 export const TEMPERATURE_PRESETS: TemperaturePreset[] = [
   {
-    id: "precise",
-    label: "Precise (0.0)",
+    id: "low",
+    label: "Low (Precise)",
+    shortLabel: "Low",
     value: 0.0,
-    hint: "Deterministic and factual. Recommended for scan interpretation to avoid hallucinations.",
+    hint: "Deterministic and strictly factual. Recommended for scan interpretation to prevent hallucinations.",
   },
   {
-    id: "balanced",
-    label: "Balanced (0.4)",
+    id: "medium",
+    label: "Medium (Balanced)",
+    shortLabel: "Medium",
     value: 0.4,
     hint: "Balanced phrasing and coherent synthesis. Recommended for report summaries.",
   },
   {
-    id: "creative",
-    label: "Creative (0.7)",
+    id: "high",
+    label: "High (Creative)",
+    shortLabel: "High",
     value: 0.7,
-    hint: "Exploratory generation. May introduce speculative phrasing.",
+    hint: "More expressive phrasing. May introduce speculative text.",
   },
   {
     id: "custom",
-    label: "Custom value",
+    label: "Custom",
+    shortLabel: "Custom",
     value: -1,
-    hint: "Specify an explicit numeric temperature between 0.0 and 2.0.",
+    hint: "Explicit numeric temperature between 0.0 and 2.0.",
   },
 ]
 
@@ -141,9 +172,9 @@ export function findMatchingPresetId(name: string, baseUrl: string): string {
   return "custom"
 }
 
-export function getTemperaturePresetId(temperature: number): string {
-  if (Math.abs(temperature - 0.0) < 0.05) return "precise"
-  if (Math.abs(temperature - 0.4) < 0.05) return "balanced"
-  if (Math.abs(temperature - 0.7) < 0.05) return "creative"
+export function getTemperaturePresetId(temperature: number): TemperaturePresetId {
+  if (temperature <= 0.1) return "low"
+  if (temperature > 0.1 && temperature <= 0.5) return "medium"
+  if (temperature > 0.5 && temperature <= 0.8) return "high"
   return "custom"
 }

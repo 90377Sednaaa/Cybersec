@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus } from "lucide-react"
+import { Check, Eye, EyeOff, Plus } from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -21,7 +21,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { HelpHint } from "@/components/help-hint"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
-import { PROVIDER_PRESETS, findMatchingPresetId } from "@/lib/llm-presets"
+import {
+  PROVIDER_PRESETS,
+  detectProviderFromKey,
+  findMatchingPresetId,
+} from "@/lib/llm-presets"
 import type { LLMProvider, LLMProviderInput, LLMSettings } from "@/lib/types"
 import { TaskModelsCard, TestConnectionButton } from "@/pages/settings-tasks"
 
@@ -39,16 +43,41 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
   const [name, setName] = useState(provider?.name ?? defaultPreset.name)
   const [baseUrl, setBaseUrl] = useState(provider?.base_url ?? defaultPreset.baseUrl)
   const [apiKey, setApiKey] = useState("")
+  const [showKey, setShowKey] = useState(false)
+  const [showAdvancedUrl, setShowAdvancedUrl] = useState(initialPreset === "custom")
+  const [detectedBadge, setDetectedBadge] = useState<string | null>(null)
   const [enabled, setEnabled] = useState(provider?.enabled ?? false)
   const [acknowledged, setAcknowledged] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  function handleApiKeyChange(val: string) {
+    setApiKey(val)
+    if (!provider && val.trim()) {
+      const detected = detectProviderFromKey(val)
+      if (detected) {
+        const found = PROVIDER_PRESETS.find((p) => p.id === detected)
+        if (found) {
+          setPresetId(detected)
+          setName(found.name)
+          setBaseUrl(found.baseUrl)
+          setDetectedBadge(found.name)
+          return
+        }
+      }
+    }
+    setDetectedBadge(null)
+  }
+
   function handlePresetChange(newPresetId: string) {
     setPresetId(newPresetId)
+    setDetectedBadge(null)
     const selected = PROVIDER_PRESETS.find((p) => p.id === newPresetId)
     if (selected && newPresetId !== "custom") {
       setName(selected.name)
       setBaseUrl(selected.baseUrl)
+      setShowAdvancedUrl(false)
+    } else if (newPresetId === "custom") {
+      setShowAdvancedUrl(true)
     }
   }
 
@@ -80,18 +109,28 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
     })
   }
 
+  const selectedPreset = PROVIDER_PRESETS.find((p) => p.id === presetId)
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid gap-2">
-        <div className="flex items-center gap-1">
-          <Label htmlFor="provider-preset">Provider Preset</Label>
-          <HelpHint label="Quick preset">
-            Choose a common provider to automatically fill the standard endpoint URL.
-          </HelpHint>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <Label htmlFor="provider-preset">Provider</Label>
+            <HelpHint label="Provider preset">
+              Choose a provider or paste your API key below for automatic detection.
+            </HelpHint>
+          </div>
+          {detectedBadge && (
+            <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+              <Check className="size-3" />
+              Detected {detectedBadge}
+            </span>
+          )}
         </div>
         <Select value={presetId} onValueChange={handlePresetChange}>
           <SelectTrigger id="provider-preset">
-            <SelectValue placeholder="Select a preset..." />
+            <SelectValue placeholder="Select a provider..." />
           </SelectTrigger>
           <SelectContent>
             {PROVIDER_PRESETS.map((p) => (
@@ -101,61 +140,101 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
             ))}
           </SelectContent>
         </Select>
-        {presetId !== "custom" && (
+        {selectedPreset?.note && (
+          <p className="text-xs text-muted-foreground">{selectedPreset.note}</p>
+        )}
+      </div>
+
+      <div className="grid gap-2">
+        <div className="flex items-center gap-1">
+          <Label htmlFor="provider-key">API Key</Label>
+          <HelpHint label="Encrypted at rest">
+            Stored encrypted with Fernet and never logged or returned by the API.
+          </HelpHint>
+        </div>
+        <div className="relative">
+          <Input
+            id="provider-key"
+            type={showKey ? "text" : "password"}
+            autoComplete="off"
+            className="pr-9 font-mono text-xs"
+            placeholder={
+              provider?.has_api_key
+                ? "Leave blank to keep the current key"
+                : (selectedPreset?.placeholderKey || "Paste API key")
+            }
+            value={apiKey}
+            onChange={(e) => handleApiKeyChange(e.target.value)}
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey((s) => !s)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label={showKey ? "Hide API key" : "Show API key"}
+          >
+            {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
+        </div>
+        {presetId === "ollama" && (
           <p className="text-xs text-muted-foreground">
-            {PROVIDER_PRESETS.find((p) => p.id === presetId)?.note}
+            Local Ollama typically does not require an API key unless you run behind an authenticated proxy.
           </p>
         )}
       </div>
 
       <div className="grid gap-2">
-        <Label htmlFor="provider-name">Name</Label>
+        <Label htmlFor="provider-name">Provider Name</Label>
         <Input id="provider-name" value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
 
-      <div className="grid gap-2">
-        <div className="flex items-center gap-1">
-          <Label htmlFor="provider-url">Base URL</Label>
-          <HelpHint label="OpenAI-compatible endpoint">
-            The address of an OpenAI-compatible API. Preset endpoints are pre-filled, but you can customize ports or paths.
-          </HelpHint>
+      {presetId !== "custom" && !showAdvancedUrl ? (
+        <div className="rounded-md border bg-muted/30 p-2.5 text-xs space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground font-medium">Endpoint URL</span>
+            <button
+              type="button"
+              onClick={() => setShowAdvancedUrl(true)}
+              className="text-primary hover:underline font-medium text-[11px]"
+            >
+              Customize endpoint
+            </button>
+          </div>
+          <p className="font-mono text-muted-foreground break-all">{baseUrl || "(standard endpoint)"}</p>
         </div>
-        <Input
-          id="provider-url"
-          type="url"
-          placeholder="https://openrouter.ai/api/v1"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          required
-        />
-      </div>
-
-      <div className="grid gap-2">
-        <div className="flex items-center gap-1">
-          <Label htmlFor="provider-key">API key</Label>
-          <HelpHint label="Write-only">
-            The key is stored encrypted on the server and is never shown again. Leave this blank when editing to
-            keep the current key.
-          </HelpHint>
+      ) : (
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <Label htmlFor="provider-url">Base URL</Label>
+              <HelpHint label="OpenAI-compatible endpoint">
+                Address of the OpenAI-compatible endpoint. Standard endpoints are pre-filled.
+              </HelpHint>
+            </div>
+            {presetId !== "custom" && (
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultUrl = selectedPreset?.baseUrl || ""
+                  setBaseUrl(defaultUrl)
+                  setShowAdvancedUrl(false)
+                }}
+                className="text-[11px] text-muted-foreground hover:underline"
+              >
+                Reset to default
+              </button>
+            )}
+          </div>
+          <Input
+            id="provider-url"
+            type="url"
+            className="font-mono text-xs"
+            placeholder="https://api.openai.com/v1"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            required
+          />
         </div>
-        <Input
-          id="provider-key"
-          type="password"
-          autoComplete="off"
-          placeholder={
-            provider?.has_api_key
-              ? "Leave blank to keep the current key"
-              : (PROVIDER_PRESETS.find((p) => p.id === presetId)?.placeholderKey || "Paste the key")
-          }
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-        />
-        {presetId === "ollama" && (
-          <p className="text-xs text-muted-foreground">
-            Local Ollama typically does not require an API key unless you run behind a reverse proxy.
-          </p>
-        )}
-      </div>
+      )}
 
       <label className="flex items-center gap-2 text-sm">
         <input
@@ -227,7 +306,7 @@ export function SettingsPage() {
               can change these settings.
             </HelpHint>
           </div>
-          <p className="text-sm text-muted-foreground">AI provider configuration (feature 04).</p>
+          <p className="text-sm text-muted-foreground">Configure AI providers and task model assignments.</p>
         </div>
         {isAdmin && (
           <Button onClick={() => openDialog(null)}>
@@ -308,7 +387,7 @@ export function SettingsPage() {
                     {formatDate(provider.acknowledged_external_at)}
                   </TableCell>
                   {isAdmin && (
-                                       <TableCell>
+                    <TableCell>
                       <div className="flex items-start gap-2">
                         <TestConnectionButton providerId={provider.id} />
                         <Button variant="ghost" size="sm" onClick={() => openDialog(provider)}>
@@ -322,7 +401,7 @@ export function SettingsPage() {
             </TableBody>
           </Table>
         </CardContent>
-       </Card>
+      </Card>
 
       <TaskModelsCard configs={data?.task_configs ?? []} providers={data?.providers ?? []} isAdmin={isAdmin} />
 

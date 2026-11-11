@@ -46,8 +46,10 @@
 - `ScanEvent` is a TypeScript discriminated union (by `type`) instead of one object with optional
   fields as in the Python schema. Same payloads, but the compiler knows which fields exist for each event type.
 - Types are named `Assessment`/`Job`/`Finding` (not `...Out`) to follow the existing `Target` naming.
-- Provider presets (OpenRouter, DeepSeek, OpenAI, Groq, Ollama, Custom) with pre-filled base URLs and write-only key management simplify onboarding while maintaining local/private model flexibility.
-- Task configuration provides model dropdowns and semantic temperature presets (Precise 0.0, Balanced 0.4, Creative 0.7) tailored to cybersecurity risk analysis.
+- Provider presets (OpenRouter, DeepSeek, OpenAI, Groq, Ollama, Custom) with pre-filled base URLs, key prefix auto-detection, and hidden endpoint toggles simplify onboarding like modern AI harnesses while preserving self-hosted flexibility.
+- Task configuration provides model dropdowns and Low (Precise 0.0), Medium (Balanced 0.4), and High (Creative 0.7) segmented controls tailored to cybersecurity risk analysis.
+- Findings detail view uses a centered modal dialog (`Dialog` sm:max-w-3xl) instead of a narrow side drawer, giving technical HTTP transcripts and tool logs the horizontal width needed for readability.
+- Cleaned leaked requirement IDs from all page headers (feature 01 through feature 06) to maintain a polished, professional UI.
 - Finding detail is rendered as a centered modal Dialog (sm:max-w-3xl) rather than a narrow side drawer to ensure technical evidence (HTTP transcripts, Nmap banners) has sufficient horizontal width for human verification.
 
 ## Verification evidence

@@ -235,7 +235,7 @@ export function AssessmentsPage() {
             </HelpHint>
           </div>
           <p className="text-sm text-muted-foreground">
-            Reconnaissance, scanning and assessment runs (features 02 and 03).
+            Reconnaissance, scanning and security assessment runs.
           </p>
         </div>
         <NewAssessmentDialog targets={targets.data ?? []} />
