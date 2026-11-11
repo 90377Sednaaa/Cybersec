@@ -68,13 +68,25 @@ def chat(
     # hard gate: nothing reaches a provider without passing the redaction layer
     messages = redact_messages(messages, deny_list)
 
+    model_lower = cfg.model.lower()
+    is_reasoning = model_lower.startswith("o1") or model_lower.startswith("o3")
+
     body: dict = {
         "model": cfg.model,
         "messages": messages,
-        "temperature": cfg.temperature,
         "max_tokens": max_tokens,
         "stream": False,
     }
+    if is_reasoning:
+        # OpenAI o1/o3 reject the 'temperature' parameter and require 'reasoning_effort'
+        effort = "medium"
+        if cfg.temperature <= 0.2:
+            effort = "low"
+        elif cfg.temperature > 0.7:
+            effort = "high"
+        body["reasoning_effort"] = effort
+    else:
+        body["temperature"] = cfg.temperature
     if response_format is not None:
         body["response_format"] = response_format
 

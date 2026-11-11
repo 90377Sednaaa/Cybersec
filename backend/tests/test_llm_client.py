@@ -89,6 +89,31 @@ def test_chat_returns_content_and_latency(provider):
     assert body["messages"] == [{"role": "user", "content": "ping"}]
 
 
+def test_reasoning_model_omits_temperature_and_sets_reasoning_effort():
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=completion_body())
+
+    with SessionLocal() as db:
+        db.execute(delete(LLMTaskConfig))
+        db.execute(delete(LLMProvider))
+        row = LLMProvider(name="OpenAI", base_url="http://mock-provider.test/api/v1", api_key_encrypted=encrypt_secret("sk-test"), enabled=True)
+        db.add(row)
+        db.flush()
+        db.add(LLMTaskConfig(task=LLMTask.interpretation, provider_id=row.id, model="o3-mini", temperature=0.8))
+        db.commit()
+
+        chat(db, LLMTask.interpretation, [{"role": "user", "content": "solve"}], transport=_transport(handler))
+
+    assert len(requests) == 1
+    body = json.loads(requests[0].content)
+    assert body["model"] == "o3-mini"
+    assert "temperature" not in body
+    assert body["reasoning_effort"] == "high"
+
+
 def test_chat_sends_bearer_key_never_plaintext_in_logs(provider, caplog):
     seen = {}
 

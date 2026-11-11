@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { cn } from "cn"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,6 +14,8 @@ import {
   TEMPERATURE_PRESETS,
   getModelsForProvider,
   getTemperaturePresetId,
+  isReasoningModel,
+  type TemperaturePresetId,
 } from "@/lib/llm-presets"
 import type { LLMProvider, LLMTaskConfig, LLMTestResult } from "@/lib/types"
 
@@ -35,6 +38,94 @@ const TASK_INFO: Record<string, { label: string; hint: string }> = {
     label: "Finding Q&A",
     hint: "Answers analyst questions about a finding (stretch feature).",
   },
+}
+
+function getTaskPresetHint(
+  task: string,
+  presetId: TemperaturePresetId,
+  isReasoning: boolean,
+): string {
+  if (isReasoning) {
+    switch (presetId) {
+      case "low":
+        return "Low reasoning effort: fast responses for straightforward logic."
+      case "medium":
+        return "Medium reasoning effort: standard multi-step chain-of-thought analysis."
+      case "high":
+        return "High reasoning effort: deep reasoning for complex security assessments."
+      case "max":
+      case "xhigh":
+        return "Maximum reasoning effort: exhaustive reasoning budget (mapped to high effort)."
+      case "custom":
+        return "Custom value: mapped to low, medium, or high effort based on value magnitude."
+    }
+  }
+
+  switch (task) {
+    case "interpretation":
+      switch (presetId) {
+        case "low":
+          return "Recommended for scan analysis: strictly deterministic to prevent false CVE hallucinations."
+        case "medium":
+          return "Slight phrasing variance. Low is recommended for security scans."
+        case "high":
+        case "max":
+        case "xhigh":
+          return "High temperature: increased risk of hallucinating CVEs and scan findings."
+        case "custom":
+          return "Custom float: 0.0 is strongly recommended for scan analysis."
+      }
+      break
+
+    case "summary":
+      switch (presetId) {
+        case "low":
+          return "Factual, strictly concise summary statements."
+        case "medium":
+          return "Recommended for report summaries: balanced executive writing."
+        case "high":
+          return "More expressive phrasing and broader report prose."
+        case "max":
+        case "xhigh":
+          return "High variance prose for creative report drafting."
+        case "custom":
+          return "Custom float (0.0 to 2.0)."
+      }
+      break
+
+    case "prioritization":
+      switch (presetId) {
+        case "low":
+          return "Recommended: consistent mathematical ordering of risk scores."
+        case "medium":
+          return "Moderate ranking variance."
+        case "high":
+        case "max":
+        case "xhigh":
+          return "High variance in priority scoring."
+        case "custom":
+          return "Custom float (0.0 to 2.0)."
+      }
+      break
+
+    case "qa":
+      switch (presetId) {
+        case "low":
+          return "Direct, strictly factual answers citing evidence only."
+        case "medium":
+          return "Recommended for Q&A: helpful explanations with balanced context."
+        case "high":
+        case "max":
+        case "xhigh":
+          return "Brainstorming and expansive investigative guidance."
+        case "custom":
+          return "Custom float (0.0 to 2.0)."
+      }
+      break
+  }
+
+  const found = TEMPERATURE_PRESETS.find((p) => p.id === presetId)
+  return found?.hint ?? "Adjust output sampling temperature."
 }
 
 export function TestConnectionButton({ providerId }: { providerId: number }) {
@@ -88,6 +179,8 @@ function TaskRow({
   const [isCustomModel, setIsCustomModel] = useState(!isModelInList && model.trim() !== "")
   const [tempPreset, setTempPreset] = useState(getTemperaturePresetId(config.temperature))
 
+  const isReasoning = isReasoningModel(model)
+
   function handleProviderChange(newProviderId: string) {
     setProviderId(newProviderId)
     const newProv = providers.find((p) => String(p.id) === newProviderId)
@@ -122,6 +215,7 @@ function TaskRow({
   })
 
   const info = TASK_INFO[config.task]
+  const hintText = getTaskPresetHint(config.task, tempPreset, isReasoning)
 
   return (
     <TableRow>
@@ -184,9 +278,19 @@ function TaskRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="min-w-[220px]">
+      <TableCell className="min-w-[280px]">
         <div className="space-y-1.5">
-          <div className="inline-flex rounded-md border p-0.5 bg-muted/40">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {isReasoning ? "Reasoning Effort" : "Sampling Level"}
+            </span>
+            {isReasoning && (
+              <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-primary/40 text-primary">
+                Reasoning Model
+              </Badge>
+            )}
+          </div>
+          <div className="inline-flex rounded-md border p-0.5 bg-muted/40 w-full">
             {TEMPERATURE_PRESETS.map((p) => {
               const active = tempPreset === p.id
               return (
@@ -201,7 +305,7 @@ function TaskRow({
                     }
                   }}
                   className={cn(
-                    "px-2.5 py-1 text-xs font-medium rounded-sm transition-all text-center",
+                    "flex-1 px-1.5 py-1 text-xs font-medium rounded-sm transition-all text-center",
                     active
                       ? "bg-background text-foreground shadow-xs font-semibold"
                       : "text-muted-foreground hover:text-foreground",
@@ -227,8 +331,8 @@ function TaskRow({
               <span className="text-[10px] text-muted-foreground font-mono">0.0 - 2.0</span>
             </div>
           )}
-          <p className="text-[11px] text-muted-foreground leading-tight max-w-[210px]">
-            {TEMPERATURE_PRESETS.find((p) => p.id === tempPreset)?.hint}
+          <p className="text-[11px] text-muted-foreground leading-tight max-w-[280px]">
+            {hintText}
           </p>
         </div>
       </TableCell>
@@ -273,9 +377,9 @@ export function TaskModelsCard({
               <TableHead>Model</TableHead>
               <TableHead>
                 <div className="flex items-center gap-1">
-                  Temperature
-                  <HelpHint label="Temperature">
-                    Low (0.0) is deterministic for scan analysis; Medium (0.4) is balanced for report writing; High (0.7) is creative.
+                  Effort / Temperature
+                  <HelpHint label="Model guidance">
+                    Standard models use temperature (Low 0.0 to XHigh 1.8). Reasoning models (o1, o3, R1) use reasoning effort (Low, Medium, High).
                   </HelpHint>
                 </div>
               </TableHead>

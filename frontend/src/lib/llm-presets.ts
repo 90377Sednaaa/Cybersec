@@ -99,7 +99,18 @@ export function detectProviderFromKey(key: string): string | null {
   return null
 }
 
-export type TemperaturePresetId = "low" | "medium" | "high" | "custom"
+export function isReasoningModel(modelName: string): boolean {
+  const lower = modelName.toLowerCase()
+  return (
+    lower.startsWith("o1") ||
+    lower.startsWith("o3") ||
+    lower.includes("reasoner") ||
+    lower.includes("r1") ||
+    lower.includes("thinking")
+  )
+}
+
+export type TemperaturePresetId = "low" | "medium" | "high" | "max" | "xhigh" | "custom"
 
 export interface TemperaturePreset {
   id: TemperaturePresetId
@@ -112,24 +123,38 @@ export interface TemperaturePreset {
 export const TEMPERATURE_PRESETS: TemperaturePreset[] = [
   {
     id: "low",
-    label: "Low (Precise)",
+    label: "Low (0.0)",
     shortLabel: "Low",
     value: 0.0,
     hint: "Deterministic and strictly factual. Recommended for scan interpretation to prevent hallucinations.",
   },
   {
     id: "medium",
-    label: "Medium (Balanced)",
-    shortLabel: "Medium",
+    label: "Medium (0.4)",
+    shortLabel: "Med",
     value: 0.4,
     hint: "Balanced phrasing and coherent synthesis. Recommended for report summaries.",
   },
   {
     id: "high",
-    label: "High (Creative)",
+    label: "High (0.8)",
     shortLabel: "High",
-    value: 0.7,
-    hint: "More expressive phrasing. May introduce speculative text.",
+    value: 0.8,
+    hint: "More expressive phrasing and broader exploration.",
+  },
+  {
+    id: "max",
+    label: "Max (1.2)",
+    shortLabel: "Max",
+    value: 1.2,
+    hint: "Maximum variance and high diversity generation.",
+  },
+  {
+    id: "xhigh",
+    label: "XHigh (1.8)",
+    shortLabel: "XHigh",
+    value: 1.8,
+    hint: "Extreme temperature for highly speculative or unconventional output.",
   },
   {
     id: "custom",
@@ -174,7 +199,9 @@ export function findMatchingPresetId(name: string, baseUrl: string): string {
 
 export function getTemperaturePresetId(temperature: number): TemperaturePresetId {
   if (temperature <= 0.1) return "low"
-  if (temperature > 0.1 && temperature <= 0.5) return "medium"
-  if (temperature > 0.5 && temperature <= 0.8) return "high"
+  if (temperature > 0.1 && temperature <= 0.55) return "medium"
+  if (temperature > 0.55 && temperature <= 0.95) return "high"
+  if (temperature > 0.95 && temperature <= 1.45) return "max"
+  if (temperature > 1.45 && temperature <= 2.0) return "xhigh"
   return "custom"
 }
