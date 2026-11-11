@@ -344,7 +344,7 @@ export function SettingsPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>API key</TableHead>
                 <TableHead>External use acknowledged</TableHead>
-                {isAdmin && <TableHead className="w-20" />}
+                {isAdmin && <TableHead className="w-52">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>

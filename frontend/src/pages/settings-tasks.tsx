@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { Check } from "lucide-react"
 import { cn } from "cn"
 
 import { Badge } from "@/components/ui/badge"
@@ -143,13 +144,17 @@ export function TestConnectionButton({ providerId }: { providerId: number }) {
         {test.isPending ? "Testing…" : "Test connection"}
       </Button>
       {test.data?.ok && (
-        <p className="text-xs text-muted-foreground">
-          Connected: {test.data.model}
-          {test.data.latency_ms !== null ? `, ${test.data.latency_ms} ms` : ""}
+        <p className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <Check className="size-3 shrink-0" />
+          <span>Connected: {test.data.model} ({test.data.latency_ms} ms)</span>
         </p>
       )}
       {test.data && !test.data.ok && (
-        <p className="max-w-xs text-xs text-destructive">{test.data.error || "Connection failed"}</p>
+        <p className="max-w-xs text-xs text-destructive">
+          {test.data.error.includes("No task model")
+            ? "Assign a model in 'Model per task' below first."
+            : (test.data.error || "Connection failed")}
+        </p>
       )}
       {test.error && <p className="max-w-xs text-xs text-destructive">{test.error.message}</p>}
     </div>
