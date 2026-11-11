@@ -9,39 +9,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { HelpHint } from "@/components/help-hint"
 import { api } from "@/lib/api"
+import {
+  SEVERITIES,
+  SEVERITY_CLASS,
+  STATUSES,
+  STATUS_LABEL,
+  STATUS_VARIANT,
+  capitalize,
+} from "@/lib/finding-style"
 import { ASSESSMENT_CATEGORIES } from "@/lib/types"
-import type { Finding, FindingStatus, Severity } from "@/lib/types"
+import type { Finding } from "@/lib/types"
+import { FindingDetailSheet } from "@/pages/finding-detail"
 
 const ALL = "all"
-
-const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"]
-const STATUSES: FindingStatus[] = ["ai_candidate", "needs_evidence", "verified", "false_positive"]
-
-const SEVERITY_CLASS: Record<Severity, string> = {
-  critical: "border-transparent bg-severity-critical text-white",
-  high: "border-transparent bg-severity-high text-white",
-  medium: "border-transparent bg-severity-medium text-black",
-  low: "border-transparent bg-severity-low text-white",
-  info: "border-transparent bg-severity-info text-white",
-}
-
-const STATUS_LABEL: Record<FindingStatus, string> = {
-  ai_candidate: "AI candidate (unconfirmed)",
-  needs_evidence: "Needs evidence",
-  verified: "Verified",
-  false_positive: "False positive",
-}
-
-const STATUS_VARIANT: Record<FindingStatus, "default" | "secondary" | "outline"> = {
-  ai_candidate: "outline",
-  needs_evidence: "secondary",
-  verified: "default",
-  false_positive: "outline",
-}
-
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1)
-}
 
 function FilterSelect({
   label,
@@ -78,6 +58,7 @@ export function FindingsPage() {
   const [status, setStatus] = useState(ALL)
   const [severity, setSeverity] = useState(ALL)
   const [category, setCategory] = useState(ALL)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
   const params = new URLSearchParams()
   if (status !== ALL) params.set("status", status)
@@ -186,7 +167,15 @@ export function FindingsPage() {
                 </TableRow>
               )}
               {data?.map((finding) => (
-                <TableRow key={finding.id}>
+                <TableRow
+                  key={finding.id}
+                  className="cursor-pointer"
+                  tabIndex={0}
+                  onClick={() => setSelectedId(finding.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") setSelectedId(finding.id)
+                  }}
+                >
                   <TableCell className="font-mono text-xs">#{finding.id}</TableCell>
                   <TableCell>
                     <Badge className={SEVERITY_CLASS[finding.severity]}>{capitalize(finding.severity)}</Badge>
@@ -206,6 +195,8 @@ export function FindingsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <FindingDetailSheet findingId={selectedId} onClose={() => setSelectedId(null)} />
     </div>
   )
 }
