@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react"
-import { useQuery } from "@tanstack/react-query"
 import { cn } from "cn"
 import { Check, ChevronsUpDown, Info, Search, Sparkles } from "lucide-react"
 
@@ -16,9 +15,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { api } from "@/lib/api"
 import { formatContext, formatPrice, getModelsForProvider, isReasoningModel } from "@/lib/llm-presets"
-import type { LLMModel, LLMModelsResponse, LLMProvider } from "@/lib/types"
+import { useModelCatalog } from "@/lib/model-catalog"
+import type { ModelCapabilities } from "@/lib/model-catalog"
+import { sortEfforts } from "@/lib/model-effort"
+import type { LLMModel, LLMProvider } from "@/lib/types"
 
 const SORTS = [
   { id: "popular", label: "Default order" },
@@ -34,7 +35,7 @@ const EMPTY_MODELS: LLMModel[] = []
 interface ModelPickerProps {
   provider: LLMProvider | null
   value: string
-  onChange: (model: string) => void
+  onChange: (model: string, capabilities?: ModelCapabilities) => void
   disabled?: boolean
 }
 
@@ -49,6 +50,8 @@ function presetModel(id: string): LLMModel {
     reasoning: isReasoningModel(id),
     structured_outputs: false,
     zero_data_retention: false,
+    supported_efforts: [],
+    default_effort: null,
     source: "preset",
   }
 }
@@ -102,16 +105,7 @@ export function ModelPicker({ provider, value, onChange, disabled = false }: Mod
   const searchRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  const catalogQuery = useQuery({
-    queryKey: ["llm-models", provider?.id ?? null, zdrOnly],
-    queryFn: () =>
-      api<LLMModelsResponse>(
-        `/api/settings/llm/providers/${provider?.id}/models${zdrOnly ? "?zdr=true" : ""}`,
-      ),
-    enabled: Boolean(provider) && open,
-    staleTime: 10 * 60 * 1000,
-    retry: false,
-  })
+  const catalogQuery = useModelCatalog(provider, zdrOnly)
 
   const presets = useMemo<LLMModel[]>(
     () => (provider ? getModelsForProvider(provider.name, provider.base_url).map(presetModel) : []),
@@ -173,7 +167,18 @@ export function ModelPicker({ provider, value, onChange, disabled = false }: Mod
   }
 
   function selectModel(id: string) {
-    onChange(id)
+    const found = models.find((model) => model.id === id)
+    onChange(
+      id,
+      found
+        ? {
+            supportedEfforts: found.supported_efforts,
+            defaultEffort: found.default_effort,
+            reasoning: found.reasoning,
+            fromCatalog: found.source === "live",
+          }
+        : undefined,
+    )
     handleOpenChange(false)
   }
 
@@ -222,7 +227,7 @@ export function ModelPicker({ provider, value, onChange, disabled = false }: Mod
           }}
           onKeyDown={handleKeyDown}
         >
-          <DialogHeader className="gap-1.5 px-5 pt-5 pb-4 text-left">
+          <DialogHeader className="gap-1.5 pl-5 pr-12 pt-5 pb-4 text-left">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <DialogTitle>Choose a model</DialogTitle>
               <Badge variant="outline" className="font-normal">
@@ -353,6 +358,9 @@ export function ModelPicker({ provider, value, onChange, disabled = false }: Mod
                   formatContext(model.context_length),
                   model.structured_outputs ? "JSON" : "",
                   model.zero_data_retention ? "ZDR" : "",
+                  model.supported_efforts.length
+                    ? `${model.supported_efforts.length} ${model.supported_efforts.length === 1 ? "effort" : "efforts"}`
+                    : "",
                 ]
                   .filter(Boolean)
                   .join(" · ")
@@ -380,7 +388,14 @@ export function ModelPicker({ provider, value, onChange, disabled = false }: Mod
                       </span>
                       <span className="block truncate font-mono text-[11px] text-muted-foreground">{model.id}</span>
                     </span>
-                    <span className="shrink-0 text-right text-[11px] text-muted-foreground">
+                    <span
+                      className="shrink-0 text-right text-[11px] text-muted-foreground"
+                      title={
+                        model.supported_efforts.length
+                          ? `Effort levels: ${sortEfforts(model.supported_efforts).join(", ")}`
+                          : undefined
+                      }
+                    >
                       <span className="block tabular-nums">{formatPrice(model.prompt_price)}</span>
                       <span className="block">{details || "Model ID"}</span>
                     </span>

@@ -61,6 +61,9 @@ class LLMTaskConfig(Base):
     provider_id: Mapped[int | None] = mapped_column(ForeignKey("llm_providers.id"), nullable=True)
     model: Mapped[str] = mapped_column(String(255), default="")
     temperature: Mapped[float] = mapped_column(Float, default=0.2)
+    # Model-specific reasoning effort (e.g. "high", "xhigh", "max"). Empty means
+    # the model uses temperature instead. Additive column, backfilled as "".
+    effort: Mapped[str] = mapped_column(String(32), default="")
 
     provider = relationship("LLMProvider", back_populates="task_configs")
 

@@ -81,8 +81,14 @@ def chat(
         "max_tokens": max_tokens,
         "stream": False,
     }
-    if needs_reasoning_effort:
-        # OpenAI o1/o3/o4 reject the 'temperature' parameter and require 'reasoning_effort'
+    # A model-specific level chosen from the live catalog always wins. Levels are
+    # not uniform: Gemini offers low/medium/high, Claude adds xhigh/max, and many
+    # models offer none at all. Fall back to the temperature mapping only for
+    # OpenAI o1/o3/o4 style models saved before effort levels existed.
+    selected_effort = (getattr(cfg, "effort", "") or "").strip()
+    if selected_effort:
+        body["reasoning_effort"] = selected_effort
+    elif needs_reasoning_effort:
         effort = "medium"
         if cfg.temperature <= 0.2:
             effort = "low"

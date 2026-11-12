@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.api import assessments, auth, evidence, findings, misc, reports, settings_llm, targets, users
 from app.config import settings
 from app.core.security import hash_password
-from app.database import Base, SessionLocal, engine
+from app.database import Base, SessionLocal, engine, ensure_sqlite_columns
 from app.models import Role, User  # noqa: F401  (import registers all models)
 
 logger = logging.getLogger("platform")
@@ -36,6 +36,7 @@ def seed_admin() -> None:
 
 def create_app() -> FastAPI:
     Base.metadata.create_all(bind=engine)
+    ensure_sqlite_columns()
     seed_admin()
 
     app = FastAPI(

@@ -1,9 +1,11 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Check } from "lucide-react"
 
-import { ModelPicker } from "@/components/model-picker"
 import { HelpHint } from "@/components/help-hint"
+import { ModelPicker } from "@/components/model-picker"
+import { useModelCatalog } from "@/lib/model-catalog"
+import type { ModelCapabilities } from "@/lib/model-catalog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,6 +22,7 @@ import {
   usesReasoningEffort,
   type TemperaturePresetId,
 } from "@/lib/llm-presets"
+import { effortHint, formatEffortLabel, getFallbackEfforts, sortEfforts } from "@/lib/model-effort"
 import type { LLMProvider, LLMTaskConfig, LLMTestResult } from "@/lib/types"
 
 const NONE = "none"
@@ -92,11 +95,30 @@ function TaskRow({
   const [model, setModel] = useState(config.model)
   const [temperature, setTemperature] = useState(String(config.temperature))
   const [tempPreset, setTempPreset] = useState(getTemperaturePresetId(config.temperature))
+  const [effort, setEffort] = useState(config.effort ?? "")
   const [error, setError] = useState<string | null>(null)
 
   const selectedProvider = providers.find((p) => String(p.id) === providerId) ?? null
-  const usesEffort = usesReasoningEffort(model)
-  const reasoningCapable = isReasoningModel(model)
+  const catalog = useModelCatalog(selectedProvider)
+  const liveModel =
+    catalog.data?.source === "live" ? catalog.data.models.find((item) => item.id === model) : undefined
+
+  // Levels come from the model itself, not a global list. Gemini reports
+  // low/medium/high; Claude adds xhigh/max; models without reasoning keep
+  // temperature presets. Offline/custom IDs use a small family fallback.
+  const effortOptions = useMemo(() => {
+    if (liveModel?.supported_efforts?.length) return sortEfforts(liveModel.supported_efforts)
+    return getFallbackEfforts(model)
+  }, [liveModel, model])
+  const isEffortModel = effortOptions.length > 0
+  const effectiveEffort = useMemo(() => {
+    if (!isEffortModel) return ""
+    if (effortOptions.includes(effort)) return effort
+    const preferred = liveModel?.default_effort
+    if (preferred && effortOptions.includes(preferred)) return preferred
+    return effortOptions[Math.min(1, effortOptions.length - 1)]
+  }, [isEffortModel, effortOptions, effort, liveModel])
+  const reasoningCapable = liveModel?.reasoning ?? isReasoningModel(model)
 
   function handleProviderChange(newProviderId: string) {
     setProviderId(newProviderId)
@@ -104,7 +126,25 @@ function TaskRow({
     const newModels = getModelsForProvider(newProvider?.name, newProvider?.base_url)
     if (newModels.length > 0 && !newModels.includes(model)) {
       setModel(newModels[0])
+      setEffort("")
     }
+  }
+
+  function handleModelChange(nextModel: string, capabilities?: ModelCapabilities) {
+    setModel(nextModel)
+    const nextEfforts = capabilities?.supportedEfforts?.length
+      ? sortEfforts(capabilities.supportedEfforts)
+      : getFallbackEfforts(nextModel)
+    if (nextEfforts.length === 0) {
+      setEffort("")
+      return
+    }
+    const preferred = capabilities?.defaultEffort
+    setEffort(
+      preferred && nextEfforts.includes(preferred)
+        ? preferred
+        : nextEfforts[Math.min(1, nextEfforts.length - 1)],
+    )
   }
 
   function handlePresetChange(next: string) {
@@ -121,7 +161,10 @@ function TaskRow({
     temperatureValue >= 0 &&
     temperatureValue <= 2
   const dirty =
-    providerId !== initialProvider || model !== config.model || temperature !== String(config.temperature)
+    providerId !== initialProvider ||
+    model !== config.model ||
+    temperature !== String(config.temperature) ||
+    effectiveEffort !== (config.effort ?? "")
 
   const save = useMutation({
     mutationFn: () =>
@@ -131,6 +174,7 @@ function TaskRow({
           provider_id: providerId === NONE ? null : Number(providerId),
           model: model.trim(),
           temperature: temperatureValue,
+          effort: effectiveEffort,
         }),
       }),
     onSuccess: () => {
@@ -141,7 +185,9 @@ function TaskRow({
   })
 
   const info = TASK_INFO[config.task]
-  const hintText = getTaskPresetHint(config.task, tempPreset, usesEffort)
+  const levelHint = isEffortModel
+    ? effortHint(effectiveEffort, effortOptions)
+    : getTaskPresetHint(config.task, tempPreset, usesReasoningEffort(model) && !isEffortModel)
 
   return (
     <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)_auto] xl:items-start">
@@ -182,44 +228,68 @@ function TaskRow({
         <ModelPicker
           provider={selectedProvider}
           value={model}
-          onChange={setModel}
+          onChange={handleModelChange}
           disabled={!isAdmin || providerId === NONE}
         />
         {!model && <p className="text-[11px] text-muted-foreground">No model selected</p>}
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`effort-${config.task}`} className="text-[11px] text-muted-foreground">
-          {usesEffort ? "Reasoning effort" : "Sampling level"}
-        </Label>
-        <Select value={tempPreset} onValueChange={handlePresetChange} disabled={!isAdmin}>
-          <SelectTrigger id={`effort-${config.task}`} className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {TEMPERATURE_PRESETS.map((preset) => (
-              <SelectItem key={preset.id} value={preset.id}>
-                {preset.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {tempPreset === "custom" && (
-          <div className="flex items-center gap-1.5">
-            <Input
-              className="h-8 w-20 font-mono text-xs"
-              type="number"
-              step="0.05"
-              min="0"
-              max="2"
-              value={temperature}
-              disabled={!isAdmin}
-              onChange={(event) => setTemperature(event.target.value)}
-            />
-            <span className="font-mono text-[10px] text-muted-foreground">0.0 to 2.0</span>
-          </div>
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor={`level-${config.task}`} className="text-[11px] text-muted-foreground">
+            {isEffortModel ? "Reasoning effort" : "Sampling level"}
+          </Label>
+          {isEffortModel && (
+            <Badge variant="outline" className="text-[10px]">
+              Auto
+            </Badge>
+          )}
+        </div>
+        {isEffortModel ? (
+          <Select value={effectiveEffort} onValueChange={setEffort} disabled={!isAdmin}>
+            <SelectTrigger id={`level-${config.task}`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {effortOptions.map((level) => (
+                <SelectItem key={level} value={level}>
+                  {formatEffortLabel(level)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <>
+            <Select value={tempPreset} onValueChange={handlePresetChange} disabled={!isAdmin}>
+              <SelectTrigger id={`level-${config.task}`} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TEMPERATURE_PRESETS.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {tempPreset === "custom" && (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  className="h-8 w-20 font-mono text-xs"
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  max="2"
+                  value={temperature}
+                  disabled={!isAdmin}
+                  onChange={(event) => setTemperature(event.target.value)}
+                />
+                <span className="font-mono text-[10px] text-muted-foreground">0.0 to 2.0</span>
+              </div>
+            )}
+          </>
         )}
-        <p className="text-[11px] leading-tight text-muted-foreground">{hintText}</p>
+        <p className="text-[11px] leading-tight text-muted-foreground">{levelHint}</p>
       </div>
 
       {isAdmin && (
@@ -250,11 +320,11 @@ export function TaskModelsCard({
           <div className="flex flex-col gap-1.5">
             <CardTitle>Model per task</CardTitle>
             <CardDescription>
-              Each AI task can use its own provider and model. Open the model field to browse the live catalog.
+              Each AI task can use its own provider and model. Effort levels adapt to the selected model.
             </CardDescription>
           </div>
           <HelpHint label="Model guidance" className="mt-1">
-            Standard models use temperature (0.0 to 2.0). OpenAI o1, o3 and o4 models use reasoning effort instead.
+            Reasoning models show the effort levels they actually support. Other models use temperature from 0.0 to 2.0.
           </HelpHint>
         </div>
       </CardHeader>

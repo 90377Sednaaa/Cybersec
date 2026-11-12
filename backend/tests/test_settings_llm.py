@@ -282,3 +282,39 @@ def test_connection_without_task_model_is_graceful(client, auth, monkeypatch):
     body = resp.json()
     assert body["ok"] is False
     assert "No task model" in body["error"]
+
+
+def test_effort_is_persisted_and_defaults_to_empty(client, auth):
+    created = client.get("/api/settings/llm", headers=auth).json()
+    assert all(config["effort"] == "" for config in created["task_configs"])
+
+    provider_id = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "enabled": True, "acknowledged_external_processing": True},
+        headers=auth,
+    ).json()["id"]
+    resp = client.put(
+        "/api/settings/llm/tasks/summary",
+        json={"provider_id": provider_id, "model": "google/gemini-4-carbon", "temperature": 0.4, "effort": "HIGH"},
+        headers=auth,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["effort"] == "high"
+    listed = client.get("/api/settings/llm", headers=auth).json()
+    assert next(c for c in listed["task_configs"] if c["task"] == "summary")["effort"] == "high"
+
+    # Omitting the field keeps the stored level (older clients stay compatible).
+    resp = client.put(
+        "/api/settings/llm/tasks/summary",
+        json={"provider_id": provider_id, "model": "google/gemini-4-carbon", "temperature": 0.4},
+        headers=auth,
+    )
+    assert resp.json()["effort"] == "high"
+
+    # Invalid tokens are discarded rather than forwarded to the provider.
+    resp = client.put(
+        "/api/settings/llm/tasks/summary",
+        json={"provider_id": provider_id, "model": "google/gemini-4-carbon", "temperature": 0.4, "effort": "high; drop table"},
+        headers=auth,
+    )
+    assert resp.json()["effort"] == ""

@@ -147,6 +147,9 @@ def _normalize(payload: dict[str, Any], *, zdr: bool) -> list[LLMModelOut]:
         params = row.get("supported_parameters")
         params = [str(p) for p in params] if isinstance(params, list) else []
         context = _positive_int(row.get("context_length"))
+        reasoning_meta = _reasoning_meta(row)
+        efforts = _efforts(reasoning_meta)
+        default_effort = str(reasoning_meta.get("default_effort") or "").strip().lower() or None
 
         models.append(
             LLMModelOut(
@@ -159,10 +162,30 @@ def _normalize(payload: dict[str, Any], *, zdr: bool) -> list[LLMModelOut]:
                 reasoning=_looks_reasoning(model_id, params, row),
                 structured_outputs="structured_outputs" in params or "response_format" in params,
                 zero_data_retention=zdr or bool(row.get("zdr")),
+                supported_efforts=efforts,
+                default_effort=default_effort if default_effort in efforts else None,
                 source="live",
             )
         )
     return models
+
+
+def _reasoning_meta(row: dict[str, Any]) -> dict[str, Any]:
+    """OpenRouter exposes `reasoning` as an object with per-model effort levels."""
+    value = row.get("reasoning")
+    return value if isinstance(value, dict) else {}
+
+
+def _efforts(meta: dict[str, Any]) -> list[str]:
+    raw = meta.get("supported_efforts")
+    if not isinstance(raw, list):
+        return []
+    levels: list[str] = []
+    for item in raw[:16]:
+        level = str(item).strip().lower()
+        if level and all(char.isalnum() or char in "_-" for char in level) and level not in levels:
+            levels.append(level)
+    return levels
 
 
 def _is_chat_model(row: dict[str, Any], model_id: str) -> bool:
@@ -204,7 +227,12 @@ def _positive_int(raw: Any) -> int | None:
 
 
 def _looks_reasoning(model_id: str, params: list[str], row: dict[str, Any]) -> bool:
-    if row.get("reasoning") is True or "reasoning" in params or "reasoning_effort" in params:
+    if (
+        row.get("reasoning") is True
+        or bool(_reasoning_meta(row))
+        or "reasoning" in params
+        or "reasoning_effort" in params
+    ):
         return True
     slug = model_id.split("/")[-1].lower()
     return any(hint in slug for hint in REASONING_HINTS)

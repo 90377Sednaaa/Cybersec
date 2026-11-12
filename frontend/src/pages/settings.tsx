@@ -1,7 +1,6 @@
 import { useState } from "react"
 import type { FormEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { cn } from "cn"
 import { Bot, Check, Eye, EyeOff, Info, KeyRound, Pencil, Plus, RefreshCw, ShieldCheck, Sparkles } from "lucide-react"
 
 import { HelpHint } from "@/components/help-hint"
@@ -9,6 +8,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
@@ -258,37 +259,28 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
           <span className="text-sm font-medium">Enabled</span>
           <span className="text-xs text-muted-foreground">AI features can use this provider for assigned tasks.</span>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
+        <Switch
+          id="provider-enabled"
+          checked={enabled}
+          onCheckedChange={setEnabled}
           aria-label="Enable provider"
-          onClick={() => setEnabled((current) => !current)}
-          className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors", enabled ? "bg-primary" : "bg-input")}
-        >
-          <span
-            className={cn(
-              "absolute top-0.5 size-4 rounded-full bg-primary-foreground transition-transform",
-              enabled ? "translate-x-[18px]" : "translate-x-0.5",
-            )}
-          />
-        </button>
+        />
       </div>
 
       {needsAcknowledgment && (
-        <label className="flex items-start gap-2.5 rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed">
+        <div className="flex items-start gap-2.5 rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed">
           <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <input
-            type="checkbox"
-            className="mt-0.5 size-4 shrink-0 accent-primary"
+          <Checkbox
+            id="provider-ack"
+            className="mt-0.5"
             checked={acknowledged}
-            onChange={(event) => setAcknowledged(event.target.checked)}
+            onCheckedChange={(value) => setAcknowledged(value === true)}
           />
-          <span className="flex-1">
+          <Label htmlFor="provider-ack" className="flex-1 cursor-pointer font-normal leading-relaxed">
             I understand that redacted scan data may be sent to this external AI service, and that no credentials or
             confidential data should be sent to public AI services.
-          </span>
-        </label>
+          </Label>
+        </div>
       )}
 
       {error && (

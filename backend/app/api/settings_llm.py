@@ -17,6 +17,8 @@ Hard rules encoded here:
   may be sent to an external AI service (400 without it).
 """
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -44,6 +46,14 @@ PING_MESSAGES = [
     {"role": "system", "content": "This is a connectivity check from the Aletheia security platform. Reply with the single word: pong."},
     {"role": "user", "content": "ping"},
 ]
+
+_EFFORT_VALUE = re.compile(r"^[a-z0-9_-]{1,32}$")
+
+
+def _normalize_effort(raw: str) -> str:
+    """Only plain effort tokens reach the provider; anything else clears the value."""
+    value = raw.strip().lower()
+    return value if _EFFORT_VALUE.fullmatch(value) else ""
 
 
 def _ensure_task_configs(db: Session) -> None:
@@ -173,6 +183,8 @@ def update_task(
     config.provider_id = body.provider_id
     config.model = body.model
     config.temperature = body.temperature
+    if body.effort is not None:
+        config.effort = _normalize_effort(body.effort)
     db.commit()
     db.refresh(config)
     return config

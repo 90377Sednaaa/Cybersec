@@ -132,12 +132,16 @@ class LLMTaskOut(BaseModel):
     provider_id: int | None
     model: str
     temperature: float
+    effort: str = ""  # model-specific reasoning effort, additive
 
 
 class LLMTaskUpdate(BaseModel):
     provider_id: int | None
     model: str = ""
     temperature: float = 0.2
+    # None keeps the stored value, so older clients that never send `effort`
+    # cannot accidentally clear a level chosen in the new UI.
+    effort: str | None = None
 
 
 class LLMSettingsOut(BaseModel):
@@ -175,6 +179,11 @@ class LLMModelOut(BaseModel):
     reasoning: bool = False
     structured_outputs: bool = False
     zero_data_retention: bool = False
+    # Model-specific reasoning effort levels, e.g. Gemini ["low", "medium", "high"]
+    # vs Claude ["low", "medium", "high", "xhigh", "max"]. Empty for models that
+    # use temperature instead.
+    supported_efforts: list[str] = Field(default_factory=list)
+    default_effort: str | None = None
     source: str = "live"
 
 

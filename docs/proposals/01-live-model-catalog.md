@@ -7,8 +7,10 @@ Proposed by: AI assistant, on behalf of the team · Date: 2026-11-12 · Status: 
 Replace the hardcoded model dropdown in Settings with a searchable browser backed by each provider's live
 `/models` catalog. Adds one additive, read-only endpoint `GET /api/settings/llm/providers/{id}/models` and a
 `ModelPicker` dialog with search, free/paid pricing, context length, reasoning and structured-output filters,
-plus OpenRouter's zero-data-retention filter. Extends M2 T2.2 (provider settings) and M3 T3.3 (settings page);
-no existing request or response shape is changed.
+plus OpenRouter's zero-data-retention filter. The same payload exposes each model's real
+`reasoning.supported_efforts` (Gemini: low/medium/high; Claude: low/medium/high/xhigh/max), so the effort control
+adapts to the selected model instead of showing one global list. Extends M2 T2.2 (provider settings) and M3 T3.3
+(settings page); no existing request or response shape is changed.
 
 ## Why
 
@@ -20,9 +22,10 @@ no existing request or response shape is changed.
 
 ## Cost
 
-Roughly one working session. Additive contract only: one new GET endpoint plus new response schemas; no DB
-migration, no change to `LLMProviderOut`, `LLMTaskOut` or `LLMSettingsOut`. Needs nothing from another member.
-Ships with 7 new backend tests, a clean `npm run build`, and dark/light verification in the running app.
+Roughly one working session. Additive contract only: one new GET endpoint, new response schemas, one additive
+`LLMTaskConfig.effort` column backfilled to `""` by an idempotent startup migration, and an optional `effort`
+field on `LLMTaskUpdate` / `LLMTaskOut`. No change to provider shapes. Needs nothing from another member.
+Ships with 10 new backend tests, a clean `npm run build`, and dark/light verification in the running app.
 
 ## Risk
 

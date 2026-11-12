@@ -9,7 +9,7 @@ import re
 
 import httpx
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.ai import client as ai_client
 from app.ai.client import ChatResult, LLMRequestError, NoProviderConfigured, chat
@@ -231,3 +231,24 @@ def test_resolve_task_config_rules(provider):
         assert cfg.model == MODEL
         with pytest.raises(NoProviderConfigured):
             ai_client.resolve_task_config(db, LLMTask.prioritization)
+
+
+def test_model_specific_effort_replaces_temperature(provider):
+    with SessionLocal() as db:
+        cfg = db.scalar(select(LLMTaskConfig).where(LLMTaskConfig.task == LLMTask.interpretation))
+        cfg.model = "google/gemini-4-carbon"
+        cfg.effort = "high"
+        db.commit()
+
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=completion_body())
+
+    with SessionLocal() as db:
+        chat(db, LLMTask.interpretation, [{"role": "user", "content": "hi"}], transport=_transport(handler))
+
+    body = json.loads(requests[0].content)
+    assert body["reasoning_effort"] == "high"
+    assert "temperature" not in body

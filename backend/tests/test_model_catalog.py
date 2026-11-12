@@ -29,7 +29,12 @@ OPENROUTER_PAYLOAD = {
             "context_length": 1024000,
             "pricing": {"prompt": "0", "completion": "0"},
             "architecture": {"modality": "text+image->text", "output_modalities": ["text"]},
-            "supported_parameters": ["reasoning", "max_tokens"],
+            "supported_parameters": ["reasoning", "reasoning_effort", "max_tokens"],
+            "reasoning": {
+                "mandatory": True,
+                "supported_efforts": ["high", "medium", "low"],
+                "default_effort": "medium",
+            },
             "endpoints": ["/api/v1/chat/completions"],
         },
         {
@@ -100,9 +105,12 @@ def test_catalog_normalizes_pricing_and_filters_non_chat_models(client, auth, pr
     assert paid["completion_price"] == 0.89
     assert paid["free"] is False
     assert paid["structured_outputs"] is True
+    assert paid["supported_efforts"] == []
     free = next(m for m in body["models"] if m["id"].endswith(":free"))
     assert free["free"] is True
     assert free["reasoning"] is True
+    assert free["supported_efforts"] == ["high", "medium", "low"]
+    assert free["default_effort"] == "medium"
     assert calls[0]["base_url"].endswith("/api/v1")
     assert "sk-super-secret-catalog-key" not in str(body)
 

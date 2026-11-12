@@ -190,6 +190,7 @@ export interface LLMTaskConfig {
   provider_id: number | null
   model: string
   temperature: number
+  effort: string // model-specific reasoning effort, empty when temperature is used
 }
 
 export interface LLMSettings {
@@ -215,6 +216,8 @@ export interface LLMModel {
   reasoning: boolean
   structured_outputs: boolean
   zero_data_retention: boolean
+  supported_efforts: string[]
+  default_effort: string | null
   source: "live" | "preset"
 }
 
