@@ -45,6 +45,21 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     note: "Standard OpenAI GPT-4o and reasoning models.",
   },
   {
+    id: "gemini",
+    name: "Google Gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    placeholderKey: "AIza...",
+    keyRequired: true,
+    defaultModels: [
+      "gemini-3.8-flash",
+      "gemini-4-carbon",
+      "gemini-4-argon",
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
+    ],
+    note: "Uses Google's official OpenAI-compatible endpoint. Create a key in Google AI Studio, then use Browse models for the live catalog.",
+  },
+  {
     id: "groq",
     name: "Groq",
     baseUrl: "https://api.groq.com/openai/v1",
@@ -80,6 +95,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
 export function detectProviderFromKey(key: string): string | null {
   const trimmed = key.trim()
   if (!trimmed) return null
+  // Google AI Studio keys (Gemini) start with AIza and are not sk- prefixed.
+  if (/^AIza[0-9A-Za-z_-]{20,}$/.test(trimmed)) {
+    return "gemini"
+  }
   if (trimmed.startsWith("sk-or-v1-") || trimmed.startsWith("sk-or-")) {
     return "openrouter"
   }
