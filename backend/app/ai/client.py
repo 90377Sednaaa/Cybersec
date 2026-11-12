@@ -68,8 +68,12 @@ def chat(
     # hard gate: nothing reaches a provider without passing the redaction layer
     messages = redact_messages(messages, deny_list)
 
-    model_lower = cfg.model.lower()
-    is_reasoning = model_lower.startswith("o1") or model_lower.startswith("o3")
+    # o1/o3/o4 style models reject `temperature` and take `reasoning_effort`.
+    # Compare the slug, not the whole id, so OpenRouter ids like "openai/o3-mini"
+    # are handled the same way as direct OpenAI ids. Other reasoning models (R1,
+    # QwQ, thinking variants) still accept temperature on their own endpoints.
+    model_slug = cfg.model.lower().rsplit("/", 1)[-1]
+    needs_reasoning_effort = model_slug.startswith(("o1", "o3", "o4"))
 
     body: dict = {
         "model": cfg.model,
@@ -77,8 +81,8 @@ def chat(
         "max_tokens": max_tokens,
         "stream": False,
     }
-    if is_reasoning:
-        # OpenAI o1/o3 reject the 'temperature' parameter and require 'reasoning_effort'
+    if needs_reasoning_effort:
+        # OpenAI o1/o3/o4 reject the 'temperature' parameter and require 'reasoning_effort'
         effort = "medium"
         if cfg.temperature <= 0.2:
             effort = "low"

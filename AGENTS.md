@@ -118,19 +118,20 @@ the users API.
 
 ## Current state / next up
 
-**Snapshot: 2026-11-11.** Living content — see "Milestone status upkeep" in Conventions. The build-order
+**Snapshot: 2026-11-12.** Living content — see "Milestone status upkeep" in Conventions. The build-order
 table in [README.md](README.md) is kept in sync by the M5 steward.
 
 | Module | State | What landed |
 |---|---|---|
 | **M1** Scan engine | done | nmap/dns/prober/zap runners, orchestrator with SSE + cancel, server-side intensity gate (409), normalizer emitting `ai_candidate`; contracts frozen in `app/schemas/assessment.py`. Log: `docs/member-logs/m1-scan-engine.md`. |
-| **M2** AI pipeline | done | T2.0-T2.5: OpenAI-compatible client, Fernet-encrypted provider settings + discretion gate, redaction before every call, interpreter, summarizer + `ai_outputs` audit. 67 AI tests. Log: `docs/member-logs/m2-ai-pipeline.md`. |
-| **M3** Frontend | done | T3.0-T3.5 complete: assessments wizard + authenticated SSE live log (T3.1), filterable findings table + detail drawer + verify/false-positive/needs-evidence actions with notes + WCAG AA contrast (T3.2), LLM provider settings + per-task models + test connection (T3.3), live dashboard with real counts + responsive chart + recent assessments (T3.4), report generation + authenticated download (T3.5). Log: `docs/member-logs/m3-frontend.md`. |
+| **M2** AI pipeline | done | T2.0-T2.5: OpenAI-compatible client, Fernet-encrypted provider settings + discretion gate, redaction before every call, interpreter, summarizer + `ai_outputs` audit. 67 AI tests. Additive enhancement (2026-11-12): live model-catalog proxy `app/ai/catalog.py` + `GET /api/settings/llm/providers/{id}/models` with TTL cache, normalized pricing/capability metadata and offline fallback; proposal `docs/proposals/01-live-model-catalog.md`. Log: `docs/member-logs/m2-ai-pipeline.md`. |
+| **M3** Frontend | done | T3.0-T3.5 complete: assessments wizard + authenticated SSE live log (T3.1), filterable findings table + detail drawer + verify/false-positive/needs-evidence actions with notes + WCAG AA contrast (T3.2), LLM provider settings + per-task models + test connection (T3.3), live dashboard with real counts + responsive chart + recent assessments (T3.4), report generation + authenticated download (T3.5). Additive enhancement (2026-11-12): searchable `ModelPicker` dialog (`src/components/model-picker.tsx`) and modernized AI settings UI (`src/pages/settings.tsx`, `src/pages/settings-tasks.tsx`), verified in dark and light themes. Log: `docs/member-logs/m3-frontend.md`. |
 | **M4** Findings & reports | done | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. Log refreshed to final state: `docs/member-logs/m4-findings-reports.md`. M3 hand-off spec: `docs/m3-findings-page-spec.md`. |
 | **M5** Docs/QA/deploy | in progress | Router hand-offs merged (T5.4 partial). Tool dependencies pending install (Nmap, OWASP ZAP, Playwright Chromium). Evidence pack & rehearsal pending. |
 
 Verification on this snapshot: `npm run build` passes (0 errors), `npm run lint` reports 0 errors / 8 warnings,
-`pytest tests -q` reports **152 passed**; live smoke test returned 200 for `/health`, login, and all list endpoints.
+`pytest tests -q` reports **160 passed**; live smoke test returned 200 for `/health`, login, and all list endpoints.
+The model catalog and settings UI were also verified in the running app in both dark and light themes.
 All M1-M4 modules are code complete; backend and frontend are ready for integration waves I1-I4 (`TASK_PLAN.md`).
 
 **Next up, in order:**

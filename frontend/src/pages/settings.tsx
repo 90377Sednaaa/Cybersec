@@ -1,7 +1,10 @@
 import { useState } from "react"
+import type { FormEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Check, Eye, EyeOff, Plus } from "lucide-react"
+import { cn } from "cn"
+import { Bot, Check, Eye, EyeOff, Info, KeyRound, Pencil, Plus, RefreshCw, ShieldCheck, Sparkles } from "lucide-react"
 
+import { HelpHint } from "@/components/help-hint"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,8 +20,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { HelpHint } from "@/components/help-hint"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import {
@@ -92,12 +95,13 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["llm-settings"] })
+      queryClient.invalidateQueries({ queryKey: ["llm-models"] })
       onDone()
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Failed to save provider"),
   })
 
-  function handleSubmit(event: React.FormEvent) {
+  function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
     mutation.mutate({
@@ -112,149 +116,175 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
   const selectedPreset = PROVIDER_PRESETS.find((p) => p.id === presetId)
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid gap-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1">
-            <Label htmlFor="provider-preset">Provider</Label>
-            <HelpHint label="Provider preset">
-              Choose a provider or paste your API key below for automatic detection.
-            </HelpHint>
-          </div>
-          {detectedBadge && (
-            <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-              <Check className="size-3" />
-              Detected {detectedBadge}
-            </span>
-          )}
-        </div>
-        <Select value={presetId} onValueChange={handlePresetChange}>
-          <SelectTrigger id="provider-preset">
-            <SelectValue placeholder="Select a provider..." />
-          </SelectTrigger>
-          <SelectContent>
-            {PROVIDER_PRESETS.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {selectedPreset?.note && (
-          <p className="text-xs text-muted-foreground">{selectedPreset.note}</p>
-        )}
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-sm font-medium">Connection</h3>
+        <p className="text-xs text-muted-foreground">Connect an OpenAI-compatible endpoint. Keys are encrypted at rest.</p>
       </div>
 
-      <div className="grid gap-2">
-        <div className="flex items-center gap-1">
-          <Label htmlFor="provider-key">API Key</Label>
-          <HelpHint label="Encrypted at rest">
-            Stored encrypted with Fernet and never logged or returned by the API.
-          </HelpHint>
-        </div>
-        <div className="relative">
-          <Input
-            id="provider-key"
-            type={showKey ? "text" : "password"}
-            autoComplete="off"
-            className="pr-9 font-mono text-xs"
-            placeholder={
-              provider?.has_api_key
-                ? "Leave blank to keep the current key"
-                : (selectedPreset?.placeholderKey || "Paste API key")
-            }
-            value={apiKey}
-            onChange={(e) => handleApiKeyChange(e.target.value)}
-          />
-          <button
-            type="button"
-            onClick={() => setShowKey((s) => !s)}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            aria-label={showKey ? "Hide API key" : "Show API key"}
-          >
-            {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-          </button>
-        </div>
-        {presetId === "ollama" && (
-          <p className="text-xs text-muted-foreground">
-            Local Ollama typically does not require an API key unless you run behind an authenticated proxy.
-          </p>
-        )}
-      </div>
-
-      <div className="grid gap-2">
-        <Label htmlFor="provider-name">Provider Name</Label>
-        <Input id="provider-name" value={name} onChange={(e) => setName(e.target.value)} required />
-      </div>
-
-      {presetId !== "custom" && !showAdvancedUrl ? (
-        <div className="rounded-md border bg-muted/30 p-2.5 text-xs space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground font-medium">Endpoint URL</span>
-            <button
-              type="button"
-              onClick={() => setShowAdvancedUrl(true)}
-              className="text-primary hover:underline font-medium text-[11px]"
-            >
-              Customize endpoint
-            </button>
-          </div>
-          <p className="font-mono text-muted-foreground break-all">{baseUrl || "(standard endpoint)"}</p>
-        </div>
-      ) : (
-        <div className="grid gap-2">
-          <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1">
-              <Label htmlFor="provider-url">Base URL</Label>
-              <HelpHint label="OpenAI-compatible endpoint">
-                Address of the OpenAI-compatible endpoint. Standard endpoints are pre-filled.
+              <Label htmlFor="provider-preset">Provider</Label>
+              <HelpHint label="Provider preset">
+                Choose a provider or paste your API key below for automatic detection.
               </HelpHint>
             </div>
-            {presetId !== "custom" && (
-              <button
-                type="button"
-                onClick={() => {
-                  const defaultUrl = selectedPreset?.baseUrl || ""
-                  setBaseUrl(defaultUrl)
-                  setShowAdvancedUrl(false)
-                }}
-                className="text-[11px] text-muted-foreground hover:underline"
-              >
-                Reset to default
-              </button>
+            {detectedBadge && (
+              <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
+                <Check className="size-3" />
+                Detected {detectedBadge}
+              </span>
             )}
           </div>
-          <Input
-            id="provider-url"
-            type="url"
-            className="font-mono text-xs"
-            placeholder="https://api.openai.com/v1"
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            required
-          />
+          <Select value={presetId} onValueChange={handlePresetChange}>
+            <SelectTrigger id="provider-preset">
+              <SelectValue placeholder="Select a provider..." />
+            </SelectTrigger>
+            <SelectContent>
+              {PROVIDER_PRESETS.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id}>
+                  {preset.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedPreset?.note && (
+            <p className="text-xs leading-snug text-muted-foreground">{selectedPreset.note}</p>
+          )}
         </div>
-      )}
 
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="size-4 accent-primary"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-        />
-        Enabled
-      </label>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-1">
+            <Label htmlFor="provider-key">API key</Label>
+            <HelpHint label="Encrypted at rest">
+              Stored encrypted with Fernet and never logged or returned by the API.
+            </HelpHint>
+          </div>
+          <div className="relative">
+            <Input
+              id="provider-key"
+              type={showKey ? "text" : "password"}
+              autoComplete="off"
+              className="pr-9 font-mono text-xs"
+              placeholder={
+                provider?.has_api_key
+                  ? "Leave blank to keep the current key"
+                  : selectedPreset?.placeholderKey || "Paste API key"
+              }
+              value={apiKey}
+              onChange={(event) => handleApiKeyChange(event.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((current) => !current)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label={showKey ? "Hide API key" : "Show API key"}
+            >
+              {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+          {presetId === "ollama" && (
+            <p className="text-xs text-muted-foreground">
+              Local Ollama typically needs no key unless it runs behind an authenticated proxy.
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="provider-name">Display name</Label>
+          <Input id="provider-name" value={name} onChange={(event) => setName(event.target.value)} required />
+        </div>
+
+        {presetId !== "custom" && !showAdvancedUrl ? (
+          <div className="flex flex-col gap-1 rounded-lg border bg-muted/30 p-3 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-muted-foreground">Endpoint URL</span>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedUrl(true)}
+                className="text-[11px] font-medium text-primary hover:underline"
+              >
+                Customize endpoint
+              </button>
+            </div>
+            <p className="break-all font-mono text-muted-foreground">{baseUrl || "(standard endpoint)"}</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="provider-url">Base URL</Label>
+                <HelpHint label="OpenAI-compatible endpoint">
+                  Address of the OpenAI-compatible endpoint. Standard endpoints are pre-filled.
+                </HelpHint>
+              </div>
+              {presetId !== "custom" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBaseUrl(selectedPreset?.baseUrl || "")
+                    setShowAdvancedUrl(false)
+                  }}
+                  className="text-[11px] text-muted-foreground hover:underline"
+                >
+                  Reset to default
+                </button>
+              )}
+            </div>
+            <Input
+              id="provider-url"
+              type="url"
+              className="font-mono text-xs"
+              placeholder="https://api.openai.com/v1"
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+              required
+            />
+          </div>
+        )}
+      </div>
+
+      <Separator />
+
+      <div className="flex flex-col gap-1">
+        <h3 className="text-sm font-medium">Access</h3>
+        <p className="text-xs text-muted-foreground">Control whether this service may receive redacted scan data.</p>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">Enabled</span>
+          <span className="text-xs text-muted-foreground">AI features can use this provider for assigned tasks.</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label="Enable provider"
+          onClick={() => setEnabled((current) => !current)}
+          className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors", enabled ? "bg-primary" : "bg-input")}
+        >
+          <span
+            className={cn(
+              "absolute top-0.5 size-4 rounded-full bg-primary-foreground transition-transform",
+              enabled ? "translate-x-[18px]" : "translate-x-0.5",
+            )}
+          />
+        </button>
+      </div>
 
       {needsAcknowledgment && (
-        <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+        <label className="flex items-start gap-2.5 rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed">
+          <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <input
             type="checkbox"
-            className="mt-0.5 size-4 accent-primary"
+            className="mt-0.5 size-4 shrink-0 accent-primary"
             checked={acknowledged}
-            onChange={(e) => setAcknowledged(e.target.checked)}
+            onChange={(event) => setAcknowledged(event.target.checked)}
           />
-          <span>
+          <span className="flex-1">
             I understand that redacted scan data may be sent to this external AI service, and that no credentials or
             confidential data should be sent to public AI services.
           </span>
@@ -267,12 +297,15 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
         </Alert>
       )}
 
-      <DialogFooter>
+      <DialogFooter className="sticky bottom-0 gap-2 bg-background pt-2">
+        <Button type="button" variant="outline" onClick={onDone}>
+          Cancel
+        </Button>
         <Button
           type="submit"
           disabled={mutation.isPending || !name.trim() || !baseUrl.trim() || (needsAcknowledgment && !acknowledged)}
         >
-          {mutation.isPending ? "Saving…" : provider ? "Save changes" : "Add provider"}
+          {mutation.isPending ? "Saving..." : provider ? "Save changes" : "Add provider"}
         </Button>
       </DialogFooter>
     </form>
@@ -285,10 +318,15 @@ export function SettingsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<LLMProvider | null>(null)
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["llm-settings"],
     queryFn: () => api<LLMSettings>("/api/settings/llm"),
   })
+
+  const providers = data?.providers ?? []
+  const configs = data?.task_configs ?? []
+  const enabledCount = providers.filter((provider) => provider.enabled).length
+  const assignedCount = configs.filter((config) => config.provider_id !== null && config.model.trim() !== "").length
 
   function openDialog(provider: LLMProvider | null) {
     setEditing(provider)
@@ -296,17 +334,19 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
-            <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">AI settings</h1>
             <HelpHint label="AI settings" className="mt-1.5">
               Choose which AI service the platform uses to interpret scan results and write summaries. Only admins
               can change these settings.
             </HelpHint>
           </div>
-          <p className="text-sm text-muted-foreground">Configure AI providers and task model assignments.</p>
+          <p className="text-sm text-muted-foreground">
+            Configure providers, browse live model catalogs and assign a model to each task.
+          </p>
         </div>
         {isAdmin && (
           <Button onClick={() => openDialog(null)}>
@@ -316,97 +356,128 @@ export function SettingsPage() {
         )}
       </div>
 
-      {!isAdmin && (
-        <Alert>
-          <AlertDescription>Read-only: only admins can change AI settings.</AlertDescription>
-        </Alert>
-      )}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <Bot className="size-3.5" />
+          {providers.length} {providers.length === 1 ? "provider" : "providers"}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Sparkles className="size-3.5" />
+          {enabledCount} enabled
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Check className="size-3.5" />
+          {assignedCount} of {configs.length} tasks assigned
+        </span>
+        <span className="flex items-center gap-1.5 sm:ml-auto">
+          <ShieldCheck className="size-3.5" />
+          Keys encrypted at rest
+        </span>
+      </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>AI providers</CardTitle>
-          <CardDescription>
-            Enabling a provider means redacted scan data may be sent to that service. API keys are write-only and
-            never shown.
-          </CardDescription>
+          <div className="flex flex-col gap-1.5">
+            <CardTitle>AI providers</CardTitle>
+            <CardDescription>
+              Enabling a provider may send redacted scan data to that service. API keys are write-only and never shown.
+            </CardDescription>
+          </div>
         </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertDescription>{error.message}</AlertDescription>
+        <CardContent className="flex flex-col gap-3">
+          {!isAdmin && (
+            <Alert>
+              <AlertDescription>Read-only: only admins can change AI settings.</AlertDescription>
             </Alert>
           )}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Base URL</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>API key</TableHead>
-                <TableHead>External use acknowledged</TableHead>
-                {isAdmin && <TableHead className="w-52">Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    Loading…
-                  </TableCell>
-                </TableRow>
-              )}
-              {!isLoading && data?.providers.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center">
-                    <div className="flex flex-col items-center gap-1.5">
-                      <p className="text-sm font-medium">No AI providers yet</p>
-                      <p className="text-xs text-muted-foreground">
-                        {isAdmin
-                          ? "Add a provider to enable AI interpretation of scan results."
-                          : "Ask an admin to configure an AI provider."}
-                      </p>
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription className="flex items-center justify-between gap-3">
+                <span>{error.message}</span>
+                <Button variant="ghost" size="xs" onClick={() => void refetch()}>
+                  <RefreshCw className="size-3" />
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="divide-y rounded-lg border">
+            {isLoading && (
+              <div className="flex flex-col gap-2 p-4">
+                {[0, 1].map((index) => (
+                  <Skeleton key={index} className="h-14 w-full" />
+                ))}
+              </div>
+            )}
+            {!isLoading && providers.length === 0 && (
+              <div className="flex flex-col items-center gap-2 px-5 py-12 text-center">
+                <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Sparkles className="size-5" />
+                </div>
+                <p className="text-sm font-medium">No AI providers yet</p>
+                <p className="max-w-sm text-xs text-muted-foreground">
+                  {isAdmin
+                    ? "Add a provider to enable AI interpretation of scan results."
+                    : "Ask an admin to configure an AI provider."}
+                </p>
+                {isAdmin && (
+                  <Button variant="outline" size="sm" className="mt-1" onClick={() => openDialog(null)}>
+                    <Plus className="size-3.5" />
+                    Add provider
+                  </Button>
+                )}
+              </div>
+            )}
+            {providers.map((provider) => (
+              <div
+                key={provider.id}
+                className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Bot className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{provider.name}</span>
+                      <Badge variant={provider.enabled ? "default" : "outline"}>
+                        {provider.enabled ? "Enabled" : "Disabled"}
+                      </Badge>
                     </div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {data?.providers.map((provider) => (
-                <TableRow key={provider.id}>
-                  <TableCell className="font-medium">{provider.name}</TableCell>
-                  <TableCell className="font-mono text-xs">{provider.base_url}</TableCell>
-                  <TableCell>
-                    <Badge variant={provider.enabled ? "default" : "outline"}>
-                      {provider.enabled ? "Enabled" : "Disabled"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={provider.has_api_key ? "secondary" : "outline"}>
-                      {provider.has_api_key ? "Set" : "Not set"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {formatDate(provider.acknowledged_external_at)}
-                  </TableCell>
+                    <p className="truncate font-mono text-[11px] text-muted-foreground">{provider.base_url}</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 lg:justify-end">
+                  <Badge variant={provider.has_api_key ? "secondary" : "outline"} className="gap-1">
+                    <KeyRound className="size-3" />
+                    {provider.has_api_key ? "Key set" : "No key"}
+                  </Badge>
+                  <span className="text-[11px] text-muted-foreground">
+                    {provider.acknowledged_external_at
+                      ? `Acknowledged ${formatDate(provider.acknowledged_external_at)}`
+                      : "External use not acknowledged"}
+                  </span>
                   {isAdmin && (
-                    <TableCell>
-                      <div className="flex items-start gap-2">
-                        <TestConnectionButton providerId={provider.id} />
-                        <Button variant="ghost" size="sm" onClick={() => openDialog(provider)}>
-                          Edit
-                        </Button>
-                      </div>
-                    </TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <TestConnectionButton providerId={provider.id} />
+                      <Button variant="ghost" size="xs" onClick={() => openDialog(provider)}>
+                        <Pencil className="size-3" />
+                        Edit
+                      </Button>
+                    </div>
                   )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                </div>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
-      <TaskModelsCard configs={data?.task_configs ?? []} providers={data?.providers ?? []} isAdmin={isAdmin} />
+      <TaskModelsCard configs={configs} providers={providers} isAdmin={isAdmin} />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit provider" : "Add provider"}</DialogTitle>
             <DialogDescription>

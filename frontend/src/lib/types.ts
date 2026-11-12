@@ -203,3 +203,26 @@ export interface LLMTestResult {
   latency_ms: number | null
   error: string
 }
+
+// GET /api/settings/llm/providers/{id}/models (additive, read-only)
+export interface LLMModel {
+  id: string
+  name: string
+  free: boolean
+  prompt_price: number | null // USD per 1M input tokens
+  completion_price: number | null
+  context_length: number | null
+  reasoning: boolean
+  structured_outputs: boolean
+  zero_data_retention: boolean
+  source: "live" | "preset"
+}
+
+export interface LLMModelsResponse {
+  provider_id: number
+  source: "live" | "unavailable"
+  zdr_supported: boolean
+  zdr_filter: boolean
+  models: LLMModel[]
+  notice: string
+}

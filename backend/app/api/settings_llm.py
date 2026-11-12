@@ -6,6 +6,7 @@ Contract (Wave-1 sketch, additive):
     PUT  /api/settings/llm/providers/{id}       -> LLMProviderOut
     PUT  /api/settings/llm/tasks/{task}         -> LLMTaskOut
     POST /api/settings/llm/test                 -> {ok, model, latency_ms, error?}
+    GET  /api/settings/llm/providers/{id}/models -> LLMModelsOut (additive, read-only)
 
 Hard rules encoded here:
 - the API key is write-only: accepted in the body, stored Fernet-encrypted,
@@ -20,13 +21,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai import client as ai_client
+from app.ai import catalog, client as ai_client
 from app.database import get_db
 from app.core.deps import require_role
 from app.models import Role, User
 from app.models.llm import LLMTask, LLMTaskConfig, LLMProvider, encrypt_secret
 from app.models.user import utcnow
 from app.schemas.common import (
+    LLMModelsOut,
     LLMProviderIn,
     LLMProviderOut,
     LLMSettingsOut,
@@ -87,6 +89,7 @@ def create_provider(
     db.add(provider)
     db.commit()
     db.refresh(provider)
+    catalog.invalidate(provider.id)
     return provider
 
 
@@ -110,7 +113,34 @@ def update_provider(
     provider.enabled = body.enabled
     db.commit()
     db.refresh(provider)
+    catalog.invalidate(provider.id)
     return provider
+
+
+@router.get("/providers/{provider_id}/models", response_model=LLMModelsOut)
+def list_provider_models(
+    provider_id: int,
+    zdr: bool = False,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.admin, Role.assessor, Role.viewer)),
+) -> LLMModelsOut:
+    """Read-only catalog proxy for one provider.
+
+    The key is decrypted only for the outbound request and never appears in the
+    response, logs, or error text. Upstream failures degrade to an empty list
+    with `source="unavailable"` so the UI can use its offline presets.
+    """
+    provider = _get_provider_or_404(db, provider_id)
+    zdr_filter = bool(zdr and catalog.supports_zdr(provider.base_url))
+    source, models, notice = catalog.get_catalog(provider, zdr=zdr_filter)
+    return LLMModelsOut(
+        provider_id=provider.id,
+        source=source,
+        zdr_supported=catalog.supports_zdr(provider.base_url),
+        zdr_filter=zdr_filter,
+        models=models,
+        notice=notice,
+    )
 
 
 def _require_ack_if_enabling(body: LLMProviderIn, existing: LLMProvider | None = None) -> None:

@@ -154,3 +154,34 @@ class LLMTestConnectionOut(BaseModel):
     model: str = ""
     latency_ms: int | None = None
     error: str = ""
+
+
+# --- Live model catalog (additive, read-only) -------------------------------
+
+
+class LLMModelOut(BaseModel):
+    """One chat-capable model, normalized across OpenAI-compatible providers.
+
+    Prices are USD per 1M tokens. `free` is only true when the provider actually
+    reported zero for both input and output pricing; absent pricing stays None.
+    """
+
+    id: str
+    name: str
+    free: bool = False
+    prompt_price: float | None = None
+    completion_price: float | None = None
+    context_length: int | None = None
+    reasoning: bool = False
+    structured_outputs: bool = False
+    zero_data_retention: bool = False
+    source: str = "live"
+
+
+class LLMModelsOut(BaseModel):
+    provider_id: int
+    source: str = "live"  # "live" | "unavailable"
+    zdr_supported: bool = False
+    zdr_filter: bool = False
+    models: list[LLMModelOut] = Field(default_factory=list)
+    notice: str = ""

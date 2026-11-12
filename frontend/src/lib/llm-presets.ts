@@ -16,15 +16,15 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     placeholderKey: "sk-or-v1-...",
     keyRequired: true,
     defaultModels: [
-      "anthropic/claude-3.5-sonnet",
       "deepseek/deepseek-chat",
-      "deepseek/deepseek-r1",
-      "meta-llama/llama-3.3-70b-instruct",
-      "openai/gpt-4o",
       "openai/gpt-4o-mini",
-      "google/gemini-2.0-flash-001",
+      "baidu/ernie-5.5-flash-preview:free",
+      "qwen/qwen3-coder",
+      "openai/gpt-4o",
+      "meta-llama/llama-3.3-70b-instruct",
+      "google/gemini-4-carbon",
     ],
-    note: "Access 200+ models from Claude, DeepSeek, Llama, and OpenAI with one key.",
+    note: "Hundreds of models from OpenAI, Anthropic, DeepSeek, Google and more with one key. Use Browse models for the live catalog.",
   },
   {
     id: "deepseek",
@@ -41,7 +41,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     baseUrl: "https://api.openai.com/v1",
     placeholderKey: "sk-proj-...",
     keyRequired: true,
-    defaultModels: ["gpt-4o", "gpt-4o-mini", "o3-mini", "o1-mini"],
+    defaultModels: ["gpt-4o", "gpt-4o-mini", "o3-mini"],
     note: "Standard OpenAI GPT-4o and reasoning models.",
   },
   {
@@ -99,15 +99,44 @@ export function detectProviderFromKey(key: string): string | null {
   return null
 }
 
+/** Capability badge: does this model reason? Used for catalog metadata and presets. */
 export function isReasoningModel(modelName: string): boolean {
-  const lower = modelName.toLowerCase()
+  const slug = modelName.split("/").pop()?.toLowerCase() ?? ""
   return (
-    lower.startsWith("o1") ||
-    lower.startsWith("o3") ||
-    lower.includes("reasoner") ||
-    lower.includes("r1") ||
-    lower.includes("thinking")
+    slug.startsWith("o1") ||
+    slug.startsWith("o3") ||
+    slug.startsWith("o4") ||
+    slug.includes("reasoner") ||
+    slug.includes("reasoning") ||
+    slug.includes("r1") ||
+    slug.includes("thinking") ||
+    slug.includes("qwq")
   )
+}
+
+/**
+ * Request-shape gate: only OpenAI o1/o3/o4 style models reject `temperature`
+ * and need `reasoning_effort`. Mirrors backend/app/ai/client.py so the UI label
+ * never claims "Reasoning effort" for a model that is actually sent a temperature.
+ */
+export function usesReasoningEffort(modelName: string): boolean {
+  const slug = modelName.split("/").pop()?.toLowerCase() ?? ""
+  return slug.startsWith("o1") || slug.startsWith("o3") || slug.startsWith("o4")
+}
+
+export function formatPrice(price: number | null): string {
+  if (price === null) return "Price unavailable"
+  if (price === 0) return "Free"
+  return `$${price.toFixed(price < 0.01 ? 3 : 2)} / 1M in`
+}
+
+export function formatContext(tokens: number | null): string {
+  if (!tokens) return ""
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000
+    return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}M ctx`
+  }
+  return `${Math.round(tokens / 1000)}K ctx`
 }
 
 export type TemperaturePresetId = "low" | "medium" | "high" | "max" | "xhigh" | "custom"
@@ -204,4 +233,93 @@ export function getTemperaturePresetId(temperature: number): TemperaturePresetId
   if (temperature > 0.95 && temperature <= 1.45) return "max"
   if (temperature > 1.45 && temperature <= 2.0) return "xhigh"
   return "custom"
+}
+
+/**
+ * Guidance copy for the temperature control. `usesEffort` means the backend
+ * will send `reasoning_effort` instead of `temperature` for this model, so the
+ * hint must describe effort rather than sampling variance.
+ */
+export function getTaskPresetHint(
+  task: string,
+  presetId: TemperaturePresetId,
+  usesEffort: boolean,
+): string {
+  if (usesEffort) {
+    switch (presetId) {
+      case "low":
+        return "Low effort: fast responses for straightforward logic."
+      case "medium":
+        return "Medium effort: standard multi-step analysis."
+      case "high":
+        return "High effort: deeper reasoning for complex assessments."
+      case "max":
+      case "xhigh":
+        return "Mapped to high effort. Use a custom value for finer control."
+      case "custom":
+        return "Custom value is mapped to low, medium or high effort."
+    }
+  }
+
+  if (task === "interpretation") {
+    switch (presetId) {
+      case "low":
+        return "Recommended: deterministic output limits invented findings."
+      case "medium":
+        return "Slight phrasing variance. Low is recommended for scans."
+      case "high":
+      case "max":
+      case "xhigh":
+        return "Higher variance increases the risk of hallucinated findings."
+      case "custom":
+        return "0.0 is strongly recommended for scan interpretation."
+    }
+  }
+
+  if (task === "summary") {
+    switch (presetId) {
+      case "low":
+        return "Factual, concise summary statements."
+      case "medium":
+        return "Recommended for reports: balanced executive writing."
+      case "high":
+      case "max":
+      case "xhigh":
+        return "More expressive prose with a higher variance risk."
+      case "custom":
+        return "Custom float between 0.0 and 2.0."
+    }
+  }
+
+  if (task === "prioritization") {
+    switch (presetId) {
+      case "low":
+        return "Recommended: consistent ordering of risk scores."
+      case "medium":
+        return "Moderate ranking variance."
+      case "high":
+      case "max":
+      case "xhigh":
+        return "High variance in priority scoring."
+      case "custom":
+        return "Custom float between 0.0 and 2.0."
+    }
+  }
+
+  if (task === "qa") {
+    switch (presetId) {
+      case "low":
+        return "Direct answers that cite evidence only."
+      case "medium":
+        return "Recommended for Q&A: helpful but grounded."
+      case "high":
+      case "max":
+      case "xhigh":
+        return "Expansive, brainstorming style answers."
+      case "custom":
+        return "Custom float between 0.0 and 2.0."
+    }
+  }
+
+  return TEMPERATURE_PRESETS.find((p) => p.id === presetId)?.hint ?? "Adjust output sampling temperature."
 }
