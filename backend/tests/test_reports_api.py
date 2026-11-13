@@ -212,3 +212,82 @@ def test_reports_list_unknown_assessment_404(client, auth):
 
 def test_download_unknown_report_404(client, auth):
     assert client.get("/api/reports/99999", headers=auth).status_code == 404
+
+# --- deletion --------------------------------------------------------------------
+
+def _seed_report(assessment_id: int, *, status: ReportStatus, stored_name: str = "", pdf: bytes | None = None) -> int:
+    """Create a report row directly, so the test never depends on Chromium."""
+    with SessionLocal() as db:
+        report = Report(assessment_id=assessment_id, status=status, file_path=stored_name)
+        db.add(report)
+        db.commit()
+        db.refresh(report)
+        report_id = report.id
+    if stored_name and pdf is not None:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        (REPORTS_DIR / stored_name).write_bytes(pdf)
+    return report_id
+
+
+def test_delete_ready_report_removes_row_and_pdf(client, auth):
+    assessment_id = _seed_assessment(client, auth)
+    report_id = _seed_report(
+        assessment_id, status=ReportStatus.ready, stored_name="delete-me-test.pdf", pdf=b"%PDF-1.4 fake"
+    )
+    pdf_path = REPORTS_DIR / "delete-me-test.pdf"
+    assert pdf_path.is_file()
+
+    resp = client.delete(f"/api/reports/{report_id}", headers=auth)
+    assert resp.status_code == 204, resp.text
+
+    with SessionLocal() as db:
+        assert db.get(Report, report_id) is None
+    assert not pdf_path.exists()  # the PDF is cleaned up, not orphaned on disk
+    listed = client.get(f"/api/assessments/{assessment_id}/reports", headers=auth).json()
+    assert report_id not in [r["id"] for r in listed]
+
+
+def test_delete_pending_report_is_refused(client, auth):
+    """The background job still owns a pending row; deleting it would break the job."""
+    assessment_id = _seed_assessment(client, auth)
+    report_id = _seed_report(assessment_id, status=ReportStatus.pending)
+
+    resp = client.delete(f"/api/reports/{report_id}", headers=auth)
+    assert resp.status_code == 409, resp.text
+    with SessionLocal() as db:
+        assert db.get(Report, report_id) is not None
+
+
+def test_delete_report_outside_reports_dir_keeps_the_file(client, auth, tmp_path):
+    """A tampered file_path must never unlink anything outside the reports folder."""
+    assessment_id = _seed_assessment(client, auth)
+    outside = tmp_path / "keep-me.txt"
+    outside.write_text("important", encoding="utf-8")
+    report_id = _seed_report(assessment_id, status=ReportStatus.ready, stored_name="../../keep-me.txt")
+
+    resp = client.delete(f"/api/reports/{report_id}", headers=auth)
+    assert resp.status_code == 204, resp.text
+    assert outside.is_file()  # row is gone, but the outside file survives
+
+
+def test_delete_report_unknown_404(client, auth):
+    assert client.delete("/api/reports/99999", headers=auth).status_code == 404
+
+
+def test_delete_report_viewer_403(client, auth):
+    assessment_id = _seed_assessment(client, auth)
+    report_id = _seed_report(assessment_id, status=ReportStatus.ready, stored_name="viewer-guard-test.pdf", pdf=b"%PDF-1.4 x")
+    client.post(
+        "/api/users",
+        json={"email": "viewer-delete-reports@example.com", "password": "viewerpw123", "role": "viewer"},
+        headers=auth,
+    )
+    token = client.post(
+        "/api/auth/login",
+        data={"username": "viewer-delete-reports@example.com", "password": "viewerpw123"},
+    ).json()["access_token"]
+
+    resp = client.delete(f"/api/reports/{report_id}", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 403
+    with SessionLocal() as db:
+        assert db.get(Report, report_id) is not None

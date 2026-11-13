@@ -1,9 +1,18 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Trash2 } from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { HelpHint } from "@/components/help-hint"
 import { api, getToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
@@ -57,6 +66,7 @@ export function AssessmentReports({
   const queryClient = useQueryClient()
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<number | null>(null)
+  const [deleting, setDeleting] = useState<Report | null>(null)
 
   const reports = useQuery({
     queryKey: ["reports", assessmentId],
@@ -68,6 +78,14 @@ export function AssessmentReports({
   const generate = useMutation({
     mutationFn: () => api<Report>(`/api/assessments/${assessmentId}/report`, { method: "POST" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reports", assessmentId] }),
+  })
+
+  const remove = useMutation({
+    mutationFn: (reportId: number) => api<void>(`/api/reports/${reportId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      setDeleting(null)
+      queryClient.invalidateQueries({ queryKey: ["reports", assessmentId] })
+    },
   })
 
   async function handleDownload(report: Report) {
@@ -138,26 +156,77 @@ export function AssessmentReports({
               <span className="text-sm font-medium">Report #{report.id}</span>
               <Badge variant={STATUS_VARIANT[report.status]}>{report.status}</Badge>
             </div>
-            {report.status === "ready" && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={downloadingId === report.id}
-                onClick={() => handleDownload(report)}
-              >
-                {downloadingId === report.id ? "Downloading…" : "Download PDF"}
-              </Button>
-            )}
+            <div className="flex shrink-0 items-center gap-1.5">
+              {report.status === "ready" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={downloadingId === report.id}
+                  onClick={() => handleDownload(report)}
+                >
+                  {downloadingId === report.id ? "Downloading…" : "Download PDF"}
+                </Button>
+              )}
+              {canGenerate && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  disabled={report.status === "pending"}
+                  onClick={() => setDeleting(report)}
+                >
+                  <Trash2 className="size-3.5" />
+                  Delete
+                </Button>
+              )}
+            </div>
           </div>
           <p className="text-xs text-muted-foreground">
             Created {formatDate(report.created_at)}
             {report.finished_at ? ` · finished ${formatDate(report.finished_at)}` : ""}
           </p>
           {report.status === "failed" && report.error && (
-            <p className="break-words text-xs text-destructive">{report.error}</p>
+            <details className="text-xs">
+              <summary className="cursor-pointer text-destructive">
+                Report generation failed. Show details
+              </summary>
+              <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 font-mono text-[11px] text-muted-foreground">
+                {report.error}
+              </pre>
+            </details>
           )}
         </div>
       ))}
+
+      <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete report?</DialogTitle>
+            <DialogDescription>
+              Report #{deleting?.id} and its generated PDF will be removed. Findings and the run itself are not
+              affected. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {remove.error && (
+            <Alert variant="destructive">
+              <AlertDescription>{remove.error.message}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={() => setDeleting(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={remove.isPending}
+              onClick={() => deleting && remove.mutate(deleting.id)}
+            >
+              {remove.isPending ? "Deleting…" : "Delete report"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

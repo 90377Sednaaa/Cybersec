@@ -1,9 +1,11 @@
-"""Reports API (M4 T4.4): trigger generation (202 + background job), poll, download.
+"""Reports API (M4 T4.4): trigger generation (202 + background job), poll, download, delete.
 
 Generation never blocks the API: POST creates a `pending` Report row and
 returns 202; the PDF is printed by a background task (app/reporting.py) that
 flips the row to `ready`/`failed`. Downloads stream application/pdf only
 after the row is `ready`; a pending/failed row is a 409 with the reason.
+Deleting a report removes the row and its PDF, and is refused while the
+background job still owns the row.
 """
 
 from pathlib import Path
@@ -77,3 +79,29 @@ def download_report(
         media_type="application/pdf",
         filename=f"security-report-assessment-{report.assessment_id}.pdf",
     )
+
+
+@router.delete("/reports/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_report(
+    report_id: int,
+    _: User = Depends(require_role(Role.admin, Role.assessor)),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete a report row and its generated PDF.
+
+    A pending report is refused: the background job still owns the row and would
+    fail against a deleted record. The file is only unlinked after its path is
+    proven to live inside REPORTS_DIR, the same guard the download uses, so a
+    tampered `file_path` can never delete something outside the reports folder.
+    """
+    report = _get_report_or_404(db, report_id)
+    if report.status == ReportStatus.pending:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Report generation is still in progress")
+
+    if report.file_path:
+        resolved = (REPORTS_DIR / report.file_path).resolve()
+        if resolved.is_relative_to(REPORTS_DIR.resolve()):
+            resolved.unlink(missing_ok=True)
+
+    db.delete(report)
+    db.commit()
