@@ -135,6 +135,11 @@ The model catalog, model-aware effort levels, settings UI, the assessment run pa
 also verified in the running app in both themes.
 All M1-M4 modules are code complete; backend and frontend are ready for integration waves I1-I4 (`TASK_PLAN.md`).
 
+**Active working plan:** [docs/fix-plan.md](docs/fix-plan.md) — the 2026-11-13 M1-M4 audit (39 findings,
+five of them high), sequenced into waves W0-W5 with four proposals (`05`-`08`) and five open decisions.
+Open for review; no fix code has landed yet. This is additive and does not reorder the course milestones
+below. When a wave lands, refresh the module rows and test counts here in that wave's final commit.
+
 **Next up, in order:**
 1. **M5 T5.1** — install Nmap, the OWASP ZAP daemon, and Playwright Chromium (`PLAN.md` §11). None are
    installed yet: the ZAP runner degrades gracefully and the report job fails with an actionable log
