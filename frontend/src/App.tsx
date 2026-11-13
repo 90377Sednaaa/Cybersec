@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth"
 import { DashboardPage } from "@/pages/dashboard"
 import { LoginPage } from "@/pages/login"
 import { AssessmentsPage } from "@/pages/assessments"
+import { AssessmentRunPage } from "@/pages/assessment-run"
 import { FindingsPage } from "@/pages/findings"
 import { SettingsPage } from "@/pages/settings"
 import { TargetsPage } from "@/pages/targets"
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/targets" element={<TargetsPage />} />
         <Route path="/assessments" element={<AssessmentsPage />} />
+        <Route path="/assessments/:id" element={<AssessmentRunPage />} />
         <Route path="/findings" element={<FindingsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

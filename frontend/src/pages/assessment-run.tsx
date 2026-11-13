@@ -1,15 +1,17 @@
 import { useEffect, useRef } from "react"
+import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { ArrowLeft } from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useScanEvents } from "@/lib/scan-events"
 import { AssessmentReports } from "@/pages/assessment-reports"
-import type { AssessmentDetail, AssessmentStatus, Job, JobStatus } from "@/lib/types"
+import type { AssessmentDetail, AssessmentStatus, Job, JobStatus, Target } from "@/lib/types"
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline"
 
@@ -54,13 +56,11 @@ function JobCard({ job }: { job: Job }) {
   )
 }
 
-export function AssessmentRunSheet({
-  assessmentId,
-  onClose,
-}: {
-  assessmentId: number | null
-  onClose: () => void
-}) {
+export function AssessmentRunPage() {
+  const { id } = useParams()
+  const assessmentId = Number(id)
+  const validId = Number.isInteger(assessmentId) && assessmentId > 0
+
   const { hasRole } = useAuth()
   const queryClient = useQueryClient()
   const logRef = useRef<HTMLDivElement>(null)
@@ -68,12 +68,19 @@ export function AssessmentRunSheet({
   const { data, isLoading, error } = useQuery({
     queryKey: ["assessment", assessmentId],
     queryFn: () => api<AssessmentDetail>(`/api/assessments/${assessmentId}`),
-    enabled: assessmentId !== null,
+    enabled: validId,
     refetchInterval: (query) => (query.state.data?.status === "running" ? 2000 : false),
   })
 
+  const targets = useQuery({
+    queryKey: ["targets"],
+    queryFn: () => api<Target[]>("/api/targets"),
+    enabled: validId,
+  })
+  const targetName = targets.data?.find((target) => target.id === data?.target_id)?.name
+
   // Any state-change event refreshes the progress cards immediately.
-  const { lines, connected } = useScanEvents(assessmentId, (event) => {
+  const { lines, connected } = useScanEvents(validId ? assessmentId : null, (event) => {
     if (event.type !== "log") {
       queryClient.invalidateQueries({ queryKey: ["assessment", assessmentId] })
       queryClient.invalidateQueries({ queryKey: ["assessments"] })
@@ -97,78 +104,120 @@ export function AssessmentRunSheet({
   const jobTool = new Map(data?.jobs.map((j) => [j.id, j.tool]))
   const canCancel = hasRole("admin", "assessor")
 
+  if (!validId) {
+    return (
+      <div className="space-y-4">
+        <Link
+          to="/assessments"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" />
+          Assessments
+        </Link>
+        <Alert variant="destructive">
+          <AlertDescription>Assessment #{id} is not a valid run identifier.</AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
   return (
-    <Sheet
-      open={assessmentId !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose()
-      }}
-    >
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-        <SheetHeader>
-          <SheetTitle>Assessment #{assessmentId}</SheetTitle>
-          <SheetDescription>Pipeline jobs, progress and live output for this run.</SheetDescription>
-        </SheetHeader>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3">
+        <Link
+          to="/assessments"
+          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" />
+          Assessments
+        </Link>
 
-        <div className="space-y-4 px-4 pb-4">
-          {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error.message}</AlertDescription>
-            </Alert>
-          )}
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">Assessment #{assessmentId}</h1>
+          {data && <Badge variant={STATUS_VARIANT[data.status]}>{data.status}</Badge>}
           {data && (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={STATUS_VARIANT[data.status]}>{data.status}</Badge>
-                <Badge variant={data.intensity === "full_intrusive" ? "destructive" : "secondary"}>
-                  {data.intensity === "full_intrusive" ? "full / intrusive" : "passive / safe"}
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {finishedJobs} of {data.jobs.length} jobs finished
-                </span>
-                {data.status === "running" && canCancel && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="ml-auto"
-                    disabled={cancel.isPending}
-                    onClick={() => cancel.mutate()}
-                  >
-                    {cancel.isPending ? "Cancelling…" : "Cancel run"}
-                  </Button>
+            <Badge variant={data.intensity === "full_intrusive" ? "destructive" : "secondary"}>
+              {data.intensity === "full_intrusive" ? "full / intrusive" : "passive / safe"}
+            </Badge>
+          )}
+          {data?.status === "running" && canCancel && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="ml-auto"
+              disabled={cancel.isPending}
+              onClick={() => cancel.mutate()}
+            >
+              {cancel.isPending ? "Cancelling…" : "Cancel run"}
+            </Button>
+          )}
+        </div>
+
+        <p className="text-sm text-muted-foreground">
+          {targetName ?? (data ? `Target #${data.target_id}` : "Pipeline jobs, progress and live output for this run.")}
+          {data && ` · ${finishedJobs} of ${data.jobs.length} jobs finished`}
+          {data?.started_at && ` · started ${formatDate(data.started_at)}`}
+          {data?.finished_at && ` · finished ${formatDate(data.finished_at)}`}
+        </p>
+
+        {data && data.categories.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {data.categories.map((category) => (
+              <Badge key={category} variant="outline" className="font-normal">
+                {category}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {cancel.error && (
+        <Alert variant="destructive">
+          <AlertDescription>{cancel.error.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {data && (
+        <>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Jobs</CardTitle>
+                <CardDescription>Each tool runs in sequence and reports its own progress.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {data.jobs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No jobs planned for this run.</p>
+                ) : (
+                  data.jobs.map((job) => <JobCard key={job.id} job={job} />)
                 )}
-              </div>
+              </CardContent>
+            </Card>
 
-              {cancel.error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{cancel.error.message}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Categories</p>
-                <ul className="list-inside list-disc text-sm text-muted-foreground">
-                  {data.categories.map((category) => (
-                    <li key={category}>{category}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Jobs</p>
-                {data.jobs.length === 0 && <p className="text-sm text-muted-foreground">No jobs planned for this run.</p>}
-                {data.jobs.map((job) => (
-                  <JobCard key={job.id} job={job} />
-                ))}
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Live log</p>
-                  <span className="text-xs text-muted-foreground">{connected ? "● live" : "○ not connected"}</span>
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-1.5">
+                    <CardTitle className="text-base">Live output</CardTitle>
+                    <CardDescription>Streamed straight from the running tools.</CardDescription>
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {connected ? "● live" : "○ not connected"}
+                  </span>
                 </div>
-                <div ref={logRef} className="h-64 overflow-y-auto rounded-md border bg-muted/40 p-2 font-mono text-xs">
+              </CardHeader>
+              <CardContent>
+                <div
+                  ref={logRef}
+                  className="h-[26rem] overflow-y-auto rounded-md border bg-muted/40 p-2 font-mono text-xs"
+                >
                   {lines.length === 0 ? (
                     <p className="text-muted-foreground">
                       {connected
@@ -181,16 +230,20 @@ export function AssessmentRunSheet({
                         <span className="text-muted-foreground">[{jobTool.get(line.jobId) ?? `job ${line.jobId}`}]</span>{" "}
                         {line.text}
                       </div>
-                                    ))
+                    ))
                   )}
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+          </div>
 
+          <Card>
+            <CardContent>
               <AssessmentReports assessmentId={data.id} assessmentStatus={data.status} />
-            </>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
   )
 }

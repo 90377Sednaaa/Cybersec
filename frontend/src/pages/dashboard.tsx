@@ -214,7 +214,7 @@ export function DashboardPage() {
           {recent.map((assessment) => (
             <Link
               key={assessment.id}
-              to="/assessments"
+              to={`/assessments/${assessment.id}`}
               className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm hover:bg-muted/50"
             >
               <span className="font-medium">

@@ -1,5 +1,6 @@
 import { useState } from "react"
 import type { FormEvent } from "react"
+import { useNavigate } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
 
@@ -26,7 +27,6 @@ import {
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { HelpHint } from "@/components/help-hint"
-import { AssessmentRunSheet } from "@/pages/assessment-run"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { ASSESSMENT_CATEGORIES } from "@/lib/types"
@@ -221,7 +221,7 @@ export function AssessmentsPage() {
 
   const targetNames = new Map(targets.data?.map((t) => [t.id, t.name]))
   const { data, isLoading, error } = assessments
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const navigate = useNavigate()
 
   return (
     <div className="space-y-6">
@@ -285,10 +285,14 @@ export function AssessmentsPage() {
                 </TableRow>
               )}
               {data?.map((assessment) => (
-                                <TableRow
+                <TableRow
                   key={assessment.id}
                   className="cursor-pointer"
-                  onClick={() => setSelectedId(assessment.id)}
+                  tabIndex={0}
+                  onClick={() => navigate(`/assessments/${assessment.id}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") navigate(`/assessments/${assessment.id}`)
+                  }}
                 >
                   <TableCell className="font-mono text-xs">#{assessment.id}</TableCell>
                   <TableCell className="font-medium">
@@ -313,8 +317,6 @@ export function AssessmentsPage() {
           </Table>
         </CardContent>
          </Card>
-
-      <AssessmentRunSheet assessmentId={selectedId} onClose={() => setSelectedId(null)} />
     </div>
   )
 }
