@@ -318,3 +318,63 @@ def test_effort_is_persisted_and_defaults_to_empty(client, auth):
         headers=auth,
     )
     assert resp.json()["effort"] == ""
+
+
+def test_placeholder_key_is_rejected_before_it_is_stored(client, auth):
+    """A hand-typed stub must not be stored as a working credential.
+
+    Regression: `sk-or-v1-demo-key` was accepted, so the provider reported
+    has_api_key=true and every scan failed with a 401 that looked like an
+    outage instead of a configuration mistake.
+    """
+    resp = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "api_key": "sk-or-v1-demo-key", "enabled": False},
+        headers=auth,
+    )
+    assert resp.status_code == 400, resp.text
+    assert "placeholder" in resp.json()["detail"].lower()
+    assert "sk-or-v1-demo-key" not in resp.text
+    assert client.get("/api/settings/llm", headers=auth).json()["providers"] == []
+
+
+def test_truncated_prefixed_key_is_rejected(client, auth):
+    """Right prefix, wrong length: the shape of a key that was cut off mid-paste."""
+    resp = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "api_key": "sk-or-v1-abc", "enabled": False},
+        headers=auth,
+    )
+    assert resp.status_code == 400, resp.text
+    assert "too short" in resp.json()["detail"].lower()
+
+
+def test_update_also_rejects_placeholder_key(client, auth):
+    """The guard covers PUT too, so a bad key cannot slip in after creation."""
+    created = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "api_key": "sk-or-v1-" + "a" * 64, "enabled": False},
+        headers=auth,
+    )
+    assert created.status_code == 201, created.text
+    resp = _put_provider(client, auth, api_key="sk-or-v1-placeholder")
+    assert resp.status_code == 400, resp.text
+
+
+def test_realistic_key_and_empty_local_key_are_accepted(client, auth):
+    """The guard must not block a real key, nor the documented no-auth local path."""
+    real = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "api_key": "sk-or-v1-" + "b" * 64, "enabled": False},
+        headers=auth,
+    )
+    assert real.status_code == 201, real.text
+    assert real.json()["has_api_key"] is True
+
+    local = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "Ollama", "base_url": "http://127.0.0.1:11434/v1", "api_key": "", "enabled": False},
+        headers=auth,
+    )
+    assert local.status_code == 201, local.text
+    assert local.json()["has_api_key"] is False

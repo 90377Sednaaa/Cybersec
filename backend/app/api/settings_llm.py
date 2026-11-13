@@ -56,6 +56,61 @@ def _normalize_effort(raw: str) -> str:
     return value if _EFFORT_VALUE.fullmatch(value) else ""
 
 
+# A key that announces a known provider but carries an implausibly short body is
+# almost always hand-typed ("sk-or-v1-demo-key"). Real keys are far longer: an
+# OpenRouter key is the prefix plus 64 hex chars. Providers without a recognized
+# prefix (local Ollama/LM Studio stubs) are left alone, and an empty key stays the
+# documented "send no Authorization header" path, so local servers still work.
+_PREFIX_MIN_BODY = {
+    "sk-or-v1-": 32,  # OpenRouter
+    "sk-proj-": 32,  # OpenAI project keys
+    "sk-ant-": 32,  # Anthropic
+    "gsk_": 32,  # Groq
+    "AIza": 30,  # Google AI Studio
+}
+
+_PLACEHOLDER_MARKERS = (
+    "demo",
+    "placeholder",
+    "changeme",
+    "change-me",
+    "replace-me",
+    "your-api-key",
+    "your_api_key",
+    "insert-key",
+    "example",
+)
+
+
+def _reject_placeholder_key(api_key: str) -> None:
+    """Refuse obviously hand-typed placeholder keys before they are encrypted.
+
+    Without this, any non-empty string is stored and the provider reports
+    `has_api_key: true`, so every scan calls the provider and fails with a 401
+    that looks like an outage instead of a configuration mistake. The message
+    never echoes the key itself.
+    """
+    key = api_key.strip()
+    if not key:
+        return
+    lowered = key.lower()
+    marker = next((m for m in _PLACEHOLDER_MARKERS if m in lowered), None)
+    if marker is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"api_key looks like a placeholder (contains '{marker}'). Paste the real key from "
+            "the provider console, or leave the field empty for a local model server that "
+            "needs no authentication.",
+        )
+    for prefix, min_body in _PREFIX_MIN_BODY.items():
+        if key.startswith(prefix) and len(key) - len(prefix) < min_body:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"api_key starts with '{prefix}' but is only {len(key)} characters, too short "
+                "to be a real key. Paste the complete key from the provider console.",
+            )
+
+
 def _ensure_task_configs(db: Session) -> None:
     existing = {row.task for row in db.scalars(select(LLMTaskConfig))}
     for task in LLMTask:
@@ -89,6 +144,7 @@ def create_provider(
     user: User = Depends(require_role(Role.admin)),
 ) -> LLMProvider:
     _require_ack_if_enabling(body)
+    _reject_placeholder_key(body.api_key)
     provider = LLMProvider(
         name=body.name,
         base_url=body.base_url,
@@ -112,6 +168,7 @@ def update_provider(
 ) -> LLMProvider:
     provider = _get_provider_or_404(db, provider_id)
     _require_ack_if_enabling(body, provider)
+    _reject_placeholder_key(body.api_key)
     if body.name:
         provider.name = body.name
     if body.base_url:

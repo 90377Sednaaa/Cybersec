@@ -130,7 +130,7 @@ table in [README.md](README.md) is kept in sync by the M5 steward.
 | **M5** Docs/QA/deploy | in progress | Router hand-offs merged (T5.4 partial). Tool dependencies pending install (Nmap, OWASP ZAP, Playwright Chromium). Evidence pack & rehearsal pending. |
 
 Verification on this snapshot: `npm run build` passes (0 errors), `npm run lint` reports 0 errors / 8 warnings,
-`pytest tests -q` reports **166 passed**; live smoke test returned 200 for `/health`, login, and all list endpoints.
+`pytest tests -q` reports **170 passed**; live smoke test returned 200 for `/health`, login, and all list endpoints.
 The model catalog, model-aware effort levels and settings UI were also verified in the running app in both themes.
 All M1-M4 modules are code complete; backend and frontend are ready for integration waves I1-I4 (`TASK_PLAN.md`).
 
@@ -146,4 +146,10 @@ All M1-M4 modules are code complete; backend and frontend are ready for integrat
 - **Resolved:** Authenticated binary report download: solved with fetch-based blob download in `src/pages/assessment-reports.tsx`.
 - **Resolved:** `src/mocks/data.ts` task name drift: fixed with real `LLMTask` enum values.
 - Still open: Evidence binary download from the detail drawer (currently displays uploaded file metadata; download wiring can be added when needed).
+- Still open: **AI interpretation needs a real provider key.** The OpenRouter provider row is disabled with no
+  key, so scans complete on the rule-based normalizer alone and skip AI cleanly (`NoProviderConfigured`).
+  Paste a real key in Settings and re-enable the provider to turn AI findings on. Placeholder keys are now
+  rejected at save time (400), so a stub can no longer be stored as `has_api_key: true`.
 - Frontend has no automated test harness (Vitest/Playwright config pending). Verified by live browser runs and build/lint.
+  The only "test" controls in the UI are the LLM Settings "Test Connection" probe and `npm run lint` (oxlint);
+  neither is a test suite.
