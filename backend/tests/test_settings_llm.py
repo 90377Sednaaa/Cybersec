@@ -378,3 +378,50 @@ def test_realistic_key_and_empty_local_key_are_accepted(client, auth):
     )
     assert local.status_code == 201, local.text
     assert local.json()["has_api_key"] is False
+
+
+def test_delete_provider_removes_it_and_clears_task_assignments(client, auth):
+    """Deleting a provider must not leave a task pointing at a dead row."""
+    created = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "api_key": "sk-or-v1-" + "c" * 64, "enabled": True, "acknowledged_external_processing": True},
+        headers=auth,
+    )
+    assert created.status_code == 201, created.text
+    provider_id = created.json()["id"]
+
+    assigned = client.put(
+        "/api/settings/llm/tasks/interpretation",
+        json={"provider_id": provider_id, "model": "google/gemini-4-carbon", "temperature": 0.4},
+        headers=auth,
+    )
+    assert assigned.status_code == 200, assigned.text
+    assert assigned.json()["provider_id"] == provider_id
+
+    deleted = client.delete(f"/api/settings/llm/providers/{provider_id}", headers=auth)
+    assert deleted.status_code == 204, deleted.text
+
+    listed = client.get("/api/settings/llm", headers=auth).json()
+    assert listed["providers"] == []
+    config = next(c for c in listed["task_configs"] if c["task"] == "interpretation")
+    assert config["provider_id"] is None
+    assert config["model"] == ""
+
+
+def test_delete_unknown_provider_returns_404(client, auth):
+    resp = client.delete("/api/settings/llm/providers/999", headers=auth)
+    assert resp.status_code == 404, resp.text
+
+
+def test_delete_provider_is_admin_only(client, auth, viewer_auth):
+    created = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "api_key": "sk-or-v1-" + "d" * 64, "enabled": False},
+        headers=auth,
+    )
+    assert created.status_code == 201, created.text
+    provider_id = created.json()["id"]
+
+    resp = client.delete(f"/api/settings/llm/providers/{provider_id}", headers=viewer_auth)
+    assert resp.status_code == 403, resp.text
+    assert len(client.get("/api/settings/llm", headers=auth).json()["providers"]) == 1

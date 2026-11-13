@@ -4,6 +4,7 @@ Contract (Wave-1 sketch, additive):
     GET  /api/settings/llm                      -> {providers[], task_configs[]}
     POST /api/settings/llm/providers            -> LLMProviderOut (201)
     PUT  /api/settings/llm/providers/{id}       -> LLMProviderOut
+    DELETE /api/settings/llm/providers/{id}     -> 204 (additive, clears task assignments)
     PUT  /api/settings/llm/tasks/{task}         -> LLMTaskOut
     POST /api/settings/llm/test                 -> {ok, model, latency_ms, error?}
     GET  /api/settings/llm/providers/{id}/models -> LLMModelsOut (additive, read-only)
@@ -182,6 +183,29 @@ def update_provider(
     db.refresh(provider)
     catalog.invalidate(provider.id)
     return provider
+
+
+@router.delete("/providers/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_provider(
+    provider_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.admin)),
+) -> None:
+    """Remove a provider and detach it from every task that pointed at it.
+
+    SQLite foreign keys are not enforced in this app, so the reference is cleared
+    explicitly in the same transaction. Leaving it dangling would make a task look
+    configured in the UI while `resolve_task_config` quietly refuses to run it.
+    The assigned model is cleared too: a model ID without its provider is not a
+    usable configuration, and keeping it would only invite a failed scan later.
+    """
+    provider = _get_provider_or_404(db, provider_id)
+    for config in db.scalars(select(LLMTaskConfig).where(LLMTaskConfig.provider_id == provider_id)):
+        config.provider_id = None
+        config.model = ""
+    db.delete(provider)
+    db.commit()
+    catalog.invalidate(provider_id)
 
 
 @router.get("/providers/{provider_id}/models", response_model=LLMModelsOut)

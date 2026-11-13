@@ -1,7 +1,7 @@
 import { useState } from "react"
 import type { FormEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bot, Check, Eye, EyeOff, Info, KeyRound, Pencil, Plus, RefreshCw, ShieldCheck, Sparkles } from "lucide-react"
+import { Bot, Check, Eye, EyeOff, Info, KeyRound, Pencil, Plus, RefreshCw, ShieldCheck, Sparkles, Trash2 } from "lucide-react"
 
 import { HelpHint } from "@/components/help-hint"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -309,6 +309,17 @@ export function SettingsPage() {
   const isAdmin = hasRole("admin")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<LLMProvider | null>(null)
+  const [deleting, setDeleting] = useState<LLMProvider | null>(null)
+  const queryClient = useQueryClient()
+
+  const deleteMutation = useMutation({
+    mutationFn: (providerId: number) =>
+      api<void>(`/api/settings/llm/providers/${providerId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      setDeleting(null)
+      queryClient.invalidateQueries({ queryKey: ["llm-settings"] })
+    },
+  })
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["llm-settings"],
@@ -457,6 +468,15 @@ export function SettingsPage() {
                         <Pencil className="size-3" />
                         Edit
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleting(provider)}
+                      >
+                        <Trash2 className="size-3" />
+                        Delete
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -477,6 +497,36 @@ export function SettingsPage() {
             </DialogDescription>
           </DialogHeader>
           <ProviderForm provider={editing} onDone={() => setDialogOpen(false)} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete provider?</DialogTitle>
+            <DialogDescription>
+              {deleting?.name} will be removed along with its stored key. Any task that uses it is reset to no
+              provider, so AI analysis stops until another provider is assigned. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteMutation.error && (
+            <Alert variant="destructive">
+              <AlertDescription>{deleteMutation.error.message}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={() => setDeleting(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => deleting && deleteMutation.mutate(deleting.id)}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete provider"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
