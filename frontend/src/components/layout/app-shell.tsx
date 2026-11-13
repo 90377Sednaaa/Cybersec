@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react"
 import { NavLink, Outlet } from "react-router-dom"
 import {
   Crosshair,
@@ -9,8 +10,10 @@ import {
   ShieldAlert,
   Sun,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 
 import logo from "@/assets/aletheia-logo.png"
+import { ShortcutsMenu } from "@/components/shortcuts-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -22,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
-import { useAppShortcuts } from "@/lib/shortcuts"
+import { NAV_SHORTCUTS, useAppShortcuts, useShowShortcutHints } from "@/lib/shortcuts"
 import {
   Sidebar,
   SidebarContent,
@@ -42,13 +45,14 @@ import {
 import { useAuth } from "@/lib/auth"
 import { useTheme } from "@/lib/theme"
 
-const NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, shortcut: "d" },
-  { to: "/targets", label: "Targets", icon: Crosshair, shortcut: "t" },
-  { to: "/assessments", label: "Assessments", icon: Radar, shortcut: "a" },
-  { to: "/findings", label: "Findings", icon: ShieldAlert, shortcut: "f" },
-  { to: "/settings", label: "Settings", icon: Settings, shortcut: "s" },
-] as const
+/** Icons live here; the route, label and chord key all come from NAV_SHORTCUTS. */
+const NAV_ICONS: Record<string, LucideIcon> = {
+  "/": LayoutDashboard,
+  "/targets": Crosshair,
+  "/assessments": Radar,
+  "/findings": ShieldAlert,
+  "/settings": Settings,
+}
 
 function BrandHeader() {
   return (
@@ -67,26 +71,33 @@ function BrandHeader() {
 }
 
 function NavMenu() {
+  const [showHints] = useShowShortcutHints()
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Platform</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
-          {NAV_ITEMS.map(({ to, label, icon: Icon, shortcut }) => (
-            <SidebarMenuItem key={to}>
-              <NavLink to={to} end={to === "/"}>
-                {({ isActive }) => (
-                  <SidebarMenuButton isActive={isActive} tooltip={`${label} (g then ${shortcut})`}>
-                    <Icon className="size-4" />
-                    <span>{label}</span>
-                    <kbd className="ml-auto shrink-0 rounded border bg-muted px-1.5 font-mono text-[10px] font-normal text-muted-foreground/70">
-                      g {shortcut}
-                    </kbd>
-                  </SidebarMenuButton>
-                )}
-              </NavLink>
-            </SidebarMenuItem>
-          ))}
+          {NAV_SHORTCUTS.map(({ to, label, key }) => {
+            const Icon = NAV_ICONS[to] ?? LayoutDashboard
+            return (
+              <SidebarMenuItem key={to}>
+                <NavLink to={to} end={to === "/"}>
+                  {({ isActive }) => (
+                    <SidebarMenuButton isActive={isActive} tooltip={`${label} (g then ${key})`}>
+                      <Icon className="size-4" />
+                      <span>{label}</span>
+                      {showHints ? (
+                        <kbd className="ml-auto shrink-0 rounded border bg-muted px-1.5 font-mono text-[10px] font-normal text-muted-foreground/70 group-data-[collapsible=icon]:hidden">
+                          g {key}
+                        </kbd>
+                      ) : null}
+                    </SidebarMenuButton>
+                  )}
+                </NavLink>
+              </SidebarMenuItem>
+            )
+          })}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
@@ -146,7 +157,10 @@ function ThemeToggle() {
 }
 
 export function AppShell() {
-  useAppShortcuts()
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const toggleShortcuts = useCallback(() => setShortcutsOpen((prev) => !prev), [])
+  useAppShortcuts({ onToggleHelp: toggleShortcuts })
+
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">
@@ -166,7 +180,8 @@ export function AppShell() {
           <SidebarTrigger aria-label="Toggle sidebar" />
           <Separator orientation="vertical" className="mr-1 !h-5" />
           <p className="text-sm text-muted-foreground">Security Assessment &amp; Vulnerability Analysis</p>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <ShortcutsMenu open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
             <ThemeToggle />
           </div>
         </header>
