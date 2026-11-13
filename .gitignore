@@ -28,5 +28,6 @@ backend/evidence/*
 # Generated report PDFs are runtime artifacts (M4 T4.4)
 backend/reports/*
 
-# WorkBuddy agent skills are local agent config, not app source (keep out of repo)
-.workbuddy-ai/skills/
+# WorkBuddy agent skills and memory are local agent config, not app source
+# (keep out of repo)
+.workbuddy-ai/

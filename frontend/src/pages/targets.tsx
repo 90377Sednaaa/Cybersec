@@ -2,6 +2,7 @@ import { useRef, useState } from "react"
 import type { FormEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
+import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -67,6 +68,7 @@ function RegisterTargetDialog() {
       setInScope("")
       setOutScope("")
       setError(null)
+      toast.success("Target registered")
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Failed to register target"),
   })

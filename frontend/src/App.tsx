@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 
 import { AppShell } from "@/components/layout/app-shell"
 import { Spinner } from "@/components/ui/spinner"
+import { Toaster } from "@/components/ui/sonner"
 import { useAuth } from "@/lib/auth"
 
 import { DashboardPage } from "@/pages/dashboard"
@@ -34,23 +35,26 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        element={
-          <ProtectedRoute>
-            <AppShell />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/targets" element={<TargetsPage />} />
-        <Route path="/assessments" element={<AssessmentsPage />} />
-        <Route path="/assessments/:id" element={<AssessmentRunPage />} />
-        <Route path="/findings" element={<FindingsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Toaster />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          element={
+            <ProtectedRoute>
+              <AppShell />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/targets" element={<TargetsPage />} />
+          <Route path="/assessments" element={<AssessmentsPage />} />
+          <Route path="/assessments/:id" element={<AssessmentRunPage />} />
+          <Route path="/findings" element={<FindingsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   )
 }

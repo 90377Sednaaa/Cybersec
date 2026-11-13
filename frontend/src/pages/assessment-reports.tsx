@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Trash2 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -77,7 +78,10 @@ export function AssessmentReports({
 
   const generate = useMutation({
     mutationFn: () => api<Report>(`/api/assessments/${assessmentId}/report`, { method: "POST" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reports", assessmentId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reports", assessmentId] })
+      toast.success("Report generation started")
+    },
   })
 
   const remove = useMutation({
@@ -85,6 +89,7 @@ export function AssessmentReports({
     onSuccess: () => {
       setDeleting(null)
       queryClient.invalidateQueries({ queryKey: ["reports", assessmentId] })
+      toast.success("Report deleted")
     },
   })
 

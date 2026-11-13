@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
+import { useAppShortcuts } from "@/lib/shortcuts"
 import {
   Sidebar,
   SidebarContent,
@@ -42,11 +43,11 @@ import { useAuth } from "@/lib/auth"
 import { useTheme } from "@/lib/theme"
 
 const NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/targets", label: "Targets", icon: Crosshair },
-  { to: "/assessments", label: "Assessments", icon: Radar },
-  { to: "/findings", label: "Findings", icon: ShieldAlert },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/", label: "Dashboard", icon: LayoutDashboard, shortcut: "d" },
+  { to: "/targets", label: "Targets", icon: Crosshair, shortcut: "t" },
+  { to: "/assessments", label: "Assessments", icon: Radar, shortcut: "a" },
+  { to: "/findings", label: "Findings", icon: ShieldAlert, shortcut: "f" },
+  { to: "/settings", label: "Settings", icon: Settings, shortcut: "s" },
 ] as const
 
 function BrandHeader() {
@@ -71,13 +72,16 @@ function NavMenu() {
       <SidebarGroupLabel>Platform</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+          {NAV_ITEMS.map(({ to, label, icon: Icon, shortcut }) => (
             <SidebarMenuItem key={to}>
               <NavLink to={to} end={to === "/"}>
                 {({ isActive }) => (
-                  <SidebarMenuButton isActive={isActive} tooltip={label}>
+                  <SidebarMenuButton isActive={isActive} tooltip={`${label} (g then ${shortcut})`}>
                     <Icon className="size-4" />
                     <span>{label}</span>
+                    <kbd className="ml-auto shrink-0 rounded border bg-muted px-1.5 font-mono text-[10px] font-normal text-muted-foreground/70">
+                      g {shortcut}
+                    </kbd>
                   </SidebarMenuButton>
                 )}
               </NavLink>
@@ -142,6 +146,7 @@ function ThemeToggle() {
 }
 
 export function AppShell() {
+  useAppShortcuts()
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">

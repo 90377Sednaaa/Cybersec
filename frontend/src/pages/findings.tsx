@@ -1,9 +1,11 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { ShieldAlert } from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { EmptyState } from "@/components/empty-state"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -160,16 +162,16 @@ export function FindingsPage() {
               {!isLoading && data?.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="h-32 text-center">
-                    <div className="flex flex-col items-center gap-1.5">
-                      <p className="text-sm font-medium">
-                        {filtersActive ? "No findings match these filters" : "No findings yet"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {filtersActive
+                    <EmptyState
+                      icon={ShieldAlert}
+                      title={filtersActive ? "No findings match these filters" : "No findings yet"}
+                      description={
+                        filtersActive
                           ? "Clear a filter to see more."
-                          : "Findings appear here after an assessment completes and the AI interprets its results."}
-                      </p>
-                    </div>
+                          : "Findings appear here after an assessment completes and the AI interprets its results."
+                      }
+                      className="py-4"
+                    />
                   </TableCell>
                 </TableRow>
               )}

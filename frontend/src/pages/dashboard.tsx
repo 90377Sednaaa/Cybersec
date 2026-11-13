@@ -1,12 +1,13 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Crosshair, Radar, ShieldAlert, ShieldCheck } from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { EmptyState } from "@/components/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api } from "@/lib/api"
@@ -110,6 +111,32 @@ export function DashboardPage() {
   const targetNames = new Map(targets.data?.map((t) => [t.id, t.name]))
   const recent = [...(assessments.data ?? [])].sort((a, b) => b.id - a.id).slice(0, 5)
 
+  // Verification states are parallel, not a funnel, so they are shown as one
+  // stacked bar plus counts: how much of the pile a human has actually looked at.
+  const candidateCount = findings.data?.filter((f) => f.status === "ai_candidate").length ?? 0
+  const needsEvidenceCount = findings.data?.filter((f) => f.status === "needs_evidence").length ?? 0
+  const falsePositiveCount = findings.data?.filter((f) => f.status === "false_positive").length ?? 0
+  const totalFindings = findings.data?.length ?? 0
+  const reviewedCount = verifiedCount + needsEvidenceCount + falsePositiveCount
+  const reviewedPercent = totalFindings > 0 ? Math.round((reviewedCount / totalFindings) * 100) : 0
+
+  const reviewBuckets = [
+    { key: "verified", label: "Verified", count: verifiedCount, color: "var(--state-verified)" },
+    { key: "needs_evidence", label: "Needs evidence", count: needsEvidenceCount, color: "var(--severity-medium)" },
+    { key: "ai_candidate", label: "AI candidate", count: candidateCount, color: "var(--severity-low)" },
+    { key: "false_positive", label: "False positive", count: falsePositiveCount, color: "var(--muted-foreground)" },
+  ]
+
+  // Findings per run. The API returns the 200 newest findings, so old runs may
+  // undercount; the caption says so rather than pretending the data is complete.
+  const trendData = [...(assessments.data ?? [])]
+    .sort((a, b) => a.id - b.id)
+    .slice(-8)
+    .map((assessment) => ({
+      label: `#${assessment.id}`,
+      count: findings.data?.filter((f) => f.assessment_id === assessment.id).length ?? 0,
+    }))
+
   return (
     <div className="space-y-6">
       <div>
@@ -156,8 +183,9 @@ export function DashboardPage() {
         />
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
           <div className="space-y-1.5">
             <CardTitle>Findings by severity</CardTitle>
             <CardDescription>
@@ -194,6 +222,91 @@ export function DashboardPage() {
             )}
           </div>
         </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Verification progress</CardTitle>
+            <CardDescription>
+              {totalFindings === 0
+                ? "Nothing to review yet."
+                : `${reviewedCount} of ${totalFindings} findings reviewed (${reviewedPercent}%)`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+              {reviewBuckets.map((bucket) =>
+                bucket.count > 0 ? (
+                  <div
+                    key={bucket.key}
+                    style={{
+                      width: `${(bucket.count / Math.max(totalFindings, 1)) * 100}%`,
+                      backgroundColor: bucket.color,
+                    }}
+                    title={`${bucket.label}: ${bucket.count}`}
+                  />
+                ) : null,
+              )}
+            </div>
+            <ul className="space-y-2">
+              {reviewBuckets.map((bucket) => (
+                <li key={bucket.key} className="flex items-center gap-2 text-sm">
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: bucket.color }}
+                    aria-hidden="true"
+                  />
+                  <span className="text-muted-foreground">{bucket.label}</span>
+                  <span className="ml-auto font-medium tabular-nums">{bucket.count}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              Only verified findings count as confirmed. AI candidates stay marked until an assessor decides.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Findings per run</CardTitle>
+          <CardDescription>
+            Newest eight runs, by when they started. Counts cover the 200 newest findings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="relative h-56">
+            {trendData.length === 0 ? (
+              <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                No runs to chart yet.
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                {/* Bars, not an area: runs are discrete categories, and a single
+                    run would render as a lone dot with no shape to read. */}
+                <BarChart data={trendData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
+                  <Tooltip
+                    cursor={{ fill: "var(--muted)", opacity: 0.4 }}
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      color: "var(--popover-foreground)",
+                    }}
+                    labelFormatter={(label) => `Run ${label}`}
+                    formatter={(value) => [`${value} findings`, "Findings"]}
+                  />
+                  <Bar dataKey="count" fill="var(--primary)" radius={4} maxBarSize={56} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </CardContent>
       </Card>
 
       <Card>
@@ -204,12 +317,17 @@ export function DashboardPage() {
         <CardContent className="space-y-2">
           {assessments.isLoading && <Skeleton className="h-12 w-full" />}
           {!assessments.isLoading && recent.length === 0 && (
-            <div className="flex flex-col items-center gap-1.5 py-6 text-center">
-              <p className="text-sm font-medium">No assessments yet</p>
-              <Link to="/assessments" className="text-xs text-primary underline-offset-4 hover:underline">
-                Start one on the Assessments page
-              </Link>
-            </div>
+            <EmptyState
+              icon={Radar}
+              title="No assessments yet"
+              description="Runs of the scan pipeline appear here once you start one."
+              className="py-6"
+              action={
+                <Link to="/assessments" className="text-xs text-primary underline-offset-4 hover:underline">
+                  Start one on the Assessments page
+                </Link>
+              }
+            />
           )}
           {recent.map((assessment) => (
             <Link

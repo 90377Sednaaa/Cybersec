@@ -2,6 +2,7 @@ import { useState } from "react"
 import type { FormEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Bot, Check, Eye, EyeOff, Info, KeyRound, Pencil, Plus, RefreshCw, ShieldCheck, Sparkles, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 
 import { HelpHint } from "@/components/help-hint"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -97,6 +98,7 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["llm-settings"] })
       queryClient.invalidateQueries({ queryKey: ["llm-models"] })
+      toast.success(provider ? "Provider updated" : "Provider added")
       onDone()
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Failed to save provider"),
@@ -318,6 +320,7 @@ export function SettingsPage() {
     onSuccess: () => {
       setDeleting(null)
       queryClient.invalidateQueries({ queryKey: ["llm-settings"] })
+      toast.success("Provider deleted")
     },
   })
 

@@ -2,7 +2,8 @@ import { useState } from "react"
 import type { FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus } from "lucide-react"
+import { Plus, Radar } from "lucide-react"
+import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -26,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { EmptyState } from "@/components/empty-state"
 import { HelpHint } from "@/components/help-hint"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
@@ -56,6 +58,7 @@ function formatDate(iso: string | null): string {
 function NewAssessmentDialog({ targets }: { targets: Target[] }) {
   const { hasRole } = useAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [targetId, setTargetId] = useState("")
@@ -76,10 +79,13 @@ function NewAssessmentDialog({ targets }: { targets: Target[] }) {
   const mutation = useMutation({
     mutationFn: (payload: AssessmentCreate) =>
       api<AssessmentDetail>("/api/assessments", { method: "POST", body: JSON.stringify(payload) }),
-    onSuccess: () => {
+    onSuccess: (assessment) => {
       queryClient.invalidateQueries({ queryKey: ["assessments"] })
       setOpen(false)
       reset()
+      toast.success("Assessment started")
+      // Land on the run itself: the live log is the point of starting one.
+      navigate(`/assessments/${assessment.id}`)
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Failed to start assessment"),
   })
@@ -275,12 +281,12 @@ export function AssessmentsPage() {
               {!isLoading && data?.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="h-32 text-center">
-                    <div className="flex flex-col items-center gap-1.5">
-                      <p className="text-sm font-medium">No assessments yet</p>
-                      <p className="text-xs text-muted-foreground">
-                        Start an assessment against a registered target to begin.
-                      </p>
-                    </div>
+                    <EmptyState
+                      icon={Radar}
+                      title="No assessments yet"
+                      description="Start an assessment against a registered target to begin."
+                      className="py-4"
+                    />
                   </TableCell>
                 </TableRow>
               )}

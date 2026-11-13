@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -38,9 +39,17 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
   const update = useMutation({
     mutationFn: (payload: FindingUpdate) =>
       api<Finding>(`/api/findings/${finding.id}`, { method: "PATCH", body: JSON.stringify(payload) }),
-    onSuccess: () => {
+    onSuccess: (_updated, payload) => {
       queryClient.invalidateQueries({ queryKey: ["finding", finding.id] })
       queryClient.invalidateQueries({ queryKey: ["findings"] })
+      const messages: Record<string, string> = {
+        verified: "Finding verified",
+        false_positive: "Marked as false positive",
+        needs_evidence: "Marked as needing evidence",
+        ai_candidate: "Reopened as candidate",
+      }
+      const status = payload.status
+      toast.success(status ? (messages[status] ?? "Finding updated") : "Notes saved")
     },
   })
 

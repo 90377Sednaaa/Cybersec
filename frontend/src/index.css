@@ -48,6 +48,10 @@
   --severity-medium: oklch(0.72 0.15 85);
   --severity-low: oklch(0.58 0.13 240);
   --severity-info: oklch(0.52 0.01 260);
+  /* Verification-state palette. Distinct from --severity-*: a finding's review
+     state is not its severity, and conflating the two hues makes a dashboard
+     read as if every verified finding were low-risk. */
+  --state-verified: oklch(0.56 0.14 155);
 }
 
 .dark {
@@ -87,6 +91,7 @@
   --severity-medium: oklch(0.8 0.14 88);
   --severity-low: oklch(0.7 0.13 240);
   --severity-info: oklch(0.66 0.012 258);
+  --state-verified: oklch(0.74 0.15 158);
 }
 
 @theme inline {
@@ -130,6 +135,7 @@
   --color-severity-medium: var(--severity-medium);
   --color-severity-low: var(--severity-low);
   --color-severity-info: var(--severity-info);
+  --color-state-verified: var(--state-verified);
 }
 
 @layer base {
