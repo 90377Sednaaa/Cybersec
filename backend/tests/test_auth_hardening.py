@@ -1,5 +1,9 @@
 """M4 T4.5: auth hardening — change-own-password and role-guard spot checks."""
 
+import jwt
+
+from app.config import settings
+
 def _login(client, email: str, password: str) -> dict[str, str]:
     token = client.post(
         "/api/auth/login", data={"username": email, "password": password}
@@ -13,6 +17,20 @@ def _create_user(client, auth: dict[str, str], email: str, role: str) -> None:
         headers=auth,
     )
     assert resp.status_code == 201, resp.text
+
+def test_malformed_subject_claim_returns_401_not_500(client):
+    """Regression (F-36): a correctly signed token can still be malformed. The
+    old code did int(payload["sub"]) outside the try, so these produced an
+    unhandled KeyError/TypeError and a 500 instead of a clean 401."""
+    for payload in (
+        {"role": "admin"},                          # no sub
+        {"sub": "not-a-number", "role": "admin"},   # non-numeric sub
+        {"sub": None, "role": "admin"},             # wrong type
+        {"sub": ["1"], "role": "admin"},            # unhashable / wrong type
+    ):
+        token = jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+        resp = client.get("/api/targets", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 401, resp.text
 
 # --- change-own-password -------------------------------------------------------
 
