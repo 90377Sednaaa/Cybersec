@@ -1,15 +1,16 @@
 # Fix plan — M1–M4 audit findings
 
-Author: M1 · Date: 2026-11-14 · Status: **W0 + W1 quick wins landed · proposals 05-08 open · W2 blocked**
+Author: M1 · Date: 2026-11-14 · Status: **W0, W1 and W3 landed · proposals 05-08 open · W2 blocked**
 
 ## Wave status
 
 | Wave | State | Verification |
 |---|---|---|
 | W0 | **landed 2026-11-14** | `pytest` 188 passed (178 + 10 regressions); `npm run build` 0 errors; lint 0 errors / 8 warnings (baseline); dark + light + 720px visual checks passed |
-| W1 | **quick wins landed 2026-11-14; decision gate still open** | `pytest` 190 passed (+2); build 0 errors; lint 0 errors / **7 warnings** (one fewer, as predicted); reconnect proven by forcing 5 aborted `/events` attempts then restoring the route and observing a 200 |
+| W1 | **quick wins landed; decision gate still open** | `pytest` 190 passed (+2); build 0 errors; lint 0 errors / **7 warnings** (one fewer, as predicted); reconnect proven by forcing 5 aborted `/events` attempts then restoring the route and observing a 200 |
 | W2 | **blocked** — needs proposals 05-08 accepted + decisions 1, 2, 5 | — |
-| W3-W5 | not started | — |
+| W3 | **landed 2026-11-14** | `pytest` 197 passed (+7); build 0 errors; lint 0 errors / 7 warnings; live cancel run ended `cancelled` with jobs `cancelled` (not `failed`), and the happy path still ends `completed` |
+| W4-W5 | not started | — |
 
 W0 note: F-22 (JobTimeline) needed a second correction during visual verification. The first attempt
 included `now` in the axis max unconditionally, which stretched a *finished* run's axis from its end date
@@ -29,6 +30,22 @@ W1 as-built notes:
 - **F-23 reconnects but does not replay.** Log lines emitted during a disconnect are lost; the API sends no
   event ids or backfill. The `snapshot` event on reconnect restores job/assessment state, so progress and
   status recover even though the log has a gap. Worth stating in the QA checklist (M5).
+
+W3 as-built notes:
+
+- **All five W3 fixes are internal.** No schema change, no new status codes, no response-shape change — which
+  is why W3 could run while the proposals are still open. `JobStatus.cancelled` and the `assessment` SSE event
+  type already existed; the bugs were in which of them the orchestrator chose.
+- **F-04 also covers the missing-row case.** The original finding was `assessment.target is None`. The
+  pipeline can equally be handed an id whose assessment row is gone entirely; both now broadcast a terminal
+  `failed` event so an SSE subscriber cannot hang on keep-alives.
+- **F-17 changed a test, not just code.** `test_get_settings_creates_default_task_configs` asserted the bug
+  (a GET creating rows). It is now `test_get_settings_returns_seeded_task_configs`, and the autouse fixture
+  seeds the rows itself to model startup. `_ensure_task_configs(db)` survives as a non-committing helper for
+  the `PUT /tasks/{task}` write path, so that endpoint still self-heals a missing row.
+- **Cancelled-before-start jobs have no log line.** `_mark_cancelled` only flips status; the `[cancelled]`
+  message is written by `_run_job` when a job was already running. Both are correct, they just describe
+  different moments.
 
 Source: read-only audit of 2026-11-13 (five parallel module audits, each claim re-verified against  
 source). This is a working plan, not a decision record: `docs/PLAN.md` and `docs/TASK_PLAN.md` are  
