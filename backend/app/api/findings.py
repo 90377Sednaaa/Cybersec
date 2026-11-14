@@ -11,7 +11,7 @@ The list/detail response shape (FindingOut) is the frozen Wave-1 contract
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_role
@@ -119,28 +119,52 @@ def update_finding(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "PATCH body is empty")
 
     new_status = changes.get("status")
-    if new_status is not None and new_status != finding.status:
-        if new_status not in ALLOWED_TRANSITIONS[finding.status]:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                f"Illegal transition: {finding.status.value} -> {new_status.value}",
-            )
+    status_changing = new_status is not None and new_status != finding.status
+    if status_changing and new_status not in ALLOWED_TRANSITIONS[finding.status]:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Illegal transition: {finding.status.value} -> {new_status.value}",
+        )
 
-    for field in ("severity", "score", "assessor_notes"):
-        if field in changes:
-            setattr(finding, field, changes[field])
-
-    if new_status is not None and new_status != finding.status:
-        finding.status = new_status
+    values = {field: changes[field] for field in ("severity", "score", "assessor_notes") if field in changes}
+    if status_changing:
+        values["status"] = new_status
         if new_status == FindingStatus.verified:
             # attribution is taken from the JWT identity, never from the body
-            finding.verified_by_id = user.id
-            finding.verified_at = utcnow()
+            values["verified_by_id"] = user.id
+            values["verified_at"] = utcnow()
         else:
             # reopening drops the stale attribution; re-verifying re-stamps it
-            finding.verified_by_id = None
-            finding.verified_at = None
+            values["verified_by_id"] = None
+            values["verified_at"] = None
 
+    if not status_changing:
+        # Notes/severity/score only: last write wins, and there is no state
+        # machine to protect. The ORM updates just the dirty columns.
+        for field, value in values.items():
+            setattr(finding, field, value)
+        db.commit()
+        db.refresh(finding)
+        return finding
+
+    # F-35: two assessors who both loaded `ai_candidate` can each pass the
+    # transition check above, and the second commit used to overwrite the first
+    # decision silently. Compare-and-swap on the status we validated: if another
+    # writer moved the row in the meantime, no row matches and the caller gets a
+    # 409 instead of a lost verification. No version column, no contract change.
+    old_status = finding.status
+    result = db.execute(
+        update(Finding)
+        .where(Finding.id == finding.id, Finding.status == old_status)
+        .values(**values)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount == 0:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This finding changed while you were reviewing it. Reload and apply your decision again.",
+        )
     db.commit()
     db.refresh(finding)
     return finding

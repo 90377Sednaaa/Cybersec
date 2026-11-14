@@ -15,7 +15,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
     Assessment,
@@ -54,8 +54,15 @@ def build_report_context(db: Session, assessment: Assessment) -> dict:
     # Deliberately uncapped: the PDF is the complete record for this assessment,
     # so its totals must match the API's authoritative X-Total-Count (proposal
     # 06) rather than whatever page of the list the UI happened to load.
+    # selectinload(Finding.evidence): the row builder below reads f.evidence for
+    # every finding, which was one SELECT per finding (F-34).
     findings = list(
-        db.scalars(select(Finding).where(Finding.assessment_id == assessment.id).order_by(Finding.id))
+        db.scalars(
+            select(Finding)
+            .where(Finding.assessment_id == assessment.id)
+            .order_by(Finding.id)
+            .options(selectinload(Finding.evidence))
+        )
     )
     verifier_emails = {
         u.id: u.email for u in db.scalars(select(User)).all()
