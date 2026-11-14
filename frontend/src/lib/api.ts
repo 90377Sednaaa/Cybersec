@@ -21,8 +21,12 @@ export class ApiError extends Error {
   }
 }
 
-/** Authenticated fetch against the FastAPI backend (dev server proxies /api). */
-export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+/**
+ * One authenticated fetch with the shared 401 handling and backend-detail
+ * parsing. Every wrapper below goes through here so an expired session is
+ * treated the same for JSON, header-bearing and binary responses.
+ */
+async function request(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers)
   const body = options.body
   if (typeof body === "string" && !headers.has("Content-Type")) {
@@ -67,6 +71,41 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     }
     throw new ApiError(res.status, message)
   }
+  return res
+}
+
+/** Authenticated fetch against the FastAPI backend (dev server proxies /api). */
+export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await request(path, options)
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
+}
+
+export interface ApiWithMeta<T> {
+  data: T
+  /** X-Total-Count, when the endpoint sends one (findings list, proposal 06). */
+  totalCount: number | null
+}
+
+/**
+ * Like `api()`, but also exposes the response headers. A header is invisible
+ * to `api()`'s JSON helper, which is why the findings total needed this.
+ */
+export async function apiWithMeta<T>(path: string, options: RequestInit = {}): Promise<ApiWithMeta<T>> {
+  const res = await request(path, options)
+  const header = res.headers.get("X-Total-Count")
+  const parsed = header === null ? Number.NaN : Number(header)
+  return {
+    data: res.status === 204 ? (undefined as T) : ((await res.json()) as T),
+    totalCount: Number.isFinite(parsed) ? parsed : null,
+  }
+}
+
+/**
+ * Authenticated binary download. A plain `<a href>` cannot send the
+ * Authorization header, and a raw fetch bypassed the shared 401 handler (F-27).
+ */
+export async function apiBlob(path: string, options: RequestInit = {}): Promise<Blob> {
+  const res = await request(path, options)
+  return res.blob()
 }

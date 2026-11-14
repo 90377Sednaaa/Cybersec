@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { HelpHint } from "@/components/help-hint"
-import { api, getToken } from "@/lib/api"
+import { api, apiBlob } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import type { AssessmentStatus, Report, ReportStatus } from "@/lib/types"
 
@@ -29,23 +29,10 @@ function formatDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : "-"
 }
 
-// The download endpoint needs the Authorization header, so a plain <a href> cannot be used.
+// The download endpoint needs the Authorization header, so a plain <a href>
+// cannot be used; apiBlob also keeps the shared 401 session handling (F-27).
 async function downloadReport(report: Report) {
-  const token = getToken()
-  const res = await fetch(`/api/reports/${report.id}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  if (!res.ok) {
-    let message = `Download failed (HTTP ${res.status})`
-    try {
-      const body = await res.json()
-      if (typeof body.detail === "string") message = body.detail
-    } catch {
-      // keep the default message
-    }
-    throw new Error(message)
-  }
-  const blob = await res.blob()
+  const blob = await apiBlob(`/api/reports/${report.id}`)
   const url = URL.createObjectURL(blob)
   const link = document.createElement("a")
   link.href = url

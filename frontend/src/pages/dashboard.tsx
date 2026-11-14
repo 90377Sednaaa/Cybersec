@@ -10,11 +10,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { api } from "@/lib/api"
+import { api, apiWithMeta, ApiError } from "@/lib/api"
 import { SEVERITIES, capitalize } from "@/lib/finding-style"
 import type { Assessment, AssessmentStatus, Finding, Severity, Target } from "@/lib/types"
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline"
+
+// Every finding is in exactly one review state, so summing the four
+// authoritative counts gives the true total without a fifth request.
+const REVIEW_STATES = ["verified", "needs_evidence", "ai_candidate", "false_positive"] as const
+type ReviewState = (typeof REVIEW_STATES)[number]
 
 const STATUS_VARIANT: Record<AssessmentStatus, BadgeVariant> = {
   draft: "outline",
@@ -87,18 +92,42 @@ export function DashboardPage() {
   })
 
   // Same key as the unfiltered Findings page, so the cache is shared.
-  // The API returns at most the 200 newest findings.
+  // The list is still capped at the 200 newest findings; the severity chart and
+  // the per-run chart are derived from it and say so. Counts that must be exact
+  // come from the counts query below instead.
   const findings = useQuery({
     queryKey: ["findings", "all", "all", "all"],
     queryFn: () => api<Finding[]>("/api/findings"),
   })
 
-  const loadError = targets.error ?? assessments.error ?? findings.error
+  // Authoritative per-state counts (proposal 06). One-row requests read the
+  // filtered X-Total-Count header, so "N of M reviewed" no longer divides by a
+  // truncated page size.
+  const counts = useQuery({
+    queryKey: ["findings", "counts"],
+    queryFn: async (): Promise<Record<ReviewState, number>> => {
+      const entries = await Promise.all(
+        REVIEW_STATES.map(async (state) => {
+          const { totalCount } = await apiWithMeta<Finding[]>(`/api/findings?limit=1&status=${state}`)
+          if (totalCount === null) {
+            throw new ApiError(0, "The server did not report finding totals.")
+          }
+          return [state, totalCount] as const
+        }),
+      )
+      return Object.fromEntries(entries) as Record<ReviewState, number>
+    },
+  })
+
+  const loadError = targets.error ?? assessments.error ?? findings.error ?? counts.error
 
   const runningCount = assessments.data?.filter((a) => a.status === "running").length ?? 0
-  const openCount =
-    findings.data?.filter((f) => f.status === "ai_candidate" || f.status === "needs_evidence").length ?? 0
-  const verifiedCount = findings.data?.filter((f) => f.status === "verified").length ?? 0
+  const candidateCount = counts.data?.ai_candidate ?? 0
+  const needsEvidenceCount = counts.data?.needs_evidence ?? 0
+  const falsePositiveCount = counts.data?.false_positive ?? 0
+  const verifiedCount = counts.data?.verified ?? 0
+  const openCount = candidateCount + needsEvidenceCount
+  const totalFindings = REVIEW_STATES.reduce((sum, state) => sum + (counts.data?.[state] ?? 0), 0)
 
   const counted =
     findings.data?.filter((f) => (scope === "verified" ? f.status === "verified" : f.status !== "false_positive")) ?? []
@@ -113,10 +142,6 @@ export function DashboardPage() {
 
   // Verification states are parallel, not a funnel, so they are shown as one
   // stacked bar plus counts: how much of the pile a human has actually looked at.
-  const candidateCount = findings.data?.filter((f) => f.status === "ai_candidate").length ?? 0
-  const needsEvidenceCount = findings.data?.filter((f) => f.status === "needs_evidence").length ?? 0
-  const falsePositiveCount = findings.data?.filter((f) => f.status === "false_positive").length ?? 0
-  const totalFindings = findings.data?.length ?? 0
   const reviewedCount = verifiedCount + needsEvidenceCount + falsePositiveCount
   const reviewedPercent = totalFindings > 0 ? Math.round((reviewedCount / totalFindings) * 100) : 0
 
@@ -172,14 +197,14 @@ export function DashboardPage() {
           value={String(openCount)}
           icon={ShieldAlert}
           hint="Candidates awaiting review"
-          loading={findings.isLoading}
+          loading={counts.isLoading}
         />
         <StatCard
           title="Verified findings"
           value={String(verifiedCount)}
           icon={ShieldCheck}
           hint="Confirmed by an assessor"
-          loading={findings.isLoading}
+          loading={counts.isLoading}
         />
       </div>
 
@@ -191,7 +216,8 @@ export function DashboardPage() {
             <CardDescription>
               {scope === "verified"
                 ? "Confirmed findings only. AI candidates are not included until an assessor verifies them."
-                : "Includes unconfirmed AI candidates. False positives are excluded."}
+                : "Includes unconfirmed AI candidates. False positives are excluded."}{" "}
+              Counts cover the 200 most recent findings.
             </CardDescription>
           </div>
           <Tabs value={scope} onValueChange={(value) => setScope(value as "verified" | "all")}>
@@ -230,7 +256,7 @@ export function DashboardPage() {
             <CardDescription>
               {totalFindings === 0
                 ? "Nothing to review yet."
-                : `${reviewedCount} of ${totalFindings} findings reviewed (${reviewedPercent}%). Counts cover the 200 newest.`}
+                : `${reviewedCount} of ${totalFindings} findings reviewed (${reviewedPercent}%).`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -272,7 +298,7 @@ export function DashboardPage() {
         <CardHeader>
           <CardTitle>Findings per run</CardTitle>
           <CardDescription>
-            Newest eight runs, by when they started. Counts cover the 200 newest findings.
+            Newest eight runs, by when they started. Counts cover the 200 most recent findings.
           </CardDescription>
         </CardHeader>
         <CardContent>
