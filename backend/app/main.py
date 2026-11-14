@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.api import assessments, auth, evidence, findings, misc, reports, settings_llm, targets, users
 from app.config import settings
 from app.core.security import hash_password
-from app.database import Base, SessionLocal, engine, ensure_sqlite_columns
+from app.database import Base, SessionLocal, engine, ensure_sqlite_columns, ensure_sqlite_indexes
 from app.models import Role, User  # noqa: F401  (import registers all models)
 
 logger = logging.getLogger("platform")
@@ -37,6 +37,7 @@ def seed_admin() -> None:
 def create_app() -> FastAPI:
     Base.metadata.create_all(bind=engine)
     ensure_sqlite_columns()
+    ensure_sqlite_indexes()
     seed_admin()
     # Seeded once here, not on every settings GET (a viewer read must not write).
     settings_llm.ensure_task_configs()
@@ -53,6 +54,9 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # A header is invisible to a cross-origin caller unless it is exposed
+        # (proposal 06: the findings total is sent as X-Total-Count).
+        expose_headers=["X-Total-Count"],
     )
     app.include_router(misc.router)
     app.include_router(auth.router, prefix="/api")

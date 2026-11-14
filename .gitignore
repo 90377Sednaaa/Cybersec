@@ -20,6 +20,9 @@ Thumbs.db
 backend/test_platform.db
 test_platform.db*
 *.db
+# SQLite WAL sidecar files (enabled in Wave 4)
+*.db-wal
+*.db-shm
 
 # Evidence uploads are runtime artifacts, never source (M4 T4.2)
 backend/evidence/*
