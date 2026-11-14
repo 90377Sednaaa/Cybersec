@@ -53,6 +53,16 @@ def broadcast(handle: PipelineHandle, event: dict) -> None:
         queue.put_nowait(event)
 
 
+def _mark_cancelled(jobs: list[Job], assessment: Assessment) -> None:
+    """Terminal state for a cancelled run: jobs still pending or running become
+    `cancelled` (never `failed`) and the assessment is marked cancelled."""
+    for job in jobs:
+        if job.status in (JobStatus.pending, JobStatus.running):
+            job.status = JobStatus.cancelled
+            job.finished_at = utcnow()
+    assessment.status = AssessmentStatus.cancelled
+
+
 def start_pipeline(assessment_id: int) -> PipelineHandle:
     if assessment_id in pipelines:
         raise RuntimeError(f"Assessment {assessment_id} already has a running pipeline")
@@ -66,7 +76,21 @@ async def run_pipeline(assessment_id: int, handle: PipelineHandle) -> None:
     db = SessionLocal()
     try:
         assessment = db.get(Assessment, assessment_id)
-        if assessment is None or assessment.target is None:
+        if assessment is None:
+            # The row is gone (deleting a target orphans its assessments because
+            # SQLite FKs are unenforced). Nothing to write, but subscribers still
+            # need a terminal event or their stream keeps receiving keep-alives.
+            broadcast(handle, {"type": "assessment", "status": AssessmentStatus.failed.value})
+            return
+        if assessment.target is None:
+            # Same orphan case one level up. Previously this returned silently,
+            # leaving the assessment `running` with pending jobs forever and no
+            # terminal SSE event.
+            assessment.status = AssessmentStatus.failed
+            assessment.notes = "Target no longer exists; the run cannot continue."
+            assessment.finished_at = utcnow()
+            db.commit()
+            broadcast(handle, {"type": "assessment", "status": AssessmentStatus.failed.value})
             return
         target = assessment.target
 
@@ -89,11 +113,7 @@ async def run_pipeline(assessment_id: int, handle: PipelineHandle) -> None:
             await _run_job(db, handle, assessment, target, job)
 
         if handle.cancel_event.is_set():
-            for job in jobs:
-                if job.status in (JobStatus.pending, JobStatus.running):
-                    job.status = JobStatus.cancelled
-                    job.finished_at = utcnow()
-            assessment.status = AssessmentStatus.cancelled
+            _mark_cancelled(jobs, assessment)
         else:
             created = normalize_assessment(db, assessment, jobs)
             # M2 hook (T2.4): run AI interpretation AFTER the note is composed -
@@ -101,7 +121,13 @@ async def run_pipeline(assessment_id: int, handle: PipelineHandle) -> None:
             # not be able to clobber the pipeline summary.
             assessment.notes = f"Pipeline complete; {created} candidate finding(s) emitted by rule-based normalizer."
             await _run_interpret(db, handle, assessment, jobs, target)
-            assessment.status = AssessmentStatus.completed
+            # The interpreter runs in a thread that can spend minutes waiting on
+            # the provider. A cancel arriving during that window used to be
+            # overwritten with `completed`; re-check before deciding.
+            if handle.cancel_event.is_set():
+                _mark_cancelled(jobs, assessment)
+            else:
+                assessment.status = AssessmentStatus.completed
         assessment.finished_at = utcnow()
         db.commit()
         broadcast(handle, {"type": "assessment", "status": assessment.status.value})
@@ -187,11 +213,21 @@ async def _run_job(db, handle: PipelineHandle, assessment, target, job: Job) -> 
         job.status = JobStatus.completed
         ctx.progress(1.0)
     except RunnerError as exc:
-        job.status = JobStatus.failed
-        ctx.log(f"[error] {job.tool} failed: {exc}")
+        # Runners raise RunnerError("Cancelled") when the operator cancels. That
+        # is not a tool failure, so it must not be recorded as one.
+        if handle.cancel_event.is_set():
+            job.status = JobStatus.cancelled
+            ctx.log(f"[cancelled] {job.tool} stopped on operator request")
+        else:
+            job.status = JobStatus.failed
+            ctx.log(f"[error] {job.tool} failed: {exc}")
     except Exception as exc:  # noqa: BLE001 - one failed tool must not stop the pipeline
-        job.status = JobStatus.failed
-        ctx.log(f"[error] {job.tool} failed unexpectedly: {format_exception(exc)}")
+        if handle.cancel_event.is_set():
+            job.status = JobStatus.cancelled
+            ctx.log(f"[cancelled] {job.tool} stopped on operator request")
+        else:
+            job.status = JobStatus.failed
+            ctx.log(f"[error] {job.tool} failed unexpectedly: {format_exception(exc)}")
     finally:
         job.finished_at = utcnow()
         db.commit()
