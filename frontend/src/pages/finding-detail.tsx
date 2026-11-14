@@ -156,7 +156,9 @@ export function FindingDetailModal({
                 </TabsContent>
               </Tabs>
 
-              <FindingReview key={data.id} finding={data} />
+              {/* Distinct from the Tabs key above: both force a remount when the
+                  modal switches findings, but two siblings may not share a key. */}
+              <FindingReview key={`review-${data.id}`} finding={data} />
             </>
           )}
         </div>
