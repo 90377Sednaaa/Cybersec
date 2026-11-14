@@ -1,6 +1,6 @@
 # Fix plan — M1–M4 audit findings
 
-Author: M1 · Date: 2026-11-14 · Status: **W0, W1, W2a and W3 landed · proposals 05/07 accepted, 06/08 open**
+Author: M1 · Date: 2026-11-14 · Status: **W0, W1, W2 and W3 landed · 05/07 accepted · 06 open · 08 fallback only**
 
 ## Wave status
 
@@ -9,7 +9,7 @@ Author: M1 · Date: 2026-11-14 · Status: **W0, W1, W2a and W3 landed · proposa
 | W0 | **landed 2026-11-14** | `pytest` 188 passed (178 + 10 regressions); `npm run build` 0 errors; lint 0 errors / 8 warnings (baseline); dark + light + 720px visual checks passed |
 | W1 | **quick wins landed; decision gate still open** | `pytest` 190 passed (+2); build 0 errors; lint 0 errors / **7 warnings** (one fewer, as predicted); reconnect proven by forcing 5 aborted `/events` attempts then restoring the route and observing a 200 |
 | W2a | **landed 2026-11-14** — scope & authorization contract | `pytest` 211 passed (+14); build 0 errors; lint 0 errors / 7 warnings; live checks: missing `authorization_ref` 422, bad `base_url` 422, assessor `full_intrusive` 403 (create and patch), partial PATCH preserves scope, `PUT` now 405, assessor UI shows the option disabled |
-| W2b | **next** — host guard + secret handling. Proposals 05/07 accepted; 08 still open (its fallback path is the one to ship) | — |
+| W2b | **landed 2026-11-14** — host guard + secret handling | `pytest` 237 passed (+26); build 0 errors; lint 0 errors / 7 warnings; live: a target with the host *outside* `in_scope_assets` has dns and prober refuse with a HostBlocked message while one with the host *in* scope completes; provider create returns 400 for a local URL without `local_endpoint`, 201 with it, 400 for public http and for embedded credentials |
 | W3 | **landed 2026-11-14** | `pytest` 197 passed (+7); build 0 errors; lint 0 errors / 7 warnings; live cancel run ended `cancelled` with jobs `cancelled` (not `failed`), and the happy path still ends `completed` |
 | W4-W5 | not started | — |
 
@@ -66,6 +66,29 @@ W2a as-built notes (scope & authorization, not the SSRF guard):
 - **Downgrade notes are appended, not assigned.** The first attempt set `assessment.notes` before the run
   and the "Pipeline complete; ..." line overwrote it; the downgrade note is now composed into the final
   string.
+
+W2b as-built notes (host guard + secret handling):
+
+- **The guard resolves, it does not string-match.** `http://localhost`, `http://127.0.0.1` and a DNS name
+  pointing at `10.0.0.5` are the same target, so `check_host` resolves first and classifies the address.
+  `classify_address` is shared with the LLM-provider validation, so there is one definition of "safe to
+  talk to", not two.
+- **Redirects are covered by an httpx request hook**, verified empirically before relying on it: a 302
+  chain fires the hook once per hop (2 firings for 2 requests). A public, authorized target can no longer
+  bounce the prober onto an internal address.
+- **ZAP is the exception.** It crawls and attacks on its own, so its hops cannot be policed — the target
+  URL is checked before being handed over, and that limit is documented in the module.
+- **A test was asserting the vulnerability again.** `test_acknowledgment_is_sticky_on_later_updates`
+  required that rotating a key or repointing a provider reuse the old acknowledgement. It is now
+  `test_acknowledgment_covers_a_no_op_update` plus `test_changing_the_endpoint_re_requires_the_acknowledgment`.
+- **The UI had to move with the contract, again.** The Ollama preset points at `http://localhost:11434`,
+  which now needs `local_endpoint`. Rather than add a second thing to tick, the flag is derived from the
+  URL the admin already chose (`isLocalEndpointUrl`), and the form explains it.
+- **`local_endpoint` is not persisted.** There is no column for it; it only gates the write. The
+  acknowledged-at timestamp already records consent. Persisting the acknowledged host would be a nicer
+  audit trail and is left as a W4 candidate.
+- **Disabled providers are exempt from the re-ack.** A disabled provider sends nothing, so storing a key
+  for later is not a disclosure; enabling it re-enters the gate.
 
 Source: read-only audit of 2026-11-13 (five parallel module audits, each claim re-verified against  
 source). This is a working plan, not a decision record: `docs/PLAN.md` and `docs/TASK_PLAN.md` are  

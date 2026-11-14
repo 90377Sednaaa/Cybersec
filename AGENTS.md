@@ -131,8 +131,8 @@ table in [README.md](README.md) is kept in sync by the M5 steward.
 
 Verification on this snapshot: `npm run build` passes (0 errors), `npm run lint` reports 0 errors / **7 warnings**
 (W1 removed the `scan-events.ts` set-state-in-effect warning; the remaining 7 are all in `GradientASCII.tsx`),
-`pytest tests -q` reports **211 passed** (178 + 10 Wave 0 + 2 Wave 1 + 7 Wave 3 + 14 Wave 2a regression
-tests); live smoke test returned 200 for `/health`, login, and all list endpoints.
+`pytest tests -q` reports **237 passed** (178 + 10 Wave 0 + 2 Wave 1 + 7 Wave 3 + 14 Wave 2a + 26 Wave 2b
+regression tests); live smoke test returned 200 for `/health`, login, and all list endpoints.
 The model catalog, model-aware effort levels, settings UI, the assessment run page and the dashboard charts were
 also verified in the running app in both themes.
 All M1-M4 modules are code complete; backend and frontend are ready for integration waves I1-I4 (`TASK_PLAN.md`).
@@ -153,9 +153,13 @@ in-flight fetch after `invalidate()`; task-config seeding moved from a viewer GE
 `full_intrusive` is admin-only, the orchestrator re-checks `target.allowed_intensity` at scheduling time and
 skips intrusive tools, a second concurrent run per target is a 409, and leading-dash hostnames are rejected
 before nmap sees them. **Proposals 05 and 07 are ACCEPTED** and logged in `TASK_PLAN.md` § Adopted changes;
-**06 (findings totals) and 08 (JWT claims + encryption key) remain open**. The host-level SSRF guard
-(private/loopback allowed only with `authorization_ref` + host in `in_scope_assets`, metadata always blocked)
-is accepted policy but NOT yet implemented — it is the remaining half of W2. This plan is additive and
+**06 (findings totals) remains open, and 08 shipped only its documented fallback** (`exp`/`sub` required and
+`InvalidToken` degrades cleanly — the encryption-key split is still undecided and, with zero stored keys,
+needs no migration). **Wave 2b landed 2026-11-14:** `scanner/hostguard.py` enforces the accepted SSRF policy
+across dns/nmap/prober/zap including every httpx redirect hop; redaction covers bare provider keys, generic
+base64 tokens and multi-word secrets; provider error bodies are scrubbed before they reach notes/SSE/HTTP;
+provider `base_url` is validated (scheme, no embedded credentials, private only with `local_endpoint`) and
+changing it or the key re-requires the discretion acknowledgement. This plan is additive and
 does not reorder the course milestones below. When a wave lands, refresh the module rows and test counts
 here in that wave's final commit.
 
