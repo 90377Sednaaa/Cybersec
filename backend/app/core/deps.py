@@ -21,10 +21,11 @@ def get_current_user(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     try:
         payload = decode_access_token(credentials.credentials)
-        # A validly signed token can still carry a missing or non-numeric sub.
-        # Keep the conversion inside the guarded block so it becomes a 401
-        # instead of an unhandled KeyError/ValueError -> 500.
+        # A validly signed token can still carry a missing or non-numeric sub
+        # (or tv). Keep the conversions inside the guarded block so they become
+        # a 401 instead of an unhandled KeyError/ValueError -> 500.
         subject = int(payload["sub"])
+        token_version = int(payload["tv"])
     except jwt.InvalidTokenError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"Invalid token: {exc}") from exc
     except (KeyError, ValueError, TypeError) as exc:
@@ -35,6 +36,13 @@ def get_current_user(
     user = db.get(User, subject)
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User no longer exists")
+    if token_version != user.token_version:
+        # F-38: a password change bumps the row, so every token issued before
+        # it stops authenticating. Stateless otherwise, but not stale-proof.
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Session revoked: the password changed. Sign in again.",
+        )
     return user
 
 

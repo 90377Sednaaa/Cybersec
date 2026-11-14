@@ -25,7 +25,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
     user = db.scalar(select(User).where(User.email == form.username))
     if user is None or not verify_password(form.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
-    token = create_access_token(subject=str(user.id), role=user.role.value)
+    token = create_access_token(subject=str(user.id), role=user.role.value, token_version=user.token_version)
     return TokenOut(access_token=token, role=user.role, full_name=user.full_name)
 
 
@@ -43,7 +43,9 @@ def change_password(
     if not verify_password(payload.current_password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect current password")
     user.hashed_password = hash_password(payload.new_password)
+    # F-38: every token issued under the old password stops authenticating. The
+    # caller's own token is included, so the client must sign in again after a
+    # 204 - the shared 401 handler turns the next request into that redirect.
+    user.token_version = (user.token_version or 0) + 1
     db.commit()
-    # Note: existing JWTs stay valid until expiry (stateless tokens, no
-    # revocation list) - documented in docs/auth-checklist.md.
     return Response(status_code=status.HTTP_204_NO_CONTENT)

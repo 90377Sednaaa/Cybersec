@@ -50,7 +50,7 @@ def ensure_sqlite_columns() -> None:
 
     `create_all` never alters existing tables, so a new nullable-with-default
     column needs one explicit ALTER. Safe to run on every startup: the PRAGMA
-    check makes it a no-op once the column exists.
+    check makes each migration a no-op once the column exists.
     """
     if not _IS_SQLITE:
         return
@@ -58,6 +58,13 @@ def ensure_sqlite_columns() -> None:
         columns = {row[1] for row in conn.execute(text("PRAGMA table_info(llm_task_configs)"))}
         if "effort" not in columns:
             conn.execute(text("ALTER TABLE llm_task_configs ADD COLUMN effort VARCHAR(32) NOT NULL DEFAULT ''"))
+
+        # F-38: existing users start at version 0. A token issued before this
+        # deploy carries no `tv` claim and is rejected, so every live session is
+        # logged out exactly once - which is the point of enabling revocation.
+        user_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(users)"))}
+        if "token_version" not in user_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0"))
 
 
 def ensure_sqlite_indexes() -> None:

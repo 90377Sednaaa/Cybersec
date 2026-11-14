@@ -19,23 +19,23 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(subject: str, role: str) -> str:
+def create_access_token(subject: str, role: str, token_version: int) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    payload = {"sub": subject, "role": role, "exp": expire}
+    payload = {"sub": subject, "role": role, "tv": token_version, "exp": expire}
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
 
 
 def decode_access_token(token: str) -> dict:
     """Raises jwt.InvalidTokenError (or jwt.ExpiredSignatureError) on bad tokens.
 
-    `exp` and `sub` are REQUIRED, not merely verified when present: PyJWT only
-    checks `exp` if the claim exists, so a correctly signed token without one
-    would otherwise be valid forever. `create_access_token` always sets both, so
-    no legitimately issued token is affected.
+    `exp`, `sub` and `tv` are REQUIRED, not merely verified when present: PyJWT
+    only checks `exp` if the claim exists, so a correctly signed token without
+    one would otherwise be valid forever, and a token without `tv` would survive
+    a password change (F-38). `create_access_token` always sets all three.
     """
     return jwt.decode(
         token,
         settings.secret_key,
         algorithms=[settings.jwt_algorithm],
-        options={"require": ["exp", "sub"]},
+        options={"require": ["exp", "sub", "tv"]},
     )

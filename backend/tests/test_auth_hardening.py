@@ -26,10 +26,10 @@ def test_malformed_subject_claim_returns_401_not_500(client):
 
     exp = datetime.now(timezone.utc) + timedelta(hours=1)
     for payload in (
-        {"role": "admin", "exp": exp},                          # no sub
-        {"sub": "not-a-number", "role": "admin", "exp": exp},   # non-numeric sub
-        {"sub": None, "role": "admin", "exp": exp},             # wrong type
-        {"sub": ["1"], "role": "admin", "exp": exp},            # wrong type
+        {"role": "admin", "exp": exp, "tv": 0},                          # no sub
+        {"sub": "not-a-number", "role": "admin", "exp": exp, "tv": 0},   # non-numeric sub
+        {"sub": None, "role": "admin", "exp": exp, "tv": 0},             # wrong type
+        {"sub": ["1"], "role": "admin", "exp": exp, "tv": 0},            # wrong type
     ):
         token = jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
         resp = client.get("/api/targets", headers={"Authorization": f"Bearer {token}"})
@@ -39,7 +39,7 @@ def test_malformed_subject_claim_returns_401_not_500(client):
 def test_token_without_exp_is_rejected(client):
     """F-37: PyJWT only verifies `exp` when the claim is present, so a signed
     token with no expiry used to be valid forever."""
-    token = jwt.encode({"sub": "1", "role": "admin"}, settings.secret_key, algorithm=settings.jwt_algorithm)
+    token = jwt.encode({"sub": "1", "role": "admin", "tv": 0}, settings.secret_key, algorithm=settings.jwt_algorithm)
     resp = client.get("/api/targets", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 401, resp.text
 
@@ -48,17 +48,51 @@ def test_token_without_sub_is_rejected(client):
     from datetime import datetime, timedelta, timezone
 
     exp = datetime.now(timezone.utc) + timedelta(hours=1)
-    token = jwt.encode({"role": "admin", "exp": exp}, settings.secret_key, algorithm=settings.jwt_algorithm)
+    token = jwt.encode({"role": "admin", "exp": exp, "tv": 0}, settings.secret_key, algorithm=settings.jwt_algorithm)
+    resp = client.get("/api/targets", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401, resp.text
+
+
+def test_token_without_token_version_is_rejected(client):
+    """F-38: a token issued before revocation existed carries no `tv`. It must
+    be rejected, or a stolen pre-deploy token would outlive the password."""
+    from datetime import datetime, timedelta, timezone
+
+    exp = datetime.now(timezone.utc) + timedelta(hours=1)
+    token = jwt.encode(
+        {"sub": "1", "role": "admin", "exp": exp}, settings.secret_key, algorithm=settings.jwt_algorithm
+    )
     resp = client.get("/api/targets", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 401, resp.text
 
 
 def test_a_normally_issued_token_still_works(client):
-    """Guard against over-tightening: create_access_token sets exp and sub."""
+    """Guard against over-tightening: create_access_token sets exp, sub and tv."""
     from app.core.security import create_access_token
 
-    token = create_access_token("1", "admin")
+    token = create_access_token("1", "admin", 0)
     assert client.get("/api/targets", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+
+
+def test_a_stale_token_version_is_rejected(client, auth):
+    """A correctly signed token whose tv no longer matches the row is a revoked
+    session, not a generic 401."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.models import User
+    from app.database import SessionLocal
+
+    with SessionLocal() as db:
+        admin = db.get(User, 1)
+        current = admin.token_version
+    exp = datetime.now(timezone.utc) + timedelta(hours=1)
+    token = jwt.encode(
+        {"sub": "1", "role": "admin", "tv": current + 1, "exp": exp},
+        settings.secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+    resp = client.get("/api/targets", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401, resp.text
 
 # --- change-own-password -------------------------------------------------------
 
@@ -83,6 +117,27 @@ def test_change_password_success_rotates_credentials(client, auth):
     )
     # new password works
     assert _login(client, "assessor@example.com", "rotatedpw456") is not None
+
+
+def test_change_password_revokes_every_existing_session(client, auth):
+    """F-38: the token that performed the change - and any other live session -
+    is dead after the 204, because the row's token_version moved."""
+    _create_user(client, auth, "revoked@example.com", "assessor")
+    first = _login(client, "revoked@example.com", "startingpw123")
+    second = _login(client, "revoked@example.com", "startingpw123")
+
+    resp = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "startingpw123", "new_password": "rotatedpw456"},
+        headers=first,
+    )
+    assert resp.status_code == 204
+
+    assert client.get("/api/auth/me", headers=first).status_code == 401
+    assert client.get("/api/auth/me", headers=second).status_code == 401
+
+    fresh = _login(client, "revoked@example.com", "rotatedpw456")
+    assert client.get("/api/auth/me", headers=fresh).status_code == 200
 
 def test_change_password_wrong_current_401(client, auth):
     _create_user(client, auth, "wrongpw@example.com", "assessor")
