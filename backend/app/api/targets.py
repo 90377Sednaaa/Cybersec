@@ -8,9 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.evidence import unlink_evidence_file
+from app.api.reports import unlink_report_file
 from app.core.deps import get_current_user, require_role
 from app.database import get_db
-from app.models import Role, ScanIntensity, Target, User
+from app.models import Assessment, Evidence, Finding, Report, Role, ScanIntensity, Target, User
 from app.schemas.common import TargetCreate, TargetOut, TargetPatch
 
 router = APIRouter(prefix="/targets", tags=["targets"])
@@ -93,6 +95,33 @@ def update_target(
     return target
 
 
+def _unlink_target_artifacts(db: Session, target_id: int) -> None:
+    """Remove the runtime files that belong to this target's runs (F-32).
+
+    Evidence uploads and generated PDFs live outside the database, so no cascade
+    can reach them. The orphaned assessment/finding/report *rows* are a
+    separately documented blocker; this only stops their files from accumulating
+    forever in a folder nothing can reach once the target is gone.
+    """
+    assessment_ids = list(db.scalars(select(Assessment.id).where(Assessment.target_id == target_id)))
+    if not assessment_ids:
+        return
+    evidence_paths = list(
+        db.scalars(
+            select(Evidence.file_path)
+            .join(Finding, Evidence.finding_id == Finding.id)
+            .where(Finding.assessment_id.in_(assessment_ids))
+        )
+    )
+    for path in evidence_paths:
+        unlink_evidence_file(path)
+    report_paths = list(
+        db.scalars(select(Report.file_path).where(Report.assessment_id.in_(assessment_ids)))
+    )
+    for path in report_paths:
+        unlink_report_file(path)
+
+
 @router.delete("/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_target(
     target_id: int,
@@ -102,5 +131,6 @@ def delete_target(
     target = db.get(Target, target_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Target not found")
+    _unlink_target_artifacts(db, target_id)
     db.delete(target)
     db.commit()

@@ -10,8 +10,8 @@ The list/detail response shape (FindingOut) is the frozen Wave-1 contract
 (docs/TASK_PLAN.md appendix) and comes from schemas/common.py unchanged.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_role
@@ -22,6 +22,12 @@ from app.schemas.common import FindingOut
 from app.schemas.findings import FindingDetailOut, FindingUpdate
 
 router = APIRouter(prefix="/findings", tags=["findings"])
+
+# Pagination bounds (proposal 06, accepted 2026-11-14). The default stays 200 so
+# every existing caller is byte-identical; the cap stops a client from asking a
+# SQLite demo instance for an unbounded result set.
+DEFAULT_LIMIT = 200
+MAX_LIMIT = 500
 
 # Legal status transitions; any other move is rejected with 409.
 # verified/false_positive can be reopened (assessors change their minds),
@@ -45,22 +51,43 @@ def _get_finding_or_404(db: Session, finding_id: int) -> Finding:
 
 @router.get("", response_model=list[FindingOut])
 def list_findings(
+    response: Response,
     assessment_id: int | None = None,
     status: FindingStatus | None = None,
     severity: Severity | None = None,
     category: str | None = None,
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    offset: int = Query(0, ge=0),
     _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[Finding]:
-    query = select(Finding).order_by(Finding.id.desc()).limit(200)
+    """Filtered list with bounded pagination (proposal 06).
+
+    The body is unchanged: a bare `list[FindingOut]`. The authoritative count of
+    the *filtered* set travels in `X-Total-Count`, so a caller can tell a
+    truncated page from a complete one and the dashboard can stop computing a
+    percentage against the 200-row cap. Callers that send nothing still get the
+    same first 200 rows they always did.
+    """
+    conditions = []
     if assessment_id is not None:
-        query = query.where(Finding.assessment_id == assessment_id)
+        conditions.append(Finding.assessment_id == assessment_id)
     if status is not None:
-        query = query.where(Finding.status == status)
+        conditions.append(Finding.status == status)
     if severity is not None:
-        query = query.where(Finding.severity == severity)
+        conditions.append(Finding.severity == severity)
     if category is not None:
-        query = query.where(Finding.category == category)
+        conditions.append(Finding.category == category)
+
+    total = db.scalar(select(func.count(Finding.id)).where(*conditions)) or 0
+    query = (
+        select(Finding)
+        .where(*conditions)
+        .order_by(Finding.id.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    response.headers["X-Total-Count"] = str(total)
     return list(db.scalars(query))
 
 @router.get("/{finding_id}", response_model=FindingDetailOut)

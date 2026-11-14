@@ -250,3 +250,66 @@ def test_viewer_can_read_findings(client, auth):
     _add_finding()
     viewer = _viewer_auth(client, auth)
     assert client.get("/api/findings", headers=viewer).status_code == 200
+
+
+# --- Wave 4 regression: proposal 06 / F-31 (total + pagination) -----------------
+
+def test_list_sends_the_filtered_total_in_x_total_count(client, auth, passive_target):
+    """The header must describe the *filtered* set, not the whole table, or the
+    dashboard would label a filtered count as the total."""
+    assessment_id = _add_assessment(passive_target["id"])
+    _add_finding(assessment_id=assessment_id, severity=Severity.high)
+    _add_finding(
+        assessment_id=assessment_id,
+        title="HTTP TRACE enabled",
+        status=FindingStatus.false_positive,
+    )
+
+    both = client.get(f"/api/findings?assessment_id={assessment_id}", headers=auth)
+    assert both.status_code == 200
+    assert both.headers["x-total-count"] == "2"
+    assert len(both.json()) == 2
+
+    filtered = client.get(
+        f"/api/findings?assessment_id={assessment_id}&status=false_positive", headers=auth
+    )
+    assert filtered.headers["x-total-count"] == "1"
+    assert [f["status"] for f in filtered.json()] == ["false_positive"]
+
+
+def test_list_limit_offset_paginate_without_changing_the_body_shape(client, auth, passive_target):
+    assessment_id = _add_assessment(passive_target["id"])
+    for index in range(5):
+        _add_finding(assessment_id=assessment_id, title=f"Page {index}")
+
+    first = client.get(f"/api/findings?assessment_id={assessment_id}&limit=2", headers=auth)
+    assert len(first.json()) == 2
+    assert first.headers["x-total-count"] == "5"
+    # frozen contract: still a bare list of FindingOut, newest first
+    assert set(first.json()[0]) == {
+        "id", "assessment_id", "category", "title", "description", "severity", "score",
+        "status", "ai_confidence", "remediation", "assessor_notes",
+    }
+    assert first.json()[0]["title"] == "Page 4"
+
+    second = client.get(
+        f"/api/findings?assessment_id={assessment_id}&limit=2&offset=2", headers=auth
+    )
+    assert [f["title"] for f in second.json()] == ["Page 2", "Page 1"]
+
+    last = client.get(
+        f"/api/findings?assessment_id={assessment_id}&limit=2&offset=4", headers=auth
+    )
+    assert [f["title"] for f in last.json()] == ["Page 0"]
+
+    beyond = client.get(
+        f"/api/findings?assessment_id={assessment_id}&limit=2&offset=10", headers=auth
+    )
+    assert beyond.json() == []
+    assert beyond.headers["x-total-count"] == "5"  # the total is unaffected by the offset
+
+
+def test_list_rejects_out_of_range_pagination(client, auth):
+    assert client.get("/api/findings?limit=0", headers=auth).status_code == 422
+    assert client.get("/api/findings?limit=501", headers=auth).status_code == 422
+    assert client.get("/api/findings?offset=-1", headers=auth).status_code == 422

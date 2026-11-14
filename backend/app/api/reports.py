@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_role
@@ -38,6 +39,20 @@ def _get_report_or_404(db: Session, report_id: int) -> Report:
     return report
 
 
+def unlink_report_file(file_path: str | None) -> None:
+    """Unlink one generated PDF, proving it stays inside REPORTS_DIR.
+
+    Shared by the report DELETE route and target deletion. A tampered
+    `file_path` must never delete anything outside the reports folder.
+    """
+    if not file_path:
+        return
+    base = REPORTS_DIR.resolve()
+    resolved = (base / file_path).resolve()
+    if resolved.is_relative_to(base):
+        resolved.unlink(missing_ok=True)
+
+
 def _settle_stale_pending(db: Session, report: Report) -> bool:
     """Flip an over-age `pending` row to `failed`. Fresh pending rows are left
     alone, so a genuinely running job still gets its 409 and is never deleted
@@ -54,6 +69,23 @@ def _settle_stale_pending(db: Session, report: Report) -> bool:
     report.finished_at = utcnow()
     return True
 
+def _live_pending(db: Session, assessment_id: int) -> list[Report]:
+    """Pending rows for an assessment after settling any that are over-age."""
+    pending = list(
+        db.scalars(
+            select(Report)
+            .where(Report.assessment_id == assessment_id, Report.status == ReportStatus.pending)
+            .order_by(Report.id.desc())
+        )
+    )
+    settled = False
+    for row in pending:
+        settled = _settle_stale_pending(db, row) or settled
+    if settled:
+        db.commit()
+    return [row for row in pending if row.status == ReportStatus.pending]
+
+
 @router.post("/assessments/{assessment_id}/report", response_model=ReportOut, status_code=status.HTTP_202_ACCEPTED)
 def create_report(
     assessment_id: int,
@@ -68,25 +100,31 @@ def create_report(
     # not enqueue a second headless-Chromium render. Return the existing
     # pending row with the SAME 202 rather than adding a new error status to
     # the frozen contract - the caller cannot tell and nothing breaks.
-    pending = list(
-        db.scalars(
-            select(Report)
-            .where(Report.assessment_id == assessment_id, Report.status == ReportStatus.pending)
-            .order_by(Report.id.desc())
-        )
-    )
-    settled = False
-    for row in pending:
-        settled = _settle_stale_pending(db, row) or settled
-    if settled:
-        db.commit()
-    live = [row for row in pending if row.status == ReportStatus.pending]
+    live = _live_pending(db, assessment_id)
     if live:
         return live[0]
 
     report = Report(assessment_id=assessment_id, created_by_id=user.id)
     db.add(report)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # F-40: the pre-check above is not atomic - two requests inside the same
+        # window both see "no pending row". uq_reports_one_pending_per_assessment
+        # (database.py) lets exactly one insert win; the loser re-reads the
+        # winner's row and answers with the same 202 instead of a 500.
+        db.rollback()
+        existing = db.scalar(
+            select(Report)
+            .where(Report.assessment_id == assessment_id, Report.status == ReportStatus.pending)
+            .order_by(Report.id.desc())
+        )
+        if existing is not None:
+            return existing
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A report for this assessment is already being generated",
+        ) from None
     db.refresh(report)
     background_tasks.add_task(run_report_job, report.id)
     return report
@@ -159,9 +197,7 @@ def delete_report(
         raise HTTPException(status.HTTP_409_CONFLICT, "Report generation is still in progress")
 
     if report.file_path:
-        resolved = (REPORTS_DIR / report.file_path).resolve()
-        if resolved.is_relative_to(REPORTS_DIR.resolve()):
-            resolved.unlink(missing_ok=True)
+        unlink_report_file(report.file_path)
 
     db.delete(report)
     db.commit()

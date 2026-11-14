@@ -51,6 +51,9 @@ def build_report_context(db: Session, assessment: Assessment) -> dict:
     """Collect everything the template needs (no ORM objects cross the boundary)."""
     target = db.get(Target, assessment.target_id)
 
+    # Deliberately uncapped: the PDF is the complete record for this assessment,
+    # so its totals must match the API's authoritative X-Total-Count (proposal
+    # 06) rather than whatever page of the list the UI happened to load.
     findings = list(
         db.scalars(select(Finding).where(Finding.assessment_id == assessment.id).order_by(Finding.id))
     )

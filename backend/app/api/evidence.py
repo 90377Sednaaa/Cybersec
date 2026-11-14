@@ -49,6 +49,22 @@ def _get_evidence_or_404(db: Session, evidence_id: int) -> Evidence:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Evidence not found")
     return evidence
 
+
+def unlink_evidence_file(file_path: str | None) -> None:
+    """Unlink one stored evidence file, proving it stays inside EVIDENCE_DIR.
+
+    Shared by the evidence DELETE route and target deletion. Uploaded blobs are
+    runtime artifacts SQLite knows nothing about, so deleting the row alone
+    leaked the file (F-32). A tampered `file_path` must never delete anything
+    outside the evidence folder - the same guard the download uses.
+    """
+    if not file_path:
+        return  # inline content only, nothing on disk
+    base = EVIDENCE_DIR.resolve()
+    resolved = (base / file_path).resolve()
+    if resolved.is_relative_to(base):
+        resolved.unlink(missing_ok=True)
+
 @router.get("/findings/{finding_id}/evidence", response_model=list[EvidenceOut])
 def list_evidence(
     finding_id: int,
@@ -122,3 +138,23 @@ def download_evidence(
         filename=evidence.label or resolved.name,
         headers={"X-Content-Type-Options": "nosniff"},
     )
+
+
+@router.delete("/evidence/{evidence_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_evidence(
+    evidence_id: int,
+    _: User = Depends(require_role(Role.assessor, Role.admin)),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete an evidence row and the file behind it (F-32).
+
+    Uploads used to have no delete path at all, so blobs accumulated for the
+    life of the installation. The row goes first only after the path is proven
+    to live inside EVIDENCE_DIR; a missing file is not an error (an operator may
+    have deleted it), and inline `tool_output`/`http_transcript` rows have no
+    file to unlink.
+    """
+    evidence = _get_evidence_or_404(db, evidence_id)
+    unlink_evidence_file(evidence.file_path)
+    db.delete(evidence)
+    db.commit()

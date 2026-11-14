@@ -7,12 +7,18 @@ app.api.evidence.EVIDENCE_DIR so the repo tree stays clean.
 from app.api import evidence as evidence_api
 from app.database import SessionLocal
 from app.models import (
+    Assessment,
+    AssessmentStatus,
     Evidence,
     EvidenceKind,
     Finding,
     FindingStatus,
     Job,
+    Report,
+    ReportStatus,
+    ScanIntensity,
     Severity,
+    Target,
 )
 from app.evidence_capture import capture_http_transcript
 
@@ -268,3 +274,155 @@ def test_capture_skips_non_prober_and_bad_json():
         finding = db.get(Finding, finding_id)
         assert capture_http_transcript(db, finding, db.get(Job, zap_job)) is None
         assert capture_http_transcript(db, finding, db.get(Job, junk_job)) is None
+
+
+# --- Wave 4 regression: F-32 (evidence deletion + artifact cleanup) --------------
+
+def test_delete_evidence_removes_the_row_and_the_file(client, auth, tmp_path, monkeypatch):
+    monkeypatch.setattr(evidence_api, "EVIDENCE_DIR", tmp_path)
+    finding_id = _add_finding()
+    evidence_id = client.post(
+        f"/api/findings/{finding_id}/evidence",
+        files={"file": ("capture.log", b"bytes", "text/plain")},
+        headers=auth,
+    ).json()["id"]
+    assert len(list(tmp_path.iterdir())) == 1
+
+    resp = client.delete(f"/api/evidence/{evidence_id}", headers=auth)
+    assert resp.status_code == 204, resp.text
+    assert list(tmp_path.iterdir()) == []  # the blob is unlinked, not orphaned
+    with SessionLocal() as db:
+        assert db.get(Evidence, evidence_id) is None
+
+
+def test_delete_inline_evidence_needs_no_file(client, auth):
+    finding_id = _add_finding()
+    with SessionLocal() as db:
+        row = Evidence(
+            finding_id=finding_id, kind=EvidenceKind.tool_output, label="inline", content="text"
+        )
+        db.add(row)
+        db.commit()
+        evidence_id = row.id
+    assert client.delete(f"/api/evidence/{evidence_id}", headers=auth).status_code == 204
+
+
+def test_delete_evidence_tampered_path_keeps_outside_file(client, auth, tmp_path, monkeypatch):
+    """The row may be deleted; the file outside the evidence dir must survive."""
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    outside = tmp_path / "keep-me.txt"
+    outside.write_text("important", encoding="utf-8")
+    monkeypatch.setattr(evidence_api, "EVIDENCE_DIR", evidence_dir)
+
+    finding_id = _add_finding()
+    with SessionLocal() as db:
+        row = Evidence(
+            finding_id=finding_id,
+            kind=EvidenceKind.upload,
+            label="evil",
+            file_path="../keep-me.txt",
+        )
+        db.add(row)
+        db.commit()
+        evidence_id = row.id
+
+    assert client.delete(f"/api/evidence/{evidence_id}", headers=auth).status_code == 204
+    assert outside.is_file()
+
+
+def test_delete_evidence_viewer_403(client, auth):
+    finding_id = _add_finding()
+    viewer = _viewer_auth(client, auth)
+    with SessionLocal() as db:
+        row = Evidence(
+            finding_id=finding_id, kind=EvidenceKind.tool_output, label="inline", content="text"
+        )
+        db.add(row)
+        db.commit()
+        evidence_id = row.id
+    assert client.delete(f"/api/evidence/{evidence_id}", headers=viewer).status_code == 403
+    with SessionLocal() as db:
+        assert db.get(Evidence, evidence_id) is not None
+
+
+def test_delete_evidence_unknown_404(client, auth):
+    assert client.delete("/api/evidence/99999", headers=auth).status_code == 404
+
+
+def test_delete_target_unlinks_evidence_and_report_files(client, auth, tmp_path, monkeypatch):
+    """Evidence uploads and generated PDFs of a deleted target's runs must not
+    accumulate forever in folders nothing can reach again."""
+    from app.api import reports as reports_api
+
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    monkeypatch.setattr(evidence_api, "EVIDENCE_DIR", evidence_dir)
+    monkeypatch.setattr(reports_api, "REPORTS_DIR", reports_dir)
+
+    target = client.post(
+        "/api/targets",
+        json={
+            "name": "artifact-target",
+            "base_url": "http://localhost:3000",
+            "authorization_ref": "TEST-AUTH-ARTIFACTS",
+            "allowed_intensity": "passive_safe",
+            "in_scope_assets": ["http://localhost:3000"],
+        },
+        headers=auth,
+    ).json()
+
+    with SessionLocal() as db:
+        assessment = Assessment(
+            target_id=target["id"],
+            intensity=ScanIntensity.passive_safe,
+            categories=[],
+            status=AssessmentStatus.completed,
+        )
+        db.add(assessment)
+        db.flush()
+        finding = Finding(
+            assessment_id=assessment.id,
+            category="Exposed files & directories",
+            title="Backup archive exposed",
+            description="/backup.zip is reachable.",
+            severity=Severity.high,
+            status=FindingStatus.ai_candidate,
+        )
+        db.add(finding)
+        db.flush()
+        (evidence_dir / "blob.txt").write_text("evidence", encoding="utf-8")
+        db.add(
+            Evidence(
+                finding_id=finding.id,
+                kind=EvidenceKind.upload,
+                label="blob.txt",
+                file_path="blob.txt",
+            )
+        )
+        (reports_dir / "report.pdf").write_bytes(b"%PDF-1.4 fake")
+        db.add(Report(assessment_id=assessment.id, status=ReportStatus.ready, file_path="report.pdf"))
+        db.commit()
+        assessment_id = assessment.id
+
+    resp = client.delete(f"/api/targets/{target['id']}", headers=auth)
+    assert resp.status_code == 204, resp.text
+    assert list(evidence_dir.iterdir()) == []
+    assert list(reports_dir.iterdir()) == []
+
+    # Orphaned rows are a separately documented blocker; clean them up here.
+    with SessionLocal() as db:
+        for report in db.query(Report).filter(Report.assessment_id == assessment_id):
+            db.delete(report)
+        for row in db.query(Evidence).join(Finding, Evidence.finding_id == Finding.id).filter(
+            Finding.assessment_id == assessment_id
+        ):
+            db.delete(row)
+        for row in db.query(Finding).filter(Finding.assessment_id == assessment_id):
+            db.delete(row)
+        assessment = db.get(Assessment, assessment_id)
+        if assessment is not None:
+            db.delete(assessment)
+        db.commit()

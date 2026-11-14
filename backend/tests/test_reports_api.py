@@ -426,3 +426,72 @@ def test_delete_report_viewer_403(client, auth):
     assert resp.status_code == 403
     with SessionLocal() as db:
         assert db.get(Report, report_id) is not None
+
+
+# --- Wave 4 regression: F-40 (index), F-31 (one total for UI and PDF) -------------
+
+
+def test_report_insert_race_returns_the_winner(client, auth, monkeypatch):
+    """F-40: the pending pre-check is not atomic. When a competing request
+    inserts first, the unique index rejects this insert; the endpoint must
+    answer with the winner's row and the same 202, not a 500."""
+    from app.api import reports as reports_api
+
+    assessment_id = _seed_assessment(client, auth)
+    existing_id = _seed_report(assessment_id, status=ReportStatus.pending)
+
+    # Simulate the lost race: this request's pre-check ran before the winner
+    # committed, so it sees nothing.
+    monkeypatch.setattr(reports_api, "_live_pending", lambda _db, _aid: [])
+
+    resp = client.post(f"/api/assessments/{assessment_id}/report", headers=auth)
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["id"] == existing_id
+    with SessionLocal() as db:
+        pending = [
+            row
+            for row in db.query(Report).filter(
+                Report.assessment_id == assessment_id,
+                Report.status == ReportStatus.pending,
+            )
+        ]
+        assert len(pending) == 1
+
+
+def test_report_total_matches_the_findings_api_total(client, auth):
+    """F-31: the PDF context loads every finding uncapped, and the API reports
+    the same authoritative count while its default page stays at 200."""
+    assessment_id = _seed_assessment(client, auth)  # seeds 2 findings
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                Finding(
+                    assessment_id=assessment_id,
+                    category="Input validation & injection",
+                    title=f"Bulk finding {index}",
+                    description="synthetic",
+                    severity=Severity.low,
+                    status=FindingStatus.ai_candidate,
+                )
+                for index in range(203)
+            ]
+        )
+        db.commit()
+
+    try:
+        full = client.get(f"/api/findings?assessment_id={assessment_id}&limit=500", headers=auth)
+        assert len(full.json()) == 205
+        assert full.headers["x-total-count"] == "205"
+
+        capped = client.get(f"/api/findings?assessment_id={assessment_id}", headers=auth)
+        assert len(capped.json()) == 200  # unchanged default page
+        assert capped.headers["x-total-count"] == "205"
+
+        with SessionLocal() as db:
+            context = build_report_context(db, db.get(Assessment, assessment_id))
+        assert context["total_findings"] == 205
+        assert sum(context["counts"].values()) == 205
+    finally:
+        with SessionLocal() as db:
+            db.query(Finding).filter(Finding.assessment_id == assessment_id).delete()
+            db.commit()
