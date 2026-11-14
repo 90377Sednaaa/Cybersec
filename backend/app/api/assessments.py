@@ -20,7 +20,7 @@ from app.database import get_db
 from app.models import Assessment, AssessmentStatus, Job, JobStatus, Role, ScanIntensity, Target, User
 from app.models.user import utcnow
 from app.schemas.assessment import AssessmentCreate, AssessmentDetail, AssessmentOut, JobOut, ScanEvent
-from app.scanner.orchestrator import pipelines, request_cancel, start_pipeline
+from app.scanner.orchestrator import EVENT_QUEUE_SIZE, pipelines, request_cancel, start_pipeline
 
 router = APIRouter(prefix="/assessments", tags=["assessments"])
 
@@ -126,18 +126,29 @@ async def assessment_events(
     if assessment is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
 
+    # Everything the stream needs is materialised before streaming starts. The
+    # old generator read the session inside the response body and held it (with
+    # its read transaction) for the whole stream - minutes, for a long scan -
+    # while the workers needed to commit the rows SSE was about to report
+    # (F-39). The session is released here; get_db's finalizer closes it again
+    # later, which is a no-op.
+    snapshot = ScanEvent(type="snapshot", assessment=_detail(db, assessment))
+    snapshot_line = f"data: {json.dumps(snapshot.model_dump(mode='json'))}\n\n"
+    terminal_line = f"data: {json.dumps(ScanEvent(type='assessment', status=assessment.status.value).model_dump(mode='json'))}\n\n"
+    db.close()
+
     handle = pipelines.get(assessment_id)
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue | None = None
     if handle is not None:
+        queue = asyncio.Queue(maxsize=EVENT_QUEUE_SIZE)
         handle.subscribers.add(queue)
 
     async def generator():
         # Snapshot first so a fresh subscriber immediately sees state...
-        snapshot = ScanEvent(type="snapshot", assessment=_detail(db, assessment))
-        yield f"data: {json.dumps(snapshot.model_dump(mode='json'))}\n\n"
+        yield snapshot_line
         # ...then live events while the pipeline runs.
-        if handle is None:
-            yield f"data: {json.dumps(ScanEvent(type='assessment', status=assessment.status.value).model_dump(mode='json'))}\n\n"
+        if queue is None:
+            yield terminal_line
             return
         try:
             while True:

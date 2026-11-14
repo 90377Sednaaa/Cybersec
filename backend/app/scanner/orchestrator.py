@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 
 from app.ai.interpret import interpret_assessment
 from app.database import SessionLocal
@@ -28,6 +29,15 @@ from app.scanner.registry import get_runner
 # tool execution order; zap appended only at full intensity
 BASE_TOOLS = ["dns", "nmap", "prober"]
 INTRUSIVE_TOOLS = ["zap"]
+
+# Per-subscriber SSE backlog cap. A stalled or forgotten client must not grow
+# the process's memory; the oldest event is dropped instead (F-09).
+EVENT_QUEUE_SIZE = 500
+
+# Log/progress durability batching: one commit per line turned a chatty tool
+# into hundreds of write transactions per scan (F-09).
+LOG_FLUSH_LINES = 20
+LOG_FLUSH_SECONDS = 2.0
 
 
 def plan_tools(intensity: ScanIntensity) -> list[str]:
@@ -50,7 +60,22 @@ pipelines: dict[int, PipelineHandle] = {}
 
 def broadcast(handle: PipelineHandle, event: dict) -> None:
     for queue in list(handle.subscribers):
-        queue.put_nowait(event)
+        try:
+            queue.put_nowait(event)
+            continue
+        except asyncio.QueueFull:
+            pass
+        # Bounded queue: make room by discarding the subscriber's oldest event.
+        # The terminal `assessment` event is always the last one broadcast, so
+        # it can never be the event dropped here - a subscriber still closes.
+        try:
+            queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        try:
+            queue.put_nowait(event)
+        except asyncio.QueueFull:
+            pass  # a single consumer is this far behind; the snapshot recovers state
 
 
 def effective_intensity(assessment: Assessment, target: Target) -> ScanIntensity:
@@ -217,6 +242,37 @@ def target_deny_list(target) -> list[str]:
     return [t for t in terms if t and len(t) >= 3]
 
 
+class _CommitBatcher:
+    """Coalesce write-through log/progress commits for one job (F-09).
+
+    Log lines and progress values are applied to the ORM row immediately (so the
+    final commit persists everything) and broadcast immediately (so the SSE log
+    stays live); only the durability commit is batched. A tool that logs 200
+    lines now costs a handful of transactions instead of 200, which matters
+    because SQLite write transactions block readers in the old journal mode.
+    """
+
+    def __init__(self, db) -> None:
+        self._db = db
+        self._pending = 0
+        self._last_flush = time.monotonic()
+
+    def record(self) -> None:
+        self._pending += 1
+        if (
+            self._pending >= LOG_FLUSH_LINES
+            or (time.monotonic() - self._last_flush) >= LOG_FLUSH_SECONDS
+        ):
+            self.flush()
+
+    def flush(self) -> None:
+        if self._pending == 0:
+            return
+        self._db.commit()
+        self._pending = 0
+        self._last_flush = time.monotonic()
+
+
 async def _run_job(
     db,
     handle: PipelineHandle,
@@ -230,15 +286,17 @@ async def _run_job(
     db.commit()
     broadcast(handle, {"type": "job", "job_id": job.id, "status": job.status.value, "progress": 0.0})
 
+    batcher = _CommitBatcher(db)
+
     def emit_log(line: str) -> None:
         job.log += line + "\n"
-        db.commit()
         broadcast(handle, {"type": "log", "job_id": job.id, "line": line})
+        batcher.record()
 
     def emit_progress(value: float) -> None:
         job.progress = value
-        db.commit()
         broadcast(handle, {"type": "job", "job_id": job.id, "status": job.status.value, "progress": value})
+        batcher.record()
 
     ctx = ScanContext(
         db=db,

@@ -17,6 +17,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.evidence_capture import capture_http_transcript
 from app.models import Assessment, Evidence, EvidenceKind, Finding, FindingStatus, Job, Severity
 
 ZAP_RISK_MAP = {"informational": Severity.info, "low": Severity.low, "medium": Severity.medium, "high": Severity.high}
@@ -69,6 +70,11 @@ def create_candidate(
                 tool=job.tool,
             )
         )
+    # M4's helper (evidence_capture.py, wiring handed to M1): attach the readable
+    # request/response transcript for prober findings. Idempotent per
+    # (finding, job), so normalizer retries and AI interpretation - which calls
+    # create_candidate again - cannot pile up duplicates.
+    capture_http_transcript(db, finding, job)
     return finding
 
 
