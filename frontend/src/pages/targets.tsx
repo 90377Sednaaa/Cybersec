@@ -140,15 +140,17 @@ function RegisterTargetDialog() {
           </div>
           <div className="grid gap-2">
             <div className="flex items-center gap-1">
-              <Label htmlFor="target-authref">Authorization reference</Label>
+              <Label htmlFor="target-authref">Authorization reference (required)</Label>
               <HelpHint label="Proof you may test this">
                 Who authorized this assessment and how: instructor approval, system-owner consent, or site
-                ownership. Kept as an audit record; scanning without authorization violates the assessment
-                rules.
+                ownership. Required: a target cannot be registered without it, because the reference is the
+                audit record that the scan was authorized.
               </HelpHint>
             </div>
             <Input
               id="target-authref"
+              required
+              minLength={3}
               placeholder="e.g. instructor approval #42 / ownership"
               value={authRef}
               onChange={(e) => setAuthRef(e.target.value)}
@@ -169,7 +171,12 @@ function RegisterTargetDialog() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="passive_safe">Passive / safe (headers, spider, DNS, production OK)</SelectItem>
-                <SelectItem value="full_intrusive">Full / intrusive (active scan, brute force, test targets only)</SelectItem>
+                {/* Escalation is an admin decision server-side (proposal 05); do not
+                    offer the option to roles that will just get a 403. */}
+                <SelectItem value="full_intrusive" disabled={!hasRole("admin")}>
+                  Full / intrusive (active scan, brute force, test targets only)
+                  {hasRole("admin") ? "" : " - admin only"}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
