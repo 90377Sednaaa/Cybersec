@@ -22,15 +22,43 @@ def test_malformed_subject_claim_returns_401_not_500(client):
     """Regression (F-36): a correctly signed token can still be malformed. The
     old code did int(payload["sub"]) outside the try, so these produced an
     unhandled KeyError/TypeError and a 500 instead of a clean 401."""
+    from datetime import datetime, timedelta, timezone
+
+    exp = datetime.now(timezone.utc) + timedelta(hours=1)
     for payload in (
-        {"role": "admin"},                          # no sub
-        {"sub": "not-a-number", "role": "admin"},   # non-numeric sub
-        {"sub": None, "role": "admin"},             # wrong type
-        {"sub": ["1"], "role": "admin"},            # unhashable / wrong type
+        {"role": "admin", "exp": exp},                          # no sub
+        {"sub": "not-a-number", "role": "admin", "exp": exp},   # non-numeric sub
+        {"sub": None, "role": "admin", "exp": exp},             # wrong type
+        {"sub": ["1"], "role": "admin", "exp": exp},            # wrong type
     ):
         token = jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
         resp = client.get("/api/targets", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 401, resp.text
+
+
+def test_token_without_exp_is_rejected(client):
+    """F-37: PyJWT only verifies `exp` when the claim is present, so a signed
+    token with no expiry used to be valid forever."""
+    token = jwt.encode({"sub": "1", "role": "admin"}, settings.secret_key, algorithm=settings.jwt_algorithm)
+    resp = client.get("/api/targets", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401, resp.text
+
+
+def test_token_without_sub_is_rejected(client):
+    from datetime import datetime, timedelta, timezone
+
+    exp = datetime.now(timezone.utc) + timedelta(hours=1)
+    token = jwt.encode({"role": "admin", "exp": exp}, settings.secret_key, algorithm=settings.jwt_algorithm)
+    resp = client.get("/api/targets", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401, resp.text
+
+
+def test_a_normally_issued_token_still_works(client):
+    """Guard against over-tightening: create_access_token sets exp and sub."""
+    from app.core.security import create_access_token
+
+    token = create_access_token("1", "admin")
+    assert client.get("/api/targets", headers={"Authorization": f"Bearer {token}"}).status_code == 200
 
 # --- change-own-password -------------------------------------------------------
 

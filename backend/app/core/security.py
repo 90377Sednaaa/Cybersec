@@ -26,5 +26,16 @@ def create_access_token(subject: str, role: str) -> str:
 
 
 def decode_access_token(token: str) -> dict:
-    """Raises jwt.InvalidTokenError (or jwt.ExpiredSignatureError) on bad tokens."""
-    return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+    """Raises jwt.InvalidTokenError (or jwt.ExpiredSignatureError) on bad tokens.
+
+    `exp` and `sub` are REQUIRED, not merely verified when present: PyJWT only
+    checks `exp` if the claim exists, so a correctly signed token without one
+    would otherwise be valid forever. `create_access_token` always sets both, so
+    no legitimately issued token is affected.
+    """
+    return jwt.decode(
+        token,
+        settings.secret_key,
+        algorithms=[settings.jwt_algorithm],
+        options={"require": ["exp", "sub"]},
+    )
