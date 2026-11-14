@@ -83,3 +83,83 @@ def test_tls_expiry_check():
     titles = " | ".join(f["title"] for f in findings)
     assert "expires in 10 day(s)" in titles
     assert "Self-signed TLS certificate" in titles
+
+
+def test_tls_expiry_check_uses_production_shape():
+    """Regression (F-06): get_tls_info stores an ISO *string* under not_after and
+    keeps the datetime under not_after_dt (the prober strips that key before
+    serializing raw_output). The old code only read not_after, so real scans
+    never produced an expiry finding even though this pure test passed."""
+    soon = datetime.now(UTC) + timedelta(days=10, hours=1)
+    cert = {"not_after": soon.isoformat(), "not_after_dt": soon, "self_signed": False}
+    titles = " | ".join(f["title"] for f in checks.check_tls(cert))
+    assert "expires in 10 day(s)" in titles
+
+    expired = datetime.now(UTC) - timedelta(days=3)
+    cert = {"not_after": expired.isoformat(), "not_after_dt": expired, "self_signed": False}
+    titles = " | ".join(f["title"] for f in checks.check_tls(cert))
+    assert "expired" in titles
+
+
+def test_nmap_run_parses_subprocess_xml():
+    """Regression (F-01): a successful nmap run must parse its XML. The old code
+    called .decode() on an already-decoded str and raised AttributeError, which
+    the orchestrator swallowed as "failed unexpectedly". Mocked so no nmap
+    binary is needed."""
+    import asyncio
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.models import ScanIntensity
+    from app.scanner.base import ScanContext
+    from app.scanner.nmap_runner import NmapRunner
+
+    class FakeStdout:
+        def __init__(self, data: bytes) -> None:
+            self.data, self.sent = data, False
+
+        async def read(self, _n: int = -1) -> bytes:
+            if self.sent:
+                return b""
+            self.sent = True
+            return self.data
+
+    class FakeStderr:
+        async def read(self) -> bytes:
+            return b""
+
+    class FakeProcess:
+        def __init__(self, data: bytes) -> None:
+            self.stdout, self.stderr = FakeStdout(data), FakeStderr()
+            self.returncode = 0
+
+        async def wait(self) -> int:
+            return 0
+
+        def kill(self) -> None:
+            pass
+
+    job = SimpleNamespace(command="", raw_output=None)
+    ctx = ScanContext(
+        db=MagicMock(),
+        target=SimpleNamespace(base_url="http://localhost:3000"),
+        assessment=SimpleNamespace(intensity=ScanIntensity.passive_safe),
+        job=job,
+        emit_log=lambda _line: None,
+        emit_progress=lambda _value: None,
+        cancelled=lambda: False,
+    )
+
+    with (
+        patch("app.scanner.nmap_runner.shutil.which", return_value="nmap"),
+        patch(
+            "app.scanner.nmap_runner.asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=FakeProcess(FIXTURE.read_bytes())),
+        ),
+    ):
+        asyncio.run(NmapRunner().run(ctx))
+
+    parsed = json.loads(job.raw_output)
+    assert len(parsed["hosts"]) == 1
+    assert parsed["hosts"][0]["address"] == "127.0.0.1"

@@ -151,7 +151,10 @@ class NmapRunner(BaseRunner):
         if process.returncode != 0:
             raise RunnerError(f"nmap exited with code {process.returncode}: {stderr.strip()[:400]}")
 
-        parsed = parse_nmap_xml(stdout.decode(errors="replace"))
+        # `stdout` is already a str (decoded above). Calling .decode() again
+        # raised AttributeError here, so every successful nmap run was reported
+        # as "failed unexpectedly" and its XML was never parsed.
+        parsed = parse_nmap_xml(stdout)
         ctx.job.raw_output = json.dumps(parsed)
         total_ports = sum(len(h["open_ports"]) for h in parsed["hosts"])
         ctx.log(f"nmap finished: {len(parsed['hosts'])} host(s), {total_ports} open port(s). {parsed['summary']}")

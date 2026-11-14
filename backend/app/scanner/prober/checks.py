@@ -119,7 +119,10 @@ def check_tls(cert: dict | None) -> list[dict]:
     if not cert:
         return []
     findings = []
-    not_after = cert.get("not_after")
+    # get_tls_info serializes `not_after` to an ISO string for JSON storage and
+    # keeps the datetime under `not_after_dt` (the prober strips that key before
+    # writing raw_output). Read the datetime first or expiry checks never fire.
+    not_after = cert.get("not_after_dt") or cert.get("not_after")
     if isinstance(not_after, datetime):
         days_left = (not_after - datetime.now(timezone.utc)).days
         if days_left < 0:
