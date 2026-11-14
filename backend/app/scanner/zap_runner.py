@@ -16,6 +16,7 @@ import json
 
 import httpx
 
+from app.scanner import hostguard
 from app.scanner.base import BaseRunner, RunnerError, ScanContext
 from app.scanner.registry import register
 
@@ -70,6 +71,9 @@ class ZapRunner(BaseRunner):
         raise RunnerError(f"ZAP {view} did not finish within the time cap")
 
     async def run(self, ctx: ScanContext) -> None:
+        # ZAP crawls and attacks the URL itself, so the authorization check has
+        # to happen before we hand it over - we cannot police its hops.
+        hostguard.check_target(ctx.target)
         try:
             async with self._client() as client:
                 try:

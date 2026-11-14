@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 import dns.resolver
 
+from app.scanner import hostguard
 from app.scanner.base import BaseRunner, RunnerError, ScanContext
 from app.scanner.registry import register
 
@@ -71,6 +72,7 @@ class DnsRunner(BaseRunner):
         hostname = target_hostname(ctx.target.base_url)
         if not hostname:
             raise RunnerError(f"Could not extract a hostname from base_url '{ctx.target.base_url}'")
+        hostguard.check_target(ctx.target)
 
         ctx.log(f"Resolving records for {hostname}")
         ctx.progress(0.2)

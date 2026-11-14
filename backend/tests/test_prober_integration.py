@@ -61,7 +61,13 @@ def local_site():
 
 def _assessment_with_job(intensity: ScanIntensity, base_url: str):
     with SessionLocal() as db:
-        target = Target(name="prober-target", base_url=base_url, allowed_intensity=intensity)
+        target = Target(
+            name="prober-target",
+            base_url=base_url,
+            authorization_ref="TEST-AUTH-PROBER",
+            in_scope_assets=[base_url],
+            allowed_intensity=intensity,
+        )
         db.add(target)
         db.flush()
         assessment = Assessment(
@@ -157,7 +163,13 @@ def test_full_pipeline_end_to_end(local_site):
     """T1.6 smoke: the real orchestrator runs dns+nmap+prober, normalizer emits
     candidates, assessment completes even though nmap is missing on this machine."""
     with SessionLocal() as db:
-        target = Target(name="pipe-target", base_url=local_site, allowed_intensity=ScanIntensity.passive_safe)
+        target = Target(
+            name="pipe-target",
+            base_url=local_site,
+            authorization_ref="TEST-AUTH-PIPELINE",
+            in_scope_assets=[local_site],
+            allowed_intensity=ScanIntensity.passive_safe,
+        )
         db.add(target)
         db.flush()
         assessment = Assessment(target_id=target.id, intensity=ScanIntensity.passive_safe, categories=["all"])

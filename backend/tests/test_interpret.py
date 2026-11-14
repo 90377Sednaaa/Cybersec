@@ -109,7 +109,13 @@ AI_OUTPUT = {
 
 def _assessment_with_raw_jobs():
     with SessionLocal() as db:
-        target = Target(name="interp-target", base_url="http://127.0.0.1:9876", allowed_intensity=ScanIntensity.passive_safe)
+        target = Target(
+            name="interp-target",
+            base_url="http://127.0.0.1:9876",
+            authorization_ref="TEST-AUTH-INTERP",
+            in_scope_assets=["http://127.0.0.1:9876"],
+            allowed_intensity=ScanIntensity.passive_safe,
+        )
         db.add(target)
         db.flush()
         assessment = Assessment(target_id=target.id, intensity=ScanIntensity.passive_safe, categories=[])
@@ -313,7 +319,13 @@ def test_pipeline_runs_ai_interpretation_after_normalize(local_site, interpreter
     even if the AI layer is misconfigured."""
     _patch_llm(monkeypatch, [json.dumps(AI_OUTPUT)])
     with SessionLocal() as db:
-        target = Target(name="pipe-ai", base_url=local_site, allowed_intensity=ScanIntensity.passive_safe)
+        target = Target(
+            name="pipe-ai",
+            base_url=local_site,
+            authorization_ref="TEST-AUTH-PIPE-AI",
+            in_scope_assets=[local_site],
+            allowed_intensity=ScanIntensity.passive_safe,
+        )
         db.add(target)
         db.flush()
         assessment = Assessment(target_id=target.id, intensity=ScanIntensity.passive_safe, categories=[])
@@ -347,7 +359,13 @@ def test_pipeline_completes_when_ai_is_down(local_site, interpreter_configured, 
     """Provider outage: pipeline still completes; a note records the skip."""
     _patch_llm(monkeypatch, ['not json'])
     with SessionLocal() as db:
-        target = Target(name="pipe-ai-down", base_url=local_site, allowed_intensity=ScanIntensity.passive_safe)
+        target = Target(
+            name="pipe-ai-down",
+            base_url=local_site,
+            authorization_ref="TEST-AUTH-PIPE-DOWN",
+            in_scope_assets=[local_site],
+            allowed_intensity=ScanIntensity.passive_safe,
+        )
         db.add(target)
         db.flush()
         assessment = Assessment(target_id=target.id, intensity=ScanIntensity.passive_safe, categories=[])

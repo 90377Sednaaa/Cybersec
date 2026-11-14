@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from app.scanner import hostguard
 from app.scanner.base import BaseRunner, RunnerError, ScanContext
 from app.scanner.prober import checks
 from app.scanner.registry import register
@@ -33,12 +34,22 @@ class ProberRunner(BaseRunner):
             raise RunnerError(f"Invalid base_url '{ctx.target.base_url}'")
         port = parts.port or (443 if scheme == "https" else 80)
 
+        # Refuse a non-public target with no authorization record before opening
+        # a socket (proposal 05). The request hook below repeats this per hop.
+        hostguard.check_target(ctx.target)
+
         ctx.log(f"Probing {ctx.target.base_url} (passive checks)")
         ctx.progress(0.1)
         tls_info = await asyncio.to_thread(checks.get_tls_info, hostname, port) if scheme == "https" else None
 
         async with httpx.AsyncClient(
-            follow_redirects=True, timeout=REQUEST_TIMEOUT, headers={"User-Agent": USER_AGENT}, verify=False
+            follow_redirects=True,
+            timeout=REQUEST_TIMEOUT,
+            headers={"User-Agent": USER_AGENT},
+            verify=False,
+            # Validates every redirect hop, so an authorized public target cannot
+            # bounce the prober onto an internal address.
+            event_hooks={"request": [hostguard.request_guard(ctx.target)]},
         ) as client:
             try:
                 response = await client.get(ctx.target.base_url)

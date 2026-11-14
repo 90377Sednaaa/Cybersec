@@ -143,7 +143,11 @@ def test_nmap_run_parses_subprocess_xml():
     job = SimpleNamespace(command="", raw_output=None)
     ctx = ScanContext(
         db=MagicMock(),
-        target=SimpleNamespace(base_url="http://localhost:3000"),
+        target=SimpleNamespace(
+            base_url="http://localhost:3000",
+            authorization_ref="TEST-AUTH-NMAP",
+            in_scope_assets=["http://localhost:3000"],
+        ),
         assessment=SimpleNamespace(intensity=ScanIntensity.passive_safe),
         job=job,
         emit_log=lambda _line: None,

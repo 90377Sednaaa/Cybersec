@@ -57,7 +57,13 @@ def passive_target(client, auth):
 
 def make_target_row(intensity: ScanIntensity = ScanIntensity.passive_safe, url: str = "http://127.0.0.1:8000") -> Target:
     with SessionLocal() as db:
-        target = Target(name="row-target", base_url=url, allowed_intensity=intensity)
+        target = Target(
+            name="row-target",
+            base_url=url,
+            authorization_ref="TEST-AUTH-ROW",
+            in_scope_assets=[url],
+            allowed_intensity=intensity,
+        )
         db.add(target)
         db.commit()
         db.refresh(target)

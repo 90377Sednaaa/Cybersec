@@ -21,6 +21,7 @@ import shutil
 import xml.etree.ElementTree as ET
 from urllib.parse import urlsplit
 
+from app.scanner import hostguard
 from app.scanner.base import BaseRunner, RunnerError, ScanContext
 from app.scanner.registry import register
 
@@ -111,6 +112,8 @@ class NmapRunner(BaseRunner):
                 "nmap executable not found on PATH. Install Nmap (see PLAN.md section 11) "
                 "or run the assessment without the nmap tool."
             )
+
+        hostguard.check_target(ctx.target)
 
         profile = PROFILES["full_intrusive" if ctx.is_full else "passive_safe"]
         argv = [binary, *profile, "-oX", "-", *build_nmap_target_args(str(ctx.target.base_url))]
