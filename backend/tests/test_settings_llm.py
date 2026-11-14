@@ -16,15 +16,19 @@ from tests.test_llm_client import completion_body
 
 @pytest.fixture(autouse=True)
 def clean_llm_tables():
-    with SessionLocal() as db:
-        db.query(LLMTaskConfig).delete()
-        db.query(LLMProvider).delete()
-        db.commit()
+    def wipe():
+        with SessionLocal() as db:
+            db.query(LLMTaskConfig).delete()
+            db.query(LLMProvider).delete()
+            db.commit()
+
+    wipe()
+    # Task rows are seeded at startup (F-17), not by the GET, so the fixture
+    # models that instead of relying on the read to create them.
+    settings_llm.ensure_task_configs()
     yield
-    with SessionLocal() as db:
-        db.query(LLMTaskConfig).delete()
-        db.query(LLMProvider).delete()
-        db.commit()
+    wipe()
+    settings_llm.ensure_task_configs()
 
 
 @pytest.fixture()
@@ -52,7 +56,8 @@ def _put_provider(client, auth, **overrides):
     return client.put("/api/settings/llm/providers/1", json=body, headers=auth)
 
 
-def test_get_settings_creates_default_task_configs(client, auth):
+def test_get_settings_returns_seeded_task_configs(client, auth):
+    """Task rows are created at startup, not by this GET (see F-17)."""
     resp = client.get("/api/settings/llm", headers=auth)
     assert resp.status_code == 200
     body = resp.json()
@@ -425,3 +430,30 @@ def test_delete_provider_is_admin_only(client, auth, viewer_auth):
     resp = client.delete(f"/api/settings/llm/providers/{provider_id}", headers=viewer_auth)
     assert resp.status_code == 403, resp.text
     assert len(client.get("/api/settings/llm", headers=auth).json()["providers"]) == 1
+
+
+def test_settings_read_does_not_write_task_configs(client, auth):
+    """Regression (F-17): read_settings called _ensure_task_configs, which
+    INSERTed + COMMITed on a viewer GET. Two concurrent first loads could both
+    miss the same row and hit the unique constraint on llm_task_configs.task,
+    turning a read into an intermittent 500. Seeding now happens at startup."""
+    from app.api.settings_llm import ensure_task_configs
+    from app.database import SessionLocal
+    from app.models.llm import LLMTask, LLMTaskConfig
+
+    with SessionLocal() as db:
+        db.query(LLMTaskConfig).delete()
+        db.commit()
+    try:
+        resp = client.get("/api/settings/llm", headers=auth)
+        assert resp.status_code == 200, resp.text
+        with SessionLocal() as db:
+            assert db.query(LLMTaskConfig).count() == 0  # a read must not write
+
+        # The startup seeder is what creates them, and it is idempotent.
+        ensure_task_configs()
+        ensure_task_configs()
+        with SessionLocal() as db:
+            assert db.query(LLMTaskConfig).count() == len(LLMTask)
+    finally:
+        ensure_task_configs()

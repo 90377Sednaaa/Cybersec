@@ -38,6 +38,8 @@ def create_app() -> FastAPI:
     Base.metadata.create_all(bind=engine)
     ensure_sqlite_columns()
     seed_admin()
+    # Seeded once here, not on every settings GET (a viewer read must not write).
+    settings_llm.ensure_task_configs()
 
     app = FastAPI(
         title="AI-Assisted Security Assessment Platform",

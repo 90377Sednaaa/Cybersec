@@ -193,3 +193,36 @@ def test_viewer_can_browse_the_catalog(client, auth, provider, monkeypatch):
     resp = client.get(f"/api/settings/llm/providers/{provider['id']}/models", headers=viewer)
     assert resp.status_code == 200, resp.text
     assert resp.json()["source"] == "live"
+
+
+def test_invalidate_during_fetch_does_not_poison_the_cache(client, auth, provider, monkeypatch):
+    """Regression (F-14): get_catalog read the cache, released the lock for an
+    up-to-8s network fetch, then wrote the result back unconditionally. If an
+    admin edited base_url or the key in that window, invalidate() cleared the
+    cache and the in-flight fetch immediately repopulated it with the OLD
+    endpoint's models - served for the full 600s TTL."""
+    from app.ai import catalog as catalog_module
+
+    base_row = OPENROUTER_PAYLOAD["data"][0]
+    payloads = [
+        {"data": [{**base_row, "id": "old-endpoint/model"}]},
+        {"data": [{**base_row, "id": "new-endpoint/model"}]},
+    ]
+    state = {"n": 0}
+
+    def fake_fetch(base_url, headers, *, zdr=False, transport=None):
+        payload = payloads[min(state["n"], len(payloads) - 1)]
+        state["n"] += 1
+        if state["n"] == 1:
+            # The admin saves a new base_url while this request is in flight.
+            catalog_module.invalidate(provider["id"])
+        return payload
+
+    monkeypatch.setattr(settings_llm.catalog, "fetch_catalog", fake_fetch)
+
+    first = client.get(f"/api/settings/llm/providers/{provider['id']}/models", headers=auth).json()
+    assert first["models"][0]["id"] == "old-endpoint/model"
+
+    second = client.get(f"/api/settings/llm/providers/{provider['id']}/models", headers=auth).json()
+    # Had the stale result been cached, this would still say old-endpoint/model.
+    assert second["models"][0]["id"] == "new-endpoint/model"

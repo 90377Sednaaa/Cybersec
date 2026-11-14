@@ -48,6 +48,10 @@ class CatalogError(Exception):
 
 
 _cache: dict[tuple[int, bool], tuple[float, list[LLMModelOut]]] = {}
+# Bumped on every invalidate(). A fetch that started before an invalidation must
+# not repopulate the cache it was just cleared from, or a base_url/key change
+# keeps serving the OLD provider's models for the whole TTL.
+_generation: dict[int, int] = {}
 _cache_lock = threading.Lock()
 
 
@@ -56,12 +60,14 @@ def invalidate(provider_id: int) -> None:
     with _cache_lock:
         for key in [k for k in _cache if k[0] == provider_id]:
             del _cache[key]
+        _generation[provider_id] = _generation.get(provider_id, 0) + 1
 
 
 def clear_cache() -> None:
     """Test seam: forget every cached catalog."""
     with _cache_lock:
         _cache.clear()
+        _generation.clear()
 
 
 def supports_zdr(base_url: str) -> bool:
@@ -108,6 +114,7 @@ def get_catalog(
     now = time.monotonic()
     with _cache_lock:
         hit = _cache.get(key)
+        generation = _generation.get(provider.id, 0)
     if hit and now - hit[0] < CATALOG_TTL_SECONDS:
         return "live", hit[1], ""
 
@@ -123,7 +130,11 @@ def get_catalog(
     if not models:
         return "unavailable", [], "This provider did not list any chat models."
     with _cache_lock:
-        _cache[key] = (now, models)
+        # The result is still valid for this caller, but if invalidate() ran
+        # while the request was in flight it belongs to the previous endpoint -
+        # caching it would serve stale metadata for a whole TTL.
+        if _generation.get(provider.id, 0) == generation:
+            _cache[key] = (now, models)
     return "live", models, ""
 
 

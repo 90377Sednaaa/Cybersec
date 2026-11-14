@@ -22,10 +22,11 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ai import catalog, client as ai_client
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.core.deps import require_role
 from app.models import Role, User
 from app.models.llm import LLMTask, LLMTaskConfig, LLMProvider, encrypt_secret
@@ -113,11 +114,29 @@ def _reject_placeholder_key(api_key: str) -> None:
 
 
 def _ensure_task_configs(db: Session) -> None:
+    """Stage any missing per-task rows on the given session. Does not commit:
+    the write endpoint commits them together with the update."""
     existing = {row.task for row in db.scalars(select(LLMTaskConfig))}
     for task in LLMTask:
         if task not in existing:
             db.add(LLMTaskConfig(task=task))
-    db.commit()
+
+
+def ensure_task_configs() -> None:
+    """Create the per-task config rows once, at startup.
+
+    Called from `create_app` rather than from the GET handler: a viewer opening
+    the settings page used to trigger an INSERT + COMMIT, and two concurrent
+    first loads could both miss the same row and hit the unique constraint
+    (`llm_task_configs.task`), turning a read into an intermittent 500. Kept
+    race-tolerant anyway, since two workers can boot at the same time.
+    """
+    with SessionLocal() as db:
+        _ensure_task_configs(db)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()  # another worker inserted them first; nothing to do
 
 
 def _get_provider_or_404(db: Session, provider_id: int) -> LLMProvider:
@@ -129,7 +148,6 @@ def _get_provider_or_404(db: Session, provider_id: int) -> LLMProvider:
 
 @router.get("", response_model=LLMSettingsOut)
 def read_settings(db: Session = Depends(get_db), user: User = Depends(require_role(Role.admin, Role.assessor, Role.viewer))) -> LLMSettingsOut:
-    _ensure_task_configs(db)
     providers = list(db.scalars(select(LLMProvider).order_by(LLMProvider.id)))
     configs = list(db.scalars(select(LLMTaskConfig).order_by(LLMTaskConfig.id)))
     return LLMSettingsOut(
