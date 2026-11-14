@@ -63,6 +63,27 @@ def create_report(
 ) -> Report:
     if db.get(Assessment, assessment_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
+
+    # Idempotency (F-30): two fast clicks, two tabs or an automatic retry must
+    # not enqueue a second headless-Chromium render. Return the existing
+    # pending row with the SAME 202 rather than adding a new error status to
+    # the frozen contract - the caller cannot tell and nothing breaks.
+    pending = list(
+        db.scalars(
+            select(Report)
+            .where(Report.assessment_id == assessment_id, Report.status == ReportStatus.pending)
+            .order_by(Report.id.desc())
+        )
+    )
+    settled = False
+    for row in pending:
+        settled = _settle_stale_pending(db, row) or settled
+    if settled:
+        db.commit()
+    live = [row for row in pending if row.status == ReportStatus.pending]
+    if live:
+        return live[0]
+
     report = Report(assessment_id=assessment_id, created_by_id=user.id)
     db.add(report)
     db.commit()

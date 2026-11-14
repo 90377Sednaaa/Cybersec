@@ -276,6 +276,42 @@ def test_delete_report_unknown_404(client, auth):
     assert client.delete("/api/reports/99999", headers=auth).status_code == 404
 
 
+# --- Wave 1 regression: F-30 (duplicate report jobs) ----------------------------
+
+def test_duplicate_report_requests_return_same_pending_row(client, auth, monkeypatch):
+    """Two fast clicks must not enqueue two Chromium renders. The second POST
+    returns the SAME pending row with the same 202 - additive, no new status."""
+    import app.api.reports as reports_api
+
+    monkeypatch.setattr(reports_api, "run_report_job", lambda _report_id: None)
+    assessment_id = _seed_assessment(client, auth)
+
+    first = client.post(f"/api/assessments/{assessment_id}/report", headers=auth)
+    second = client.post(f"/api/assessments/{assessment_id}/report", headers=auth)
+    assert first.status_code == 202 and second.status_code == 202
+    assert first.json()["id"] == second.json()["id"]
+
+    listed = client.get(f"/api/assessments/{assessment_id}/reports", headers=auth).json()
+    assert len(listed) == 1
+
+
+def test_stale_pending_does_not_block_a_new_report(client, auth, monkeypatch):
+    """A wedged pending row must not make report generation permanently
+    unavailable; it settles to failed and a fresh row is created."""
+    import app.api.reports as reports_api
+
+    monkeypatch.setattr(reports_api, "run_report_job", lambda _report_id: None)
+    assessment_id = _seed_assessment(client, auth)
+    stale_id = _seed_report(assessment_id, status=ReportStatus.pending)
+    _backdate_pending(stale_id)
+
+    resp = client.post(f"/api/assessments/{assessment_id}/report", headers=auth)
+    assert resp.status_code == 202
+    assert resp.json()["id"] != stale_id
+    with SessionLocal() as db:
+        assert db.get(Report, stale_id).status == ReportStatus.failed
+
+
 # --- Wave 0 regressions: F-29 (pending wedge), F-33 (error reflection) ---------
 
 def _backdate_pending(report_id: int) -> None:
