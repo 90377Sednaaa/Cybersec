@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import client as ai_client
+from app.ai.interpret import _strip_fences
 from app.models import AIOutput, Assessment, Finding, FindingStatus, LLMTask
 
 CAP_FINDINGS = 30
@@ -99,12 +100,11 @@ def _build_messages(assessment: Assessment, verified: list[Finding]) -> list[dic
 
 
 def _parse_summary(content: str) -> dict | None:
-    text = content.strip()
-    if text.startswith("```"):
-        text = text.lstrip("`")
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
+    # Models commonly wrap JSON in a ```json ... ``` fence despite being told
+    # "JSON only". The old code stripped only the opening fence, leaving the
+    # closing ``` behind so json.loads failed with "Extra data". Reuse the
+    # interpreter's stripper so both AI tasks tolerate the same shapes.
+    text = _strip_fences(content)
     if not text.startswith("{"):
         return None
     try:

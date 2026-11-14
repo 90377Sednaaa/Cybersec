@@ -178,6 +178,28 @@ def test_reasoning_content_never_pollutes_summary(summarizer_configured, monkeyp
     assert "thinking about" not in json.dumps(summary)
 
 
+def test_fenced_summary_json_is_parsed():
+    """Regression (F-12): a model wrapping JSON in ```json ... ``` used to fail
+    with "Extra data" because only the opening fence was stripped."""
+    from app.ai.summarize import _parse_summary
+
+    summary = _parse_summary("```json\n" + SUMMARY_JSON + "\n```")
+    assert summary is not None
+    assert summary["executive_summary"].startswith("Assessment of the authorized lab target")
+    assert _parse_summary(SUMMARY_JSON) is not None  # unfenced still works
+
+
+def test_summarizer_accepts_fenced_json_end_to_end(summarizer_configured, monkeypatch):
+    assessment_id, _verified_id, _candidate_id, _title = _assessment_with_findings()
+    _patch_llm(monkeypatch, "```json\n" + SUMMARY_JSON + "\n```")
+    with SessionLocal() as db:
+        assessment = db.get(Assessment, assessment_id)
+        findings = list(db.query(Finding).filter(Finding.assessment_id == assessment_id))
+        summary = summarize_assessment(db, assessment, findings)
+    assert summary is not None
+    assert "executive_summary" in summary
+
+
 def test_unparseable_output_raises_request_error_not_silent_bad_summary(summarizer_configured, monkeypatch):
     assessment_id, verified_id, candidate_id, verified_title = _assessment_with_findings()
     _patch_llm(monkeypatch, "I will describe the findings in prose...")  # no JSON at all
