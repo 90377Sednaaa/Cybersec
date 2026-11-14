@@ -230,7 +230,7 @@ export function DashboardPage() {
             <CardDescription>
               {totalFindings === 0
                 ? "Nothing to review yet."
-                : `${reviewedCount} of ${totalFindings} findings reviewed (${reviewedPercent}%)`}
+                : `${reviewedCount} of ${totalFindings} findings reviewed (${reviewedPercent}%). Counts cover the 200 newest.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
