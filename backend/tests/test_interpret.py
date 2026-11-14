@@ -23,6 +23,7 @@ from app.ai.interpret import (
 )
 from app.database import SessionLocal
 from app.models import (
+    AIOutput,
     Assessment,
     Finding,
     FindingStatus,
@@ -121,6 +122,9 @@ def _assessment_with_raw_jobs():
         assessment = Assessment(target_id=target.id, intensity=ScanIntensity.passive_safe, categories=[])
         db.add(assessment)
         db.flush()
+        # SQLite reuses rowids after the newest rows are deleted, so a recycled
+        # assessment id could otherwise inherit another test's audit rows.
+        db.query(AIOutput).filter(AIOutput.assessment_id == assessment.id).delete()
         ids = []
         for tool, raw in (("prober", PROBER_RAW), ("zap", ZAP_RAW)):
             job = Job(assessment_id=assessment.id, tool=tool, status=JobStatus.pending)
@@ -390,3 +394,79 @@ def test_pipeline_completes_when_ai_is_down(local_site, interpreter_configured, 
         db.delete(assessment)
         db.delete(db.get(Target, target_id))
         db.commit()
+
+
+# --- Wave 4 regression: F-16 (interpretation audit trail) -----------------------
+
+def _interpretation_outputs(assessment_id: int) -> list[AIOutput]:
+    with SessionLocal() as db:
+        return list(
+            db.query(AIOutput)
+            .filter(
+                AIOutput.assessment_id == assessment_id,
+                AIOutput.task == LLMTask.interpretation,
+            )
+            .order_by(AIOutput.id)
+        )
+
+
+def test_interpretation_writes_an_ai_output_row(interpreter_configured, monkeypatch):
+    """models/llm.py promises an ai_outputs row per AI task; interpretation wrote
+    none, so the evidence pack could not show what the interpreter answered."""
+    _target_id, assessment_id, _jobs = _assessment_with_raw_jobs()
+    _patch_llm(monkeypatch, [json.dumps(AI_OUTPUT)])
+
+    with SessionLocal() as db:
+        assessment = db.get(Assessment, assessment_id)
+        interpret_assessment(db, assessment, list(assessment.jobs))
+
+    rows = _interpretation_outputs(assessment_id)
+    assert len(rows) == 1
+    assert rows[0].model == "test-model"
+    assert "AI: stacked banner leak" in rows[0].content
+    assert rows[0].finding_id is None  # assessment-level, kept apart from findings
+
+
+def test_interpretation_retry_records_each_model_answer(interpreter_configured, monkeypatch):
+    _target_id, assessment_id, _jobs = _assessment_with_raw_jobs()
+    _patch_llm(monkeypatch, ["return in prose", json.dumps(AI_OUTPUT)])
+
+    with SessionLocal() as db:
+        assessment = db.get(Assessment, assessment_id)
+        assert interpret_assessment(db, assessment, list(assessment.jobs)) == 3
+
+    rows = _interpretation_outputs(assessment_id)
+    assert len(rows) == 2  # the unusable answer is evidence too
+    assert rows[0].content == "return in prose"
+    assert "AI: stacked banner leak" in rows[1].content
+
+
+def test_interpretation_failure_is_recorded(interpreter_configured, monkeypatch):
+    """An empty ai_outputs table must never mean 'the AI was never asked'."""
+    _target_id, assessment_id, _jobs = _assessment_with_raw_jobs()
+    _patch_llm(monkeypatch, ["no JSON here"])
+
+    with SessionLocal() as db:
+        assessment = db.get(Assessment, assessment_id)
+        assert interpret_assessment(db, assessment, list(assessment.jobs)) == 0
+
+    rows = _interpretation_outputs(assessment_id)
+    assert len(rows) == 4  # three attempts plus the terminal failure row
+    assert any("unparseable" in row.content for row in rows)
+
+
+def test_no_provider_writes_no_output_row(monkeypatch):
+    """No configured provider means nothing was asked; that is not an AI output."""
+    from sqlalchemy import delete
+
+    with SessionLocal() as db:
+        db.execute(delete(LLMTaskConfig))
+        db.execute(delete(LLMProvider))
+        db.commit()
+
+    _target_id, assessment_id, _jobs = _assessment_with_raw_jobs()
+    with SessionLocal() as db:
+        assessment = db.get(Assessment, assessment_id)
+        assert interpret_assessment(db, assessment, list(assessment.jobs)) == 0
+
+    assert _interpretation_outputs(assessment_id) == []

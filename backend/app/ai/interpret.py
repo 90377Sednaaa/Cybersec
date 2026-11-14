@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from app.ai import client as ai_client
-from app.models import Assessment, Job, LLMTask, Severity
+from app.models import AIOutput, Assessment, Job, LLMTask, Severity
 from app.scanner.normalize import _title_taken, create_candidate
 
 MAX_FINDINGS = 10
@@ -30,6 +30,10 @@ PER_JOB_CONTEXT_CHARS = 6000
 RETRY_LIMIT = 2
 
 MIN_CONFIDENCE = 0.3
+
+# Audit rows hold the model's own answer, never the prompt. A cap keeps a
+# runaway completion from bloating the evidence database.
+MAX_AUDIT_CHARS = 20_000
 
 CANDIDATE_SCHEMA = {
     "type": "object",
@@ -103,11 +107,32 @@ def interpret_assessment(
     except ai_client.NoProviderConfigured:
         return 0
     except ai_client.LLMRequestError as exc:
+        # F-16: failures belong in the audit trail too, or an empty ai_outputs
+        # table is indistinguishable from "the AI was never asked".
+        _store_output(db, assessment, model="", content=json.dumps({"error": str(exc)}, indent=1))
         note_failure(assessment, f"AI interpretation failed: {exc}")
         db.commit()
         if emit_log is not None:
             emit_log(f"[error] AI interpretation failed: {exc}")
         return 0
+
+
+def _store_output(db: Session, assessment: Assessment, *, model: str, content: str) -> AIOutput:
+    """Persist one interpretation output (F-16).
+
+    `models/llm.py` documents ai_outputs as the audit trail of what the AI said,
+    but interpretation wrote none - only the summarizer did. The evidence pack
+    needs the interpreter's answers too, kept separate from human-verified
+    findings exactly like the summary rows.
+    """
+    row = AIOutput(
+        task=LLMTask.interpretation,
+        assessment_id=assessment.id,
+        model=model,
+        content=content[:MAX_AUDIT_CHARS],
+    )
+    db.add(row)
+    return row
 
 
 def _interpret(db: Session, assessment: Assessment, jobs: list[Job], deny_list: list[str], transport) -> int:
@@ -120,13 +145,24 @@ def _interpret(db: Session, assessment: Assessment, jobs: list[Job], deny_list: 
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": USER_INSTRUCTION.replace("{context}", context)},
     ]
-    payload = _request_json(db, messages, deny_list, transport)
+    payload = _request_json(db, assessment, messages, deny_list, transport)
     candidates = _parse_candidates(payload)
     return _persist_candidates(db, assessment, jobs, candidates)
 
 
-def _request_json(db: Session, messages, deny_list, transport, feedback: str | None = None) -> dict:
-    """Call the interpreter model, one repair-retry on invalid JSON."""
+def _request_json(
+    db: Session,
+    assessment: Assessment,
+    messages,
+    deny_list,
+    transport,
+    feedback: str | None = None,
+) -> dict:
+    """Call the interpreter model, one repair-retry on invalid JSON.
+
+    Each model answer is stored as an AIOutput row before it is parsed, so even
+    the attempts that had to be retried are on record (F-16).
+    """
     for attempt in range(RETRY_LIMIT + 1):
         turn = list(messages)
         if feedback is not None:
@@ -139,6 +175,7 @@ def _request_json(db: Session, messages, deny_list, transport, feedback: str | N
             transport=transport,
             max_tokens=4000,
         )
+        _store_output(db, assessment, model=result.model, content=result.content)
         text = _strip_fences(result.content)
         try:
             return json.loads(text)
