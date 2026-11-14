@@ -75,11 +75,12 @@ new one accepted, works for viewer accounts too.
    reverse-proxy limit). Not shipped in the dev demo because the deployment
    story is single-machine native Windows (PLAN.md §1); recorded here so it
    is stated before the examiners find it.
-2. **JWTs are stateless — a password change does not revoke existing tokens.**
-   Tokens carry user id + role until expiry (default session lifetime in
-   `app/core/security.py`). A leaked token cannot be individually revoked;
-   full revocation would need a token-version column checked per request
-   (additive change; noted as future work).
+2. **JWTs are revocable on password change, not individually.** Tokens carry user id, role and a
+   `token_version` (`tv`) claim until expiry (default session lifetime in `app/core/security.py`). Changing
+   a password bumps the row's version, so every session issued under the old password is rejected with 401
+   "Session revoked". A leaked token that never triggers a password change still lives until `exp`, and
+   there is no per-token revocation list; the 12 h (configurable) lifetime is the bound. Deploying this
+   change rejects every pre-existing token once, by design.
 3. **Bootstrap admin seeding logs a warning** — the default password is
    printed to the log on first start (intentional, so dev setups notice).
 4. **No 2FA / password complexity rules** beyond the 8-char floor — accepted

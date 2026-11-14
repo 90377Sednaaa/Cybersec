@@ -126,14 +126,15 @@ table in [README.md](README.md) is kept in sync by the M5 steward.
 | **M1** Scan engine | done | nmap/dns/prober/zap runners, orchestrator with SSE + cancel, server-side intensity gate (409), normalizer emitting `ai_candidate`; contracts frozen in `app/schemas/assessment.py`. Wave 4 (2026-11-14): per-subscriber queue capped at 500 (oldest event dropped, terminal event always kept), log/progress commits batched at 20 lines or 2s, WAL + `busy_timeout=5000` on the SQLite engine, the SSE endpoint snapshots and releases its session before streaming, and `create_candidate` now attaches an `http_transcript` (F-11). Log: `docs/member-logs/m1-scan-engine.md`. |
 | **M2** AI pipeline | done | T2.0-T2.5: OpenAI-compatible client, Fernet-encrypted provider settings + discretion gate, redaction before every call, interpreter, summarizer + `ai_outputs` audit. 67 AI tests. Additive enhancement (2026-11-12): live model-catalog proxy `app/ai/catalog.py` + `GET /api/settings/llm/providers/{id}/models` with TTL cache, normalized pricing/capability metadata, per-model `supported_efforts`/`default_effort`, persisted `LLMTaskConfig.effort` (idempotent startup migration) and offline fallback; proposal `docs/proposals/01-live-model-catalog.md`. Wave 4 (2026-11-14): every interpretation attempt now writes an `AIOutput` audit row, success and failure alike. Log: `docs/member-logs/m2-ai-pipeline.md`. |
 | **M3** Frontend | done | T3.0-T3.5 complete: assessments wizard + authenticated SSE live log (T3.1), filterable findings table + detail drawer + verify/false-positive/needs-evidence actions with notes + WCAG AA contrast (T3.2), LLM provider settings + per-task models + test connection (T3.3), live dashboard with real counts + responsive chart + recent assessments (T3.4), report generation + authenticated download (T3.5). Additive enhancement (2026-11-12): searchable `ModelPicker` dialog (`src/components/model-picker.tsx`), model-aware reasoning effort control driven by the live catalog (`src/lib/model-effort.ts`), shadcn `Switch`/`Checkbox` primitives and modernized AI settings UI (`src/pages/settings.tsx`, `src/pages/settings-tasks.tsx`), verified in dark and light themes. Additive enhancement (2026-11-13): sonner toasts on every mutating action, dedicated `/assessments/:id` run page with a shared-axis job timeline, dashboard "Verification progress" stacked bar + "Findings per run" bar chart, shared `EmptyState`, `g`-chord keyboard shortcuts documented in a header panel (keyboard icon beside the theme toggle, or `?`) with a default-off switch to print the hints in the sidebar, and a `--state-verified` token so the four review states are four distinct hues. Wave 4 (2026-11-14): `api.ts` split into `api`/`apiWithMeta`/`apiBlob`; the dashboard's review percentage uses real per-state totals from `X-Total-Count` (the severity and per-run charts keep the 200-row caveat); report download goes through the auth-aware blob helper so a 401 reaches the session handler. Log: `docs/member-logs/m3-frontend.md`. |
-| **M4** Findings & reports | done | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. Wave 4 (2026-11-14): `GET /api/findings` takes bounded `limit`/`offset` and sends `X-Total-Count` over the filtered set (P06), `DELETE /api/evidence/{id}` unlinks the blob and target deletion reuses the same unlink helpers (F-32), and a partial unique index allows one pending report per assessment with a dedup step for pre-existing duplicates (F-40). Log refreshed to final state: `docs/member-logs/m4-findings-reports.md`. M3 hand-off spec: `docs/m3-findings-page-spec.md`. |
+| **M4** Findings & reports | done | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. Wave 4 (2026-11-14): `GET /api/findings` takes bounded `limit`/`offset` and sends `X-Total-Count` over the filtered set (P06), `DELETE /api/evidence/{id}` unlinks the blob and target deletion reuses the same unlink helpers (F-32), and a partial unique index allows one pending report per assessment with a dedup step for pre-existing duplicates (F-40). Wave 5 (2026-11-14): a finding PATCH compare-and-swaps on the status it validated, so an overlapping decision is a 409 instead of a silent lost update (F-35), and the report context eager-loads evidence with `selectinload` (F-34). Log refreshed to final state: `docs/member-logs/m4-findings-reports.md`. M3 hand-off spec: `docs/m3-findings-page-spec.md`. |
 | **M5** Docs/QA/deploy | in progress | Router hand-offs merged (T5.4 partial). Tool dependencies pending install (Nmap, OWASP ZAP, Playwright Chromium). Evidence pack & rehearsal pending. |
 
 Verification on this snapshot: `npm run build` passes (0 errors), `npm run lint` reports 0 errors / **7 warnings**
 (unchanged baseline: five shadcn fast-refresh/`Math.random` warnings in `components/ui`, one
 `use-mobile.ts` set-state-in-effect, one ref-during-render in `GradientASCII.tsx`),
-`pytest tests -q` reports **261 passed** (178 + 10 Wave 0 + 2 Wave 1 + 7 Wave 3 + 14 Wave 2a + 26 Wave 2b,
-plus 24 Wave 4 regression tests); live smoke test returned 200 for `/health`, login, and all list endpoints.
+`pytest tests -q` reports **268 passed** (178 + 10 Wave 0 + 2 Wave 1 + 7 Wave 3 + 14 Wave 2a + 26 Wave 2b,
+plus 24 Wave 4 and 7 Wave 5 regression tests); live smoke test returned 200 for `/health`, login, and all
+list endpoints.
 Wave 4 was additionally verified against a live server: `X-Total-Count` matched the filtered set with
 `limit=2`, `limit=501` returned 422, CORS exposed the header, `PRAGMA journal_mode` reported `wal`, an
 evidence DELETE returned 204 and unlinked its blob, and the SSE stream returned a snapshot plus a terminal
@@ -171,7 +172,11 @@ downloads use the auth-aware `apiBlob`), the findings list and PDF report agree 
 run writes `AIOutput` audit rows, `http_transcript` evidence is captured by the normalizer, evidence has a
 DELETE route and target deletion unlinks its blobs, the SQLite engine runs WAL with a busy timeout, the SSE
 endpoint no longer holds a session while streaming, and report creation is protected by a partial unique
-index plus a startup dedup. This plan is additive and
+index plus a startup dedup. **Wave 5 landed 2026-11-14:** the audit is closed out - a finding PATCH
+compare-and-swaps on the status it validated so an overlapping decision gets a 409 instead of silently
+vanishing (F-35), the report context eager-loads evidence (F-34), and `users.token_version` plus a required
+`tv` JWT claim make a password change revoke every existing session (F-38, proposal 09). F-19 remains the
+one unverified finding, parked until a live provider key exists. This plan is additive and
 does not reorder the course milestones below. When a wave lands, refresh the module rows and test counts
 here in that wave's final commit.
 
@@ -182,8 +187,9 @@ here in that wave's final commit.
 2. **Integration waves I1-I4 rehearsal** (`TASK_PLAN.md` §9) and the M5 evidence pack.
 3. **M5 documentation** — `docs/proposal.md`, `docs/system-design.md`, `docs/qa-checklist.md`, `scripts/setup-dev.ps1`.
 
-Wave 4 is code-complete and committed, but its dashboard changes still need a visual pass in dark, light and
-a narrow viewport; that pass is blocked on Playwright Chromium (M5 T5.1) or a manual browser check.
+Wave 4 and Wave 5 are code-complete and committed. The only outstanding verification is the visual pass for
+the Wave 4 dashboard changes in dark, light and a narrow viewport; Playwright Chromium is still missing
+(M5 T5.1), so it needs a manual browser check until then.
 
 **Known integration blockers:**
 - **Resolved:** `GET /api/assessments/{id}/events` SSE authentication: solved with fetch-based streaming in `src/lib/scan-events.ts`.

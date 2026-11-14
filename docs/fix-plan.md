@@ -1,6 +1,6 @@
 # Fix plan — M1–M4 audit findings
 
-Author: M1 · Date: 2026-11-14 · Status: **W0–W4 landed · 05/06/07 accepted · 08 fallback only**
+Author: M1 · Date: 2026-11-14 · Status: **W0–W5 landed · 05/06/07/09 accepted · 08 fallback only**
 
 ## Wave status
 
@@ -12,7 +12,7 @@ Author: M1 · Date: 2026-11-14 · Status: **W0–W4 landed · 05/06/07 accepted 
 | W2b | **landed 2026-11-14** — host guard + secret handling | `pytest` 237 passed (+26); build 0 errors; lint 0 errors / 7 warnings; live: a target with the host *outside* `in_scope_assets` has dns and prober refuse with a HostBlocked message while one with the host *in* scope completes; provider create returns 400 for a local URL without `local_endpoint`, 201 with it, 400 for public http and for embedded credentials |
 | W3 | **landed 2026-11-14** | `pytest` 197 passed (+7); build 0 errors; lint 0 errors / 7 warnings; live cancel run ended `cancelled` with jobs `cancelled` (not `failed`), and the happy path still ends `completed` |
 | W4 | **landed 2026-11-14** — truthful totals, persistence, lifecycle | `pytest` 261 passed (+24); build 0 errors; lint 0 errors / 7 warnings; live: `X-Total-Count: 7` with `limit=2` returned 2 rows, filtered total tracked the filter, `limit=501` → 422, CORS exposes the header, `PRAGMA journal_mode` = `wal`, evidence DELETE 204 unlinked the blob, SSE returned snapshot + terminal event |
-| W5 | not started | — |
+| W5 | **landed 2026-11-14** — audit close-out | `pytest` 268 passed (+7); build 0 errors; lint 0 errors / 7 warnings; live: after a password change both pre-change sessions returned 401 "Session revoked", a fresh login returned 200 with `tv: 1`, and the admin session stayed valid. F-35's lost update reproduced deterministically (no lock error), F-34's query-count test fails without the fix, F-19 stays parked |
 
 W0 note: F-22 (JobTimeline) needed a second correction during visual verification. The first attempt
 included `now` in the axis max unconditionally, which stretched a *finished* run's axis from its end date
@@ -125,6 +125,27 @@ W4 as-built notes (truthful totals, persistence, lifecycle):
 - **F-31's "use the total in the report" needed no change.** `build_report_context` was already uncapped;
   the bug was only that the API capped silently. It now carries a comment saying so, and a test asserts the
   API header and the report context count agree.
+
+W5 as-built notes (audit close-out):
+
+- **F-35 was a lost update, not a lock error.** The probe opened two sessions on one finding: SQLite did not
+  raise "database is locked", and SQLAlchemy only wrote the dirty columns, so both commits succeeded. Two
+  assessors who both loaded `ai_candidate` could therefore record opposing decisions and the second one
+  silently won. The endpoint now compare-and-swaps on the status it validated
+  (`UPDATE ... WHERE id = ? AND status = <read status>`); no row matched means the caller gets a 409 and
+  reloads. No version column and no contract change. Field-only patches (notes, severity, score) stay
+  last-write-wins on purpose - there is no state machine to protect.
+- **F-34's test asserts statements, not seconds.** `selectinload(Finding.evidence)` turns one SELECT per
+  finding into one batched SELECT; the regression test counts `FROM evidence` statements during
+  `build_report_context` and fails when the option is removed (verified by temporarily removing it).
+- **F-38 costs every live session once.** `users.token_version` is stamped into the JWT as `tv`, the claim
+  is required, and change-password increments the column. Tokens issued before the deploy carry no `tv` and
+  are rejected, so the first boot after this change logs everyone out - that is the feature, not a
+  regression, and it is recorded in `docs/auth-checklist.md`. Role changes need no bump because
+  `get_current_user` reloads the row every request.
+- **F-19 stays parked.** Diagnosing whether a non-OpenAI endpoint rejects `reasoning_effort` needs a live
+  provider key, and the database has none. Gating it on catalog metadata without that evidence risks
+  dropping effort for models whose metadata is incomplete; the honest state is "documented, unverified".
 
 Source: read-only audit of 2026-11-13 (five parallel module audits, each claim re-verified against  
 source). This is a working plan, not a decision record: `docs/PLAN.md` and `docs/TASK_PLAN.md` are  
@@ -293,7 +314,10 @@ Verification: new tests for private-IP rejection, redirect-to-private-IP, mid-ru
 - **M4:** F-32 add `DELETE /evidence/{id}` with the same `is_relative_to` guard as download; unlink files on finding/report/target deletion; F-31 use the new total in `reporting.build_report_context`.
 - **M2:** F-16 write an `AIOutput` row for interpretation (and on failure paths), so the audit trail matches `models/llm.py`'s promise.
 
-### W5 — Needs a decision or live verification, do not start yet
+### W5 — Decision and verification close-out (landed 2026-11-14)
+
+Landed: F-34, F-35 and F-38 (proposal 09). F-19 stays parked until a live provider key exists; the
+as-built notes in the wave-status section record why.
 
 - **F-38** token revocation on password change — a `token_version` claim invalidates every current session; decide before designing.
 - **F-35** optimistic concurrency on finding PATCH — write a two-overlapping-PATCH test first; SQLite may raise `database is locked` instead of losing an update, so the bug is unconfirmed.
@@ -356,8 +380,9 @@ because the automation session does not persist; use `curl http://localhost:PORT
    unconditionally. Needs sign-off.
 2. **Fernet cutover (blocks P08).** Separating `ENCRYPTION_KEY` requires re-encrypting existing provider  
    rows before the switch. Who runs the migration, and is a one-time maintenance window acceptable?
-3. **Token revocation (F-38).** Add `token_version` (invalidates all active sessions on deploy), or keep  
-   the documented 12h window and accept the risk?
+3. **Token revocation (F-38).** **Decided 2026-11-14:** add `token_version` (invalidates all active sessions
+   on deploy) rather than keep the documented 12 h window. Shipped in W5; see
+   [proposal 09](proposals/09-token-revocation.md) and `TASK_PLAN.md` § Adopted changes.
 4. **Execution scope.** Do owners implement their own waves, or does M1 land all fixes as minimal  
    cross-module edits with hand-off notes? §1 assumes the former.
 5. **Shared core ownership.** Assign `core/**`, `schemas/**`, `database.py`, `config.py`, `reporting.py`  
