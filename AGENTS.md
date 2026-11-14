@@ -118,23 +118,29 @@ the users API.
 
 ## Current state / next up
 
-**Snapshot: 2026-11-13.** Living content — see "Milestone status upkeep" in Conventions. The build-order
+**Snapshot: 2026-11-14.** Living content — see "Milestone status upkeep" in Conventions. The build-order
 table in [README.md](README.md) is kept in sync by the M5 steward.
 
 | Module | State | What landed |
 |---|---|---|
-| **M1** Scan engine | done | nmap/dns/prober/zap runners, orchestrator with SSE + cancel, server-side intensity gate (409), normalizer emitting `ai_candidate`; contracts frozen in `app/schemas/assessment.py`. Log: `docs/member-logs/m1-scan-engine.md`. |
-| **M2** AI pipeline | done | T2.0-T2.5: OpenAI-compatible client, Fernet-encrypted provider settings + discretion gate, redaction before every call, interpreter, summarizer + `ai_outputs` audit. 67 AI tests. Additive enhancement (2026-11-12): live model-catalog proxy `app/ai/catalog.py` + `GET /api/settings/llm/providers/{id}/models` with TTL cache, normalized pricing/capability metadata, per-model `supported_efforts`/`default_effort`, persisted `LLMTaskConfig.effort` (idempotent startup migration) and offline fallback; proposal `docs/proposals/01-live-model-catalog.md`. Log: `docs/member-logs/m2-ai-pipeline.md`. |
-| **M3** Frontend | done | T3.0-T3.5 complete: assessments wizard + authenticated SSE live log (T3.1), filterable findings table + detail drawer + verify/false-positive/needs-evidence actions with notes + WCAG AA contrast (T3.2), LLM provider settings + per-task models + test connection (T3.3), live dashboard with real counts + responsive chart + recent assessments (T3.4), report generation + authenticated download (T3.5). Additive enhancement (2026-11-12): searchable `ModelPicker` dialog (`src/components/model-picker.tsx`), model-aware reasoning effort control driven by the live catalog (`src/lib/model-effort.ts`), shadcn `Switch`/`Checkbox` primitives and modernized AI settings UI (`src/pages/settings.tsx`, `src/pages/settings-tasks.tsx`), verified in dark and light themes. Additive enhancement (2026-11-13): sonner toasts on every mutating action, dedicated `/assessments/:id` run page with a shared-axis job timeline, dashboard "Verification progress" stacked bar + "Findings per run" bar chart, shared `EmptyState`, `g`-chord keyboard shortcuts documented in a header panel (keyboard icon beside the theme toggle, or `?`) with a default-off switch to print the hints in the sidebar, and a `--state-verified` token so the four review states are four distinct hues. Log: `docs/member-logs/m3-frontend.md`. |
-| **M4** Findings & reports | done | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. Log refreshed to final state: `docs/member-logs/m4-findings-reports.md`. M3 hand-off spec: `docs/m3-findings-page-spec.md`. |
+| **M1** Scan engine | done | nmap/dns/prober/zap runners, orchestrator with SSE + cancel, server-side intensity gate (409), normalizer emitting `ai_candidate`; contracts frozen in `app/schemas/assessment.py`. Wave 4 (2026-11-14): per-subscriber queue capped at 500 (oldest event dropped, terminal event always kept), log/progress commits batched at 20 lines or 2s, WAL + `busy_timeout=5000` on the SQLite engine, the SSE endpoint snapshots and releases its session before streaming, and `create_candidate` now attaches an `http_transcript` (F-11). Log: `docs/member-logs/m1-scan-engine.md`. |
+| **M2** AI pipeline | done | T2.0-T2.5: OpenAI-compatible client, Fernet-encrypted provider settings + discretion gate, redaction before every call, interpreter, summarizer + `ai_outputs` audit. 67 AI tests. Additive enhancement (2026-11-12): live model-catalog proxy `app/ai/catalog.py` + `GET /api/settings/llm/providers/{id}/models` with TTL cache, normalized pricing/capability metadata, per-model `supported_efforts`/`default_effort`, persisted `LLMTaskConfig.effort` (idempotent startup migration) and offline fallback; proposal `docs/proposals/01-live-model-catalog.md`. Wave 4 (2026-11-14): every interpretation attempt now writes an `AIOutput` audit row, success and failure alike. Log: `docs/member-logs/m2-ai-pipeline.md`. |
+| **M3** Frontend | done | T3.0-T3.5 complete: assessments wizard + authenticated SSE live log (T3.1), filterable findings table + detail drawer + verify/false-positive/needs-evidence actions with notes + WCAG AA contrast (T3.2), LLM provider settings + per-task models + test connection (T3.3), live dashboard with real counts + responsive chart + recent assessments (T3.4), report generation + authenticated download (T3.5). Additive enhancement (2026-11-12): searchable `ModelPicker` dialog (`src/components/model-picker.tsx`), model-aware reasoning effort control driven by the live catalog (`src/lib/model-effort.ts`), shadcn `Switch`/`Checkbox` primitives and modernized AI settings UI (`src/pages/settings.tsx`, `src/pages/settings-tasks.tsx`), verified in dark and light themes. Additive enhancement (2026-11-13): sonner toasts on every mutating action, dedicated `/assessments/:id` run page with a shared-axis job timeline, dashboard "Verification progress" stacked bar + "Findings per run" bar chart, shared `EmptyState`, `g`-chord keyboard shortcuts documented in a header panel (keyboard icon beside the theme toggle, or `?`) with a default-off switch to print the hints in the sidebar, and a `--state-verified` token so the four review states are four distinct hues. Wave 4 (2026-11-14): `api.ts` split into `api`/`apiWithMeta`/`apiBlob`; the dashboard's review percentage uses real per-state totals from `X-Total-Count` (the severity and per-run charts keep the 200-row caveat); report download goes through the auth-aware blob helper so a 401 reaches the session handler. Log: `docs/member-logs/m3-frontend.md`. |
+| **M4** Findings & reports | done | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. Wave 4 (2026-11-14): `GET /api/findings` takes bounded `limit`/`offset` and sends `X-Total-Count` over the filtered set (P06), `DELETE /api/evidence/{id}` unlinks the blob and target deletion reuses the same unlink helpers (F-32), and a partial unique index allows one pending report per assessment with a dedup step for pre-existing duplicates (F-40). Log refreshed to final state: `docs/member-logs/m4-findings-reports.md`. M3 hand-off spec: `docs/m3-findings-page-spec.md`. |
 | **M5** Docs/QA/deploy | in progress | Router hand-offs merged (T5.4 partial). Tool dependencies pending install (Nmap, OWASP ZAP, Playwright Chromium). Evidence pack & rehearsal pending. |
 
 Verification on this snapshot: `npm run build` passes (0 errors), `npm run lint` reports 0 errors / **7 warnings**
-(W1 removed the `scan-events.ts` set-state-in-effect warning; the remaining 7 are all in `GradientASCII.tsx`),
-`pytest tests -q` reports **237 passed** (178 + 10 Wave 0 + 2 Wave 1 + 7 Wave 3 + 14 Wave 2a + 26 Wave 2b
-regression tests); live smoke test returned 200 for `/health`, login, and all list endpoints.
+(unchanged baseline: five shadcn fast-refresh/`Math.random` warnings in `components/ui`, one
+`use-mobile.ts` set-state-in-effect, one ref-during-render in `GradientASCII.tsx`),
+`pytest tests -q` reports **261 passed** (178 + 10 Wave 0 + 2 Wave 1 + 7 Wave 3 + 14 Wave 2a + 26 Wave 2b,
+plus 24 Wave 4 regression tests); live smoke test returned 200 for `/health`, login, and all list endpoints.
+Wave 4 was additionally verified against a live server: `X-Total-Count` matched the filtered set with
+`limit=2`, `limit=501` returned 422, CORS exposed the header, `PRAGMA journal_mode` reported `wal`, an
+evidence DELETE returned 204 and unlinked its blob, and the SSE stream returned a snapshot plus a terminal
+`assessment` event.
 The model catalog, model-aware effort levels, settings UI, the assessment run page and the dashboard charts were
-also verified in the running app in both themes.
+also verified in the running app in both themes. The Wave 4 dashboard changes still need that browser pass
+(dark, light, and a narrow viewport) because Playwright Chromium is not installed in this environment.
 All M1-M4 modules are code complete; backend and frontend are ready for integration waves I1-I4 (`TASK_PLAN.md`).
 
 **Active working plan:** [docs/fix-plan.md](docs/fix-plan.md) — the 2026-11-13 M1-M4 audit (39 findings,
@@ -152,14 +158,20 @@ in-flight fetch after `invalidate()`; task-config seeding moved from a viewer GE
 `base_url` must be absolute http(s), `PUT /targets/{id}` became `PATCH` with partial semantics, allowing
 `full_intrusive` is admin-only, the orchestrator re-checks `target.allowed_intensity` at scheduling time and
 skips intrusive tools, a second concurrent run per target is a 409, and leading-dash hostnames are rejected
-before nmap sees them. **Proposals 05 and 07 are ACCEPTED** and logged in `TASK_PLAN.md` § Adopted changes;
-**06 (findings totals) remains open, and 08 shipped only its documented fallback** (`exp`/`sub` required and
-`InvalidToken` degrades cleanly — the encryption-key split is still undecided and, with zero stored keys,
-needs no migration). **Wave 2b landed 2026-11-14:** `scanner/hostguard.py` enforces the accepted SSRF policy
+before nmap sees them. **Proposals 05, 06 and 07 are ACCEPTED** and logged in `TASK_PLAN.md` § Adopted
+changes; **08 shipped only its documented fallback** (`exp`/`sub` required and `InvalidToken` degrades
+cleanly — the encryption-key split is still undecided and, with zero stored keys, needs no migration).
+**Wave 2b landed 2026-11-14:** `scanner/hostguard.py` enforces the accepted SSRF policy
 across dns/nmap/prober/zap including every httpx redirect hop; redaction covers bare provider keys, generic
 base64 tokens and multi-word secrets; provider error bodies are scrubbed before they reach notes/SSE/HTTP;
 provider `base_url` is validated (scheme, no embedded credentials, private only with `local_endpoint`) and
-changing it or the key re-requires the discretion acknowledgement. This plan is additive and
+changing it or the key re-requires the discretion acknowledgement. **Wave 4 landed 2026-11-14:** P06 shipped
+as `X-Total-Count` plus bounded `limit`/`offset` (the dashboard now reconciles against real totals and report
+downloads use the auth-aware `apiBlob`), the findings list and PDF report agree on totals, interpreting a
+run writes `AIOutput` audit rows, `http_transcript` evidence is captured by the normalizer, evidence has a
+DELETE route and target deletion unlinks its blobs, the SQLite engine runs WAL with a busy timeout, the SSE
+endpoint no longer holds a session while streaming, and report creation is protected by a partial unique
+index plus a startup dedup. This plan is additive and
 does not reorder the course milestones below. When a wave lands, refresh the module rows and test counts
 here in that wave's final commit.
 
@@ -169,6 +181,9 @@ here in that wave's final commit.
    line until they are.
 2. **Integration waves I1-I4 rehearsal** (`TASK_PLAN.md` §9) and the M5 evidence pack.
 3. **M5 documentation** — `docs/proposal.md`, `docs/system-design.md`, `docs/qa-checklist.md`, `scripts/setup-dev.ps1`.
+
+Wave 4 is code-complete and committed, but its dashboard changes still need a visual pass in dark, light and
+a narrow viewport; that pass is blocked on Playwright Chromium (M5 T5.1) or a manual browser check.
 
 **Known integration blockers:**
 - **Resolved:** `GET /api/assessments/{id}/events` SSE authentication: solved with fetch-based streaming in `src/lib/scan-events.ts`.
@@ -181,8 +196,9 @@ here in that wave's final commit.
 - Still open: **`DELETE /api/targets/{id}` orphans data.** SQLite foreign keys are never enabled (no
   `PRAGMA foreign_keys=ON`, no SQLAlchemy event listener), so deleting a target leaves its assessments, findings,
   jobs and reports pointing at a dead id. The declared FKs are decorative. Needs either the pragma + real cascade
-  rules (M1, `backend/app/models/**`) or an explicit dependent-delete in the endpoint. Until then the UI should
-  keep not offering target deletion.
+  rules (M1, `backend/app/models/**`) or an explicit dependent-delete in the endpoint. Wave 4 now unlinks the
+  target's evidence blobs and report PDFs, but the rows themselves are still orphaned, so the UI should keep not
+  offering target deletion.
 - Still open: **AI interpretation needs a real provider key.** The OpenRouter provider row is disabled with no
   key, so scans complete on the rule-based normalizer alone and skip AI cleanly (`NoProviderConfigured`).
   Paste a real key in Settings and re-enable the provider to turn AI findings on. Placeholder keys are now

@@ -1,6 +1,6 @@
 # Proposal: findings list totals & pagination
 
-Proposed by: M1 (draft) · Owner: M4 · Date: 2026-11-14 · Status: **open**
+Proposed by: M1 (draft) · Owner: M4 · Date: 2026-11-14 · Status: **accepted 2026-11-14 (shipped in W4)**
 
 > Wave 1 decision gate. W4's "real total" work depends on this being accepted.
 
@@ -59,6 +59,21 @@ documented contract stays accurate.
 
 ## Decision
 
-Filled in at the daily sync: accepted / rejected, one-line reason, and the steward's note about contract
-or timeline impact. If accepted, please also choose `X-Total-Count` vs a `/stats` endpoint so M3 builds
-against the right shape.
+**Accepted 2026-11-14 at the W4 start.** Shape chosen: **`X-Total-Count` header plus bounded
+`limit`/`offset` query params**; the body stays `list[FindingOut]`. A `/stats` endpoint was not taken —
+it would be a second source of truth, and the header gives callers a total for any filter combination for
+free.
+
+As built (W4):
+
+- `GET /api/findings` accepts `limit` (1-500, default 200) and `offset` (>= 0) and always sends
+  `X-Total-Count`, computed over the **same filtered query** as the page. `limit=501` is a 422.
+- CORS exposes the header (`expose_headers=["X-Total-Count"]`) so a Vite dev origin can read it.
+- M3 consumes it through `apiWithMeta()`: the dashboard makes four `limit=1&status=<state>` calls and sums
+  the totals, so "N of M reviewed" no longer depends on the 200-row cap. The per-severity and per-run
+  charts keep the "200 most recent findings" caveat, because those numbers are still derived from the
+  capped sample.
+- `reporting.build_report_context` remains uncapped and now says so in a comment; it is the reference total
+  the API header is tested against (`test_report_total_matches_the_findings_api_total`).
+
+No schema change, no migration, no frontend type change.

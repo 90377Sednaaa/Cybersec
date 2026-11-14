@@ -1,6 +1,6 @@
 # Fix plan — M1–M4 audit findings
 
-Author: M1 · Date: 2026-11-14 · Status: **W0, W1, W2 and W3 landed · 05/07 accepted · 06 open · 08 fallback only**
+Author: M1 · Date: 2026-11-14 · Status: **W0–W4 landed · 05/06/07 accepted · 08 fallback only**
 
 ## Wave status
 
@@ -11,7 +11,8 @@ Author: M1 · Date: 2026-11-14 · Status: **W0, W1, W2 and W3 landed · 05/07 ac
 | W2a | **landed 2026-11-14** — scope & authorization contract | `pytest` 211 passed (+14); build 0 errors; lint 0 errors / 7 warnings; live checks: missing `authorization_ref` 422, bad `base_url` 422, assessor `full_intrusive` 403 (create and patch), partial PATCH preserves scope, `PUT` now 405, assessor UI shows the option disabled |
 | W2b | **landed 2026-11-14** — host guard + secret handling | `pytest` 237 passed (+26); build 0 errors; lint 0 errors / 7 warnings; live: a target with the host *outside* `in_scope_assets` has dns and prober refuse with a HostBlocked message while one with the host *in* scope completes; provider create returns 400 for a local URL without `local_endpoint`, 201 with it, 400 for public http and for embedded credentials |
 | W3 | **landed 2026-11-14** | `pytest` 197 passed (+7); build 0 errors; lint 0 errors / 7 warnings; live cancel run ended `cancelled` with jobs `cancelled` (not `failed`), and the happy path still ends `completed` |
-| W4-W5 | not started | — |
+| W4 | **landed 2026-11-14** — truthful totals, persistence, lifecycle | `pytest` 261 passed (+24); build 0 errors; lint 0 errors / 7 warnings; live: `X-Total-Count: 7` with `limit=2` returned 2 rows, filtered total tracked the filter, `limit=501` → 422, CORS exposes the header, `PRAGMA journal_mode` = `wal`, evidence DELETE 204 unlinked the blob, SSE returned snapshot + terminal event |
+| W5 | not started | — |
 
 W0 note: F-22 (JobTimeline) needed a second correction during visual verification. The first attempt
 included `now` in the axis max unconditionally, which stretched a *finished* run's axis from its end date
@@ -89,6 +90,41 @@ W2b as-built notes (host guard + secret handling):
   audit trail and is left as a W4 candidate.
 - **Disabled providers are exempt from the re-ack.** A disabled provider sends nothing, so storing a key
   for later is not a disclosure; enabling it re-enters the gate.
+
+W4 as-built notes (truthful totals, persistence, lifecycle):
+
+- **P06 chose the header.** `GET /api/findings` keeps the `list[FindingOut]` body, gains `limit`/`offset`
+  (default 200, max 500) and always sends `X-Total-Count` computed from the same filtered query. CORS
+  exposes it for the Vite origin. The dashboard reads four `limit=1&status=…` totals instead of deriving a
+  percentage from the capped sample; the severity and per-run charts keep the caveat because they still
+  sample.
+- **F-39 enabled WAL, not foreign keys.** `journal_mode=WAL`, `busy_timeout=5000`,
+  `synchronous=NORMAL` are set on connect. `PRAGMA foreign_keys` is deliberately **not** enabled: the
+  declared FKs have no cascade rules, so switching it on would turn target deletion into a 500 instead of
+  the current silent orphaning. That remains the documented blocker.
+- **The SSE endpoint snapshots, closes, then streams.** `_detail()` and the terminal line are materialised
+  before `db.close()`, so a long stream no longer holds a read transaction while workers try to commit.
+  `get_db`'s finalizer closes the already-closed session, which SQLAlchemy treats as a no-op.
+- **`EVENT_QUEUE_SIZE = 500` drops the oldest, never the terminal event.** The terminal `assessment` event
+  is always the last broadcast, so a full queue can only shed older lines; the snapshot recovers state for a
+  client that fell too far behind.
+- **Log commits are batched, not the log.** `emit_log`/`emit_progress` still mutate the ORM row and
+  broadcast immediately (the SSE stays live); `_CommitBatcher` flushes every 20 records or 2 seconds, and
+  `_run_job`'s `finally` commits whatever is left.
+- **F-40 needed a dedup step, not just an index.** A partial unique index
+  (`WHERE status = 'pending'`) makes the race impossible going forward, but a database that already had two
+  pending rows would fail the index build. `ensure_sqlite_indexes` settles duplicates first (keeps
+  `MAX(id)`, marks the rest `failed`), then creates the index; `create_report` still returns the winner
+  with 202 when `IntegrityError` fires.
+- **F-32 shares the unlink helpers.** `unlink_evidence_file` and `unlink_report_file` live beside their
+  routers and are called by both the DELETE endpoints and target deletion. Rows orphaned by a target
+  delete are still left in place — the same foreign-key blocker as above.
+- **F-16 records every answer, including failures.** Interpretation writes one `AIOutput` row per provider
+  attempt (success or error) with the redacted prompt/response, and none when no provider is configured, so
+  the audit table matches what `models/llm.py` promises.
+- **F-31's "use the total in the report" needed no change.** `build_report_context` was already uncapped;
+  the bug was only that the API capped silently. It now carries a comment saying so, and a test asserts the
+  API header and the report context count agree.
 
 Source: read-only audit of 2026-11-13 (five parallel module audits, each claim re-verified against  
 source). This is a working plan, not a decision record: `docs/PLAN.md` and `docs/TASK_PLAN.md` are  
