@@ -78,7 +78,13 @@ function JobTimeline({
     return <p className="text-sm text-muted-foreground">No timing recorded yet.</p>
   }
   const latest = parse(runFinishedAt) ?? (ends.length > 0 ? Math.max(...ends) : null)
-  const finish = Math.max(latest ?? now ?? origin + 1, origin + 1)
+  // Only an ACTIVE run may extend its axis to the current poll time, so a
+  // running job's bar keeps growing. Including `now` for a finished run would
+  // stretch the axis from the run's end date to today and crush every bar into
+  // a 1px sliver; ignoring it entirely freezes the axis at the first finished
+  // job and clips the in-progress bar at 100%.
+  const active = runFinishedAt === null
+  const finish = Math.max(latest ?? 0, active ? (now ?? 0) : 0, origin + 1)
   const span = finish - origin
 
   return (

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 
 /**
  * The sidebar destinations and their `g` chord keys.
@@ -30,6 +30,14 @@ function isTypingTarget(target: EventTarget | null): boolean {
   if (!element) return false
   const tag = element.tagName
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || element.isContentEditable
+}
+
+/** Radix Dialog/Popover content carries role="dialog". A chord fired while a
+ * modal holds focus would navigate away and discard unsaved form state. */
+function isDialogTarget(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null
+  if (!element) return false
+  return Boolean(element.closest('[role="dialog"], [data-radix-popper-content-wrapper]'))
 }
 
 function readHintsPreference(): boolean {
@@ -76,11 +84,13 @@ export function useShowShortcutHints(): [boolean, (next: boolean) => void] {
  * Two-key navigation: press `g`, then a destination key within a second.
  * `?` toggles the shortcut panel.
  *
- * Deliberately ignores modifier chords and any keystroke typed into a field, so
- * it can never fire while someone is writing assessor notes.
+ * Ignores modifier chords, typing targets and anything inside a dialog. Those
+ * paths also disarm a chord that was armed before focus moved, so pressing `g`,
+ * clicking into a notes field and typing can never navigate later.
  */
 export function useAppShortcuts({ onToggleHelp }: { onToggleHelp?: () => void } = {}) {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
 
   useEffect(() => {
     let pending = false
@@ -88,7 +98,14 @@ export function useAppShortcuts({ onToggleHelp }: { onToggleHelp?: () => void } 
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey) return
-      if (isTypingTarget(event.target)) return
+
+      // Always clear the armed chord when the keystroke is not a chord key.
+      // Re-subscribing on pathname change (effect dep below) also resets it
+      // after a navigation, so `g` cannot leak across routes.
+      if (isTypingTarget(event.target) || isDialogTarget(event.target)) {
+        pending = false
+        return
+      }
 
       if (event.key === "?") {
         if (!onToggleHelp) return
@@ -114,5 +131,5 @@ export function useAppShortcuts({ onToggleHelp }: { onToggleHelp?: () => void } 
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [navigate, onToggleHelp])
+  }, [navigate, onToggleHelp, pathname])
 }

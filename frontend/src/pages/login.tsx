@@ -35,7 +35,14 @@ export function LoginPage() {
     setSubmitting(true)
     try {
       await login(email, password)
-      navigate((location.state as { from?: string } | null)?.from ?? "/", { replace: true })
+      // Restore a deep link lost to the api.ts session-expiry hard navigation,
+      // falling back to ProtectedRoute's router state for normal redirects.
+      const stored = sessionStorage.getItem("aletheia-return-to")
+      sessionStorage.removeItem("aletheia-return-to")
+      const from =
+        (location.state as { from?: string } | null)?.from ??
+        (stored && stored !== "/login" ? stored : "/")
+      navigate(from, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed")
     } finally {

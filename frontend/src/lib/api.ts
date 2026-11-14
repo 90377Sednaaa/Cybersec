@@ -34,8 +34,15 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (token) headers.set("Authorization", `Bearer ${token}`)
 
   const res = await fetch(path, { ...options, headers })
-  if (res.status === 401 && getToken() && !path.includes("/auth/token")) {
+  // Auth endpoints legitimately return 401 (bad credentials on login, wrong
+  // current password on change-password). Those are ordinary errors, not an
+  // expired session - let the generic !res.ok branch surface the backend detail.
+  const isAuthCall = path.startsWith("/api/auth/")
+  if (res.status === 401 && getToken() && !isAuthCall) {
     clearToken()
+    // A full navigation discards ProtectedRoute's router state.from, so keep the
+    // deep link for the login page to restore after re-authentication.
+    sessionStorage.setItem("aletheia-return-to", window.location.pathname)
     window.location.href = "/login"
     throw new ApiError(401, "Session expired")
   }

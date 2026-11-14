@@ -87,11 +87,18 @@ export function AssessmentReports({
   const remove = useMutation({
     mutationFn: (reportId: number) => api<void>(`/api/reports/${reportId}`, { method: "DELETE" }),
     onSuccess: () => {
-      setDeleting(null)
+      closeDeleteDialog()
       queryClient.invalidateQueries({ queryKey: ["reports", assessmentId] })
       toast.success("Report deleted")
     },
   })
+
+  // Reset the mutation so a previous 409/404 is not shown again the next time
+  // the dialog is opened for a different report.
+  function closeDeleteDialog() {
+    setDeleting(null)
+    remove.reset()
+  }
 
   async function handleDownload(report: Report) {
     setDownloadError(null)
@@ -178,7 +185,10 @@ export function AssessmentReports({
                   variant="ghost"
                   className="text-destructive hover:text-destructive"
                   disabled={report.status === "pending"}
-                  onClick={() => setDeleting(report)}
+                  onClick={() => {
+                    remove.reset()
+                    setDeleting(report)
+                  }}
                 >
                   <Trash2 className="size-3.5" />
                   Delete
@@ -203,7 +213,7 @@ export function AssessmentReports({
         </div>
       ))}
 
-      <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
+      <Dialog open={deleting !== null} onOpenChange={(open) => !open && closeDeleteDialog()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Delete report?</DialogTitle>
@@ -218,7 +228,7 @@ export function AssessmentReports({
             </Alert>
           )}
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={() => setDeleting(null)}>
+            <Button type="button" variant="outline" onClick={closeDeleteDialog}>
               Cancel
             </Button>
             <Button
