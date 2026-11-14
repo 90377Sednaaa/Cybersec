@@ -173,6 +173,9 @@ class LLMProviderIn(BaseModel):
     # discretion: enabling a provider means redacted scan data may be sent to
     # the external service; the admin must acknowledge that explicitly.
     acknowledged_external_processing: bool | None = None
+    # A loopback / private model endpoint (Ollama, LM Studio, vLLM) is a
+    # legitimate choice, but it has to be a conscious one - see proposal 07.
+    local_endpoint: bool = False
 
 
 class LLMProviderOut(BaseModel):

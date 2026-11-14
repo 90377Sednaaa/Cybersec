@@ -19,6 +19,7 @@ Hard rules encoded here:
 """
 
 import re
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -27,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.ai import catalog, client as ai_client
 from app.database import SessionLocal, get_db
+from app.scanner import hostguard
 from app.core.deps import require_role
 from app.models import Role, User
 from app.models.llm import LLMTask, LLMTaskConfig, LLMProvider, encrypt_secret
@@ -139,6 +141,64 @@ def ensure_task_configs() -> None:
             db.rollback()  # another worker inserted them first; nothing to do
 
 
+def _validate_provider_url(base_url: str, *, local_endpoint: bool) -> None:
+    """Proposal 07: the destination of a stored credential is validated.
+
+    The key is write-only, so an admin editing only `base_url` redirects a real
+    credential without ever seeing it again. Scheme, embedded credentials, and
+    the address class are all checked here; the private/loopback policy is the
+    same one the scan engine applies to targets.
+    """
+    parts = urlsplit(base_url.strip())
+    if parts.scheme not in ("http", "https"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "base_url must start with http:// or https://")
+    if parts.username or parts.password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "base_url must not embed credentials")
+    host = parts.hostname
+    if not host:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "base_url must include a hostname")
+
+    kinds = {hostguard.classify_address(address) for address in hostguard.resolve_addresses(host)}
+    if "metadata" in kinds:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "base_url resolves to a cloud metadata address; that is never a model server.",
+        )
+    if "restricted" in kinds:
+        if not local_endpoint:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "base_url resolves to a private or loopback address. Set local_endpoint=true to confirm "
+                "you intend a local model server (Ollama, LM Studio, vLLM).",
+            )
+        return  # local servers commonly serve plain http
+    if parts.scheme != "https":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A public provider endpoint must use https://")
+
+
+def _require_ack_on_endpoint_change(body: LLMProviderIn, existing: LLMProvider | None) -> None:
+    """Changing where the key goes is as consequential as enabling the provider.
+
+    The acknowledgement used to be checked on enable only, so an admin could
+    repoint an already-enabled provider at a new host without re-confirming.
+    """
+    if existing is None or not body.enabled:
+        # A disabled provider sends nothing, so storing a key for later is not
+        # a disclosure. Turning it on re-enters the gate in _require_ack_if_enabling.
+        return
+    endpoint_changed = bool(body.base_url.strip()) and body.base_url.strip() != existing.base_url
+    key_changed = bool(body.api_key)
+    if not (endpoint_changed or key_changed):
+        return
+    if body.acknowledged_external_processing is True:
+        return
+    raise HTTPException(
+        status.HTTP_400_BAD_REQUEST,
+        "Changing base_url or api_key requires acknowledged_external_processing=true: "
+        "the stored credential would be sent to the new destination.",
+    )
+
+
 def _get_provider_or_404(db: Session, provider_id: int) -> LLMProvider:
     provider = db.get(LLMProvider, provider_id)
     if provider is None:
@@ -162,6 +222,7 @@ def create_provider(
     db: Session = Depends(get_db),
     user: User = Depends(require_role(Role.admin)),
 ) -> LLMProvider:
+    _validate_provider_url(body.base_url, local_endpoint=body.local_endpoint)
     _require_ack_if_enabling(body)
     _reject_placeholder_key(body.api_key)
     provider = LLMProvider(
@@ -186,7 +247,9 @@ def update_provider(
     user: User = Depends(require_role(Role.admin)),
 ) -> LLMProvider:
     provider = _get_provider_or_404(db, provider_id)
+    _validate_provider_url(body.base_url, local_endpoint=body.local_endpoint)
     _require_ack_if_enabling(body, provider)
+    _require_ack_on_endpoint_change(body, provider)
     _reject_placeholder_key(body.api_key)
     if body.name:
         provider.name = body.name

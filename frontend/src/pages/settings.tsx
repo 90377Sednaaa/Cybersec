@@ -38,6 +38,29 @@ function formatDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : "-"
 }
 
+/**
+ * Whether an endpoint is a local model server (Ollama, LM Studio, vLLM).
+ * The server requires `local_endpoint: true` before it will accept a private or
+ * loopback base_url (proposal 07), so the flag is derived from the URL the admin
+ * already chose rather than being a second thing to tick.
+ */
+function isLocalEndpointUrl(raw: string): boolean {
+  let host: string
+  try {
+    host = new URL(raw).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  if (["localhost", "127.0.0.1", "::1", "[::1]"].includes(host) || host.endsWith(".local")) return true
+  if (host.startsWith("10.") || host.startsWith("192.168.")) return true
+  const match = /^172\.(\d{1,3})\./.exec(host)
+  if (match) {
+    const second = Number(match[1])
+    if (second >= 16 && second <= 31) return true
+  }
+  return false
+}
+
 function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDone: () => void }) {
   const queryClient = useQueryClient()
   const defaultPreset = PROVIDER_PRESETS[0]
@@ -113,6 +136,7 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
       api_key: apiKey,
       enabled,
       acknowledged_external_processing: acknowledged ? true : null,
+      local_endpoint: isLocalEndpointUrl(baseUrl.trim()),
     })
   }
 
@@ -191,6 +215,11 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
           {presetId === "ollama" && (
             <p className="text-xs text-muted-foreground">
               Local Ollama typically needs no key unless it runs behind an authenticated proxy.
+            </p>
+          )}
+          {isLocalEndpointUrl(baseUrl) && (
+            <p className="text-xs text-muted-foreground">
+              Local endpoint: prompts never leave this machine. A public endpoint must use https.
             </p>
           )}
         </div>

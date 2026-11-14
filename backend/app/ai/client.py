@@ -20,8 +20,8 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.redaction import redact_messages
-from app.models.llm import LLMProvider, LLMTask, LLMTaskConfig, decrypt_secret
+from app.ai.redaction import redact_messages, redact_text
+from app.models.llm import LLMProvider, LLMTask, LLMTaskConfig, SecretUnreadable, decrypt_secret
 
 DEFAULT_TIMEOUT_SECONDS = 60.0
 DEFAULT_MAX_TOKENS = 2000
@@ -102,7 +102,12 @@ def chat(
 
     headers = {"Content-Type": "application/json"}
     if provider.api_key_encrypted:
-        headers["Authorization"] = f"Bearer {decrypt_secret(provider.api_key_encrypted)}"
+        try:
+            headers["Authorization"] = f"Bearer {decrypt_secret(provider.api_key_encrypted)}"
+        except SecretUnreadable as exc:
+            # A key we cannot read is a configuration problem, not a provider
+            # failure: surface it as a normal LLMRequestError so scans degrade.
+            raise LLMRequestError(str(exc)) from exc
 
     started = time.monotonic()
     response_json = _send_with_retry(provider.base_url, headers, body, timeout, transport)
@@ -150,7 +155,11 @@ def _send_with_retry(
             elif resp.status_code in (429, 500, 502, 503, 504):
                 last_error = f"HTTP {resp.status_code} from provider"
             else:
-                detail = resp.text[:300]
+                # A gateway can echo the request - Authorization header included -
+                # back in its error body. This string ends up in
+                # assessment.notes, SSE logs and the /test response, so scrub it
+                # before it leaves the process.
+                detail = redact_text(resp.text)[:300]
                 raise LLMRequestError(f"Provider rejected the request (HTTP {resp.status_code}): {detail}")
         if attempt == 0:
             time.sleep(1.0)

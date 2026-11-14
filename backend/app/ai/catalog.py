@@ -19,7 +19,7 @@ from typing import Any
 
 import httpx
 
-from app.models.llm import LLMProvider, decrypt_secret
+from app.models.llm import LLMProvider, SecretUnreadable, decrypt_secret
 from app.schemas.common import LLMModelOut
 
 CATALOG_TTL_SECONDS = 600.0
@@ -99,7 +99,12 @@ def fetch_catalog(
 def _headers(provider: LLMProvider) -> dict[str, str]:
     headers = {"Accept": "application/json"}
     if provider.api_key_encrypted:
-        headers["Authorization"] = f"Bearer {decrypt_secret(provider.api_key_encrypted)}"
+        try:
+            headers["Authorization"] = f"Bearer {decrypt_secret(provider.api_key_encrypted)}"
+        except SecretUnreadable as exc:
+            # get_catalog turns CatalogError into source="unavailable", so the
+            # endpoint answers 200 with a readable notice instead of a 500.
+            raise CatalogError(str(exc)) from exc
     return headers
 
 

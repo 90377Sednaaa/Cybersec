@@ -9,7 +9,7 @@ import enum
 import hashlib
 from datetime import datetime
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -34,8 +34,23 @@ def encrypt_secret(plain: str) -> str:
     return _fernet().encrypt(plain.encode()).decode()
 
 
+class SecretUnreadable(RuntimeError):
+    """The stored ciphertext cannot be decrypted with the current key.
+
+    Not corruption: the row was encrypted under a SECRET_KEY we no longer have
+    (the Fernet key is derived from it), so the only recovery is re-entering the
+    key. Callers must degrade to a clean message instead of surfacing a 500.
+    """
+
+
 def decrypt_secret(token: str) -> str:
-    return _fernet().decrypt(token.encode()).decode()
+    try:
+        return _fernet().decrypt(token.encode()).decode()
+    except InvalidToken as exc:
+        raise SecretUnreadable(
+            "The stored API key cannot be decrypted with the current SECRET_KEY. "
+            "Re-enter the key in AI settings."
+        ) from exc
 
 
 class LLMProvider(Base):

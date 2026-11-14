@@ -45,11 +45,15 @@ SCRUB_PATTERNS: list[tuple[str, re.Pattern]] = [
     (
         # any identifier that ends in a sensitive keyword: password, api_token,
         # client_secret_token, session_id, db_key, ... catches compound names
-        # like "secret_token" that plain alternation cannot see
+        # like "secret_token" that plain alternation cannot see.
+        # The value runs to the end of the line (or to the matching quote), not
+        # to the first space: a passphrase with spaces used to be only partially
+        # redacted, leaving the rest of the secret in the prompt.
         "credential_assignment",
         re.compile(
-            r"(?i)\b([a-z0-9_-]*(?:password|passwd|secret|token|access_key|private_key|session_id|credential)\b)"
-            r"[\"']?\s*[:=]\s*(['\"`]?)[^\s'\"`;&\r\n]{4,}\2"
+            r"(?i)\b([a-z0-9_-]*(?:password|passwd|passphrase|secret|token|api[-_]?key"
+            r"|access_key|private_key|session_id|credential)\b)"
+            r"[\"']?\s*[:=]\s*(['\"`]?)([^\r\n'\"`;&]{4,})\2"
         ),
     ),
     (
@@ -75,8 +79,31 @@ SCRUB_PATTERNS: list[tuple[str, re.Pattern]] = [
         re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
     ),
     (
+        # Google API keys have no separator, so the prefix is the only signal.
+        "google_api_key",
+        re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    ),
+    (
+        "slack_token",
+        re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
+    ),
+    (
+        "stripe_key",
+        re.compile(r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b"),
+    ),
+    (
         "url_credential",
         re.compile(r"(?i)\b(https?:\/\/[^\/\s:@]+):([^\/\s@]+)@"),
+    ),
+    (
+        # Last resort for a bare token with no recognisable prefix. Requires
+        # lower case, upper case AND a digit in the same run, so ordinary long
+        # identifiers and lowercase hex are not swallowed.
+        "generic_base64_token",
+        re.compile(
+            r"\b(?=[A-Za-z0-9+/]*[a-z])(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*[0-9])"
+            r"[A-Za-z0-9+/]{40,}={0,2}\b"
+        ),
     ),
     (
         "high_entropy_hex",

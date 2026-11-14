@@ -183,6 +183,9 @@ export interface LLMProviderInput {
   // Required when enabling a provider: admin acknowledges that redacted
   // scan data may be sent to an external AI service.
   acknowledged_external_processing?: boolean | null
+  // Required before the server accepts a private/loopback base_url: the admin
+  // confirms the endpoint is a local model server (Ollama, LM Studio, vLLM).
+  local_endpoint?: boolean
 }
 
 export interface LLMTaskConfig {

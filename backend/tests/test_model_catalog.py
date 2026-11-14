@@ -134,7 +134,7 @@ def test_zdr_filter_is_forwarded_only_for_openrouter(client, auth, provider, mon
 
     other = client.post(
         "/api/settings/llm/providers",
-        json={"name": "Local", "base_url": "http://localhost:11434/v1", "enabled": False},
+        json={"name": "Local", "base_url": "http://localhost:11434/v1", "enabled": False, "local_endpoint": True},
         headers=auth,
     ).json()
     _patch_catalog(monkeypatch)

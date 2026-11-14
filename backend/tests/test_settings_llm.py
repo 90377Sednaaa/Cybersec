@@ -125,7 +125,8 @@ def test_enable_with_acknowledgment_sets_auditable_timestamp(client, auth):
     assert body["has_api_key"] is True
 
 
-def test_acknowledgment_is_sticky_on_later_updates(client, auth):
+def test_acknowledgment_covers_a_no_op_update(client, auth):
+    """A re-save that changes neither destination nor key stays acknowledged."""
     created = client.post(
         "/api/settings/llm/providers",
         json={"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "enabled": True, "acknowledged_external_processing": True},
@@ -133,8 +134,95 @@ def test_acknowledgment_is_sticky_on_later_updates(client, auth):
     )
     assert created.status_code == 201
     provider_id = created.json()["id"]
-    resp = _put_provider(client, auth)
-    assert resp.status_code == 200  # acknowledged already; no new ack sent
+    resp = client.put(
+        f"/api/settings/llm/providers/{provider_id}",
+        json={"name": "OpenRouter renamed", "base_url": "https://openrouter.ai/api/v1", "enabled": True},
+        headers=auth,
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_changing_the_endpoint_re_requires_the_acknowledgment(client, auth):
+    """F-18: the ack used to be checked on enable only, so an admin could
+    repoint an already-enabled provider at a new host - taking the stored key
+    with it - without ever re-confirming."""
+    created = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "enabled": True, "acknowledged_external_processing": True},
+        headers=auth,
+    )
+    provider_id = created.json()["id"]
+
+    moved = client.put(
+        f"/api/settings/llm/providers/{provider_id}",
+        json={"name": "OpenRouter", "base_url": "https://attacker.example/api/v1", "enabled": True},
+        headers=auth,
+    )
+    assert moved.status_code == 400, moved.text
+    assert "acknowledged_external_processing" in moved.json()["detail"]
+
+    # Same rule when the key changes, even if the destination does not.
+    rotated = client.put(
+        f"/api/settings/llm/providers/{provider_id}",
+        json={
+            "name": "OpenRouter",
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": "sk-or-v1-" + "c" * 64,
+            "enabled": True,
+        },
+        headers=auth,
+    )
+    assert rotated.status_code == 400, rotated.text
+
+    # Re-confirming lets it through.
+    confirmed = client.put(
+        f"/api/settings/llm/providers/{provider_id}",
+        json={
+            "name": "OpenRouter",
+            "base_url": "https://attacker.example/api/v1",
+            "enabled": True,
+            "acknowledged_external_processing": True,
+        },
+        headers=auth,
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+
+def test_public_provider_must_use_https(client, auth):
+    resp = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "Plain", "base_url": "http://openrouter.ai/api/v1", "enabled": False},
+        headers=auth,
+    )
+    assert resp.status_code == 400, resp.text
+    assert "https" in resp.json()["detail"]
+
+
+def test_private_provider_needs_the_local_endpoint_flag(client, auth):
+    without = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "Ollama", "base_url": "http://127.0.0.1:11434/v1", "enabled": False},
+        headers=auth,
+    )
+    assert without.status_code == 400, without.text
+    assert "local_endpoint" in without.json()["detail"]
+
+    with_flag = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "Ollama", "base_url": "http://127.0.0.1:11434/v1", "enabled": False, "local_endpoint": True},
+        headers=auth,
+    )
+    assert with_flag.status_code == 201, with_flag.text
+
+
+def test_provider_url_cannot_embed_credentials(client, auth):
+    resp = client.post(
+        "/api/settings/llm/providers",
+        json={"name": "Sneaky", "base_url": "https://user:pass@openrouter.ai/api/v1", "enabled": False},
+        headers=auth,
+    )
+    assert resp.status_code == 400, resp.text
+    assert "credentials" in resp.json()["detail"]
 
 
 def test_ack_negation_is_ignored_sticky_ack_wins(client, auth):
@@ -378,7 +466,13 @@ def test_realistic_key_and_empty_local_key_are_accepted(client, auth):
 
     local = client.post(
         "/api/settings/llm/providers",
-        json={"name": "Ollama", "base_url": "http://127.0.0.1:11434/v1", "api_key": "", "enabled": False},
+        json={
+            "name": "Ollama",
+            "base_url": "http://127.0.0.1:11434/v1",
+            "api_key": "",
+            "enabled": False,
+            "local_endpoint": True,
+        },
         headers=auth,
     )
     assert local.status_code == 201, local.text
@@ -430,6 +524,41 @@ def test_delete_provider_is_admin_only(client, auth, viewer_auth):
     resp = client.delete(f"/api/settings/llm/providers/{provider_id}", headers=viewer_auth)
     assert resp.status_code == 403, resp.text
     assert len(client.get("/api/settings/llm", headers=auth).json()["providers"]) == 1
+
+
+def test_unreadable_stored_key_degrades_instead_of_500(client, auth):
+    """Regression (F-20): rotating SECRET_KEY makes every stored ciphertext
+    undecryptable. `InvalidToken` was unhandled, so /test and /models 500'd even
+    though both promise never to."""
+    from app.database import SessionLocal
+    from app.models.llm import LLMProvider, LLMTask, LLMTaskConfig
+
+    with SessionLocal() as db:
+        provider = LLMProvider(
+            name="Broken",
+            base_url="https://openrouter.ai/api/v1",
+            api_key_encrypted="not-a-valid-fernet-token",
+            enabled=True,
+        )
+        db.add(provider)
+        db.flush()
+        # The fixture already seeded one row per task (unique on `task`), so
+        # point the interpretation row at this provider instead of adding one.
+        config = db.query(LLMTaskConfig).filter(LLMTaskConfig.task == LLMTask.interpretation).one()
+        config.provider_id = provider.id
+        config.model = "some/model"
+        db.commit()
+        provider_id = provider.id
+
+    tested = client.post("/api/settings/llm/test", json={"provider_id": provider_id}, headers=auth)
+    assert tested.status_code == 200, tested.text
+    assert tested.json()["ok"] is False
+    assert "cannot be decrypted" in tested.json()["error"]
+
+    models = client.get(f"/api/settings/llm/providers/{provider_id}/models", headers=auth)
+    assert models.status_code == 200, models.text
+    assert models.json()["source"] == "unavailable"
+    assert "cannot be decrypted" in models.json()["notice"]
 
 
 def test_settings_read_does_not_write_task_configs(client, auth):

@@ -125,3 +125,72 @@ def test_client_applies_redaction_to_every_outgoing_call():
     assert "AKIAIOSFODNN7EXAMPLE" not in sent
     assert "juice.local" not in sent
     assert REDACTED in sent
+
+
+# --- Wave 2b coverage regressions (F-13) ----------------------------------------
+
+def test_google_api_key_without_a_prefix_is_redacted():
+    """Google keys have no separator, so only the AIza prefix identifies them.
+    None of the older patterns matched, so a bare one reached the provider."""
+    key = "AIza" + "SyD9kQ2mN4pR7tV1xZ3bC6fH8jL0wE5gUaB"
+    assert len(key) == 39  # the real Google key length the pattern targets
+    cleaned = redact_text(f"config dump: {key}")
+    assert key not in cleaned
+    assert REDACTED in cleaned
+
+
+def test_multi_word_passphrase_is_fully_redacted():
+    """The value class stopped at the first space, leaving the rest of a
+    passphrase in the prompt."""
+    cleaned = redact_text("admin password = correct horse battery staple")
+    assert "horse battery staple" not in cleaned
+    assert "correct" not in cleaned
+    assert REDACTED in cleaned
+
+
+def test_bare_base64_token_is_redacted():
+    token = "Zk3pQ9rT2vX7mB4nL6wJ8sH1yC5dF0gA2eK9uR3iO7pM"
+    cleaned = redact_text(f"Authorization value: {token}")
+    assert token not in cleaned
+    assert REDACTED in cleaned
+
+
+def test_ordinary_long_identifier_is_not_over_redacted():
+    """Guard against the generic pattern eating normal content: a lowercase
+    snake_case identifier is not a token."""
+    text = "the content_security_policy_report_only_header_is_missing_here"
+    assert redact_text(text) == text
+
+
+def test_provider_error_body_is_redacted_before_it_leaves():
+    """F-15: a gateway echoing the request put the key into assessment.notes,
+    SSE logs and the /test response."""
+    from app.ai.client import LLMRequestError, chat
+
+    key = "sk-live-supersecretvalue1234567890"
+
+    def handler(_request):
+        return httpx.Response(400, text=f"invalid api key: Authorization: Bearer {key}")
+
+    with SessionLocal() as db:
+        db.execute(delete(LLMTaskConfig))
+        db.execute(delete(LLMProvider))
+        from tests.test_llm_client import OPENROUTER_BASE, MODEL
+
+        provider = LLMProvider(
+            name="OpenRouter",
+            base_url=OPENROUTER_BASE,
+            api_key_encrypted=encrypt_secret(key),
+            enabled=True,
+        )
+        db.add(provider)
+        db.flush()
+        db.add(LLMTaskConfig(task=LLMTask.interpretation, provider_id=provider.id, model=MODEL))
+        db.commit()
+
+        with pytest.raises(LLMRequestError) as excinfo:
+            chat(db, LLMTask.interpretation, [{"role": "user", "content": "hi"}], transport=_transport(handler))
+
+    message = str(excinfo.value)
+    assert key not in message
+    assert REDACTED in message
