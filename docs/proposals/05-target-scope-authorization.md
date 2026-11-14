@@ -1,9 +1,10 @@
 # Proposal: target scope & authorization contract
 
-Proposed by: M1 (90377Sednaaa) · Owner: M1 (+ Shared core for schemas) · Date: 2026-11-14 · Status: **open**
+Proposed by: M1 (90377Sednaaa) · Owner: M1 (+ Shared core for schemas) · Date: 2026-11-14 ·
+Status: **accepted 2026-11-14**
 
-> Wave 1 decision gate. W2 code must not land until this is accepted or rejected and logged by the steward
-> in `docs/TASK_PLAN.md` § Adopted changes.
+> Accepted by the repo owner (acting steward) with the local-lab policy recorded under Decision. Logged in
+> `docs/TASK_PLAN.md` § Adopted changes.
 
 ## The idea
 
@@ -61,13 +62,11 @@ uncovered by the ownership matrix); a decision from the team on the open questio
 
 ## Risk
 
-- **OPEN QUESTION — local lab targets.** The intended demo target (OWASP Juice Shop) commonly runs on
-  `localhost` / `127.0.0.1`. A blanket private-IP ban would break the rehearsal and the evidence pack.
-  *Recommended policy, drafted into the W2 plan pending sign-off:* allow private / link-local hosts
-  **only** when `authorization_ref` is non-empty **and** the exact host is listed in `in_scope_assets`;
-  block `169.254.169.254` and other cloud-metadata ranges unconditionally; re-validate every redirect hop.
-  If the team prefers a hard ban, the demo needs a publicly reachable lab host instead. **This decision
-  shapes the shared helper, so it must be settled before W2 starts.**
+- **Local lab targets — RESOLVED (see Decision).** The demo target (OWASP Juice Shop) runs on
+  `localhost`, so private / loopback hosts are allowed **only** with a non-empty `authorization_ref`
+  **and** the host present in `in_scope_assets`. Cloud-metadata ranges are blocked unconditionally and
+  every redirect hop is re-validated. This is the shared helper's policy for both targets and LLM
+  provider endpoints (see proposal 07).
 - **Existing rows become invalid:** tightening validation on write means current targets with an empty
   `authorization_ref` (including the test fixtures) cannot be re-saved unchanged. Mitigation: validate on
   write, not on read; seed data and test fixtures get a non-empty ref in the same commit.
@@ -81,6 +80,22 @@ uncovered by the ownership matrix); a decision from the team on the open questio
 
 ## Decision
 
-Filled in at the daily sync: accepted / rejected, one-line reason, and the steward's note about contract
-or timeline impact. Please also record the answer to the local-lab question here, since W2 cannot start
-without it.
+**Accepted 2026-11-14** by the repo owner (acting steward).
+
+**Local-lab policy — resolved:** allow private / loopback hosts **only** when `authorization_ref` is
+non-empty **and** the exact host is listed in `in_scope_assets`. Cloud-metadata ranges (`169.254.169.254`
+and friends) are blocked **unconditionally**, even with an authorization record. Every redirect hop is
+re-validated against the same rule.
+
+Reason: this is the only option that keeps the localhost OWASP Juice Shop demo working while still
+requiring an auditable authorization record for anything non-public. A hard private-IP ban would have
+forced the demo onto a public host; blocking metadata only would have left internal admin panels scannable
+with no paper trail.
+
+**Contract impact acknowledged:** required `authorization_ref`, `HttpUrl` `base_url`, `TargetPatch`
+instead of the PUT mass-assign, and admin-only `full_intrusive` escalation are all non-additive. Existing
+targets with an empty `authorization_ref` cannot be re-saved unchanged — validation applies on write, not
+on read, so stored rows keep working until edited.
+
+**Scope cut for this wave:** the orchestrator re-check, `--` before the nmap target, the concurrent-run
+409 and DNS cancellation ship as ordinary fixes in the same wave; they are not gated on this contract.

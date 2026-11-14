@@ -313,4 +313,6 @@ nobody re-litigates the same idea blindly.
 
 | Date | Proposal (link to `docs/proposals/…`) | By | Decision | Impact on plan/contracts |
 |---|---|---|---|---|
-| *—* | *none yet — the table starts empty on purpose* | | | |
+| 2026-11-14 | [05 target scope & authorization](proposals/05-target-scope-authorization.md) | M1 | **accepted** — private/loopback hosts allowed only with `authorization_ref` + host in `in_scope_assets`; cloud metadata blocked unconditionally; every redirect hop re-validated | Non-additive: `authorization_ref` required, `base_url` becomes `HttpUrl`, `PUT /targets/{id}` becomes `TargetPatch`, `full_intrusive` escalation is admin-only. Wave-1 target sketch must be updated. Validation applies on write only. |
+| 2026-11-14 | [07 provider endpoint validation](proposals/07-provider-endpoint-validation.md) | M1 (for M2) | **accepted** — same host policy for LLM `base_url`; local endpoints stay in scope behind an explicit flag; discretion ack re-required on `base_url`/`api_key` change | Additive field recording the acknowledged host; new 400s on provider create/update. Settings sketch updated. |
+| *—* | [06 findings totals](proposals/06-findings-totals-pagination.md), [08 JWT claims & encryption key](proposals/08-jwt-claims-and-encryption-key.md) | | **still open** — not yet decided | Nothing scheduled against them. 06 gates W4's real-total work; 08 gates the key-rotation half of W2. |

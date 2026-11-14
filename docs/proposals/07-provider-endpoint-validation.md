@@ -1,8 +1,9 @@
 # Proposal: LLM provider endpoint validation & re-acknowledgement
 
-Proposed by: M1 (draft) · Owner: M2 · Date: 2026-11-14 · Status: **open**
+Proposed by: M1 (draft) · Owner: M2 · Date: 2026-11-14 · Status: **accepted 2026-11-14**
 
-> Wave 1 decision gate. W2's secret-handling work depends on this being accepted.
+> Accepted by the repo owner (acting steward). Local-endpoint question resolved under Decision; logged in
+> `docs/TASK_PLAN.md` § Adopted changes.
 
 ## The idea
 
@@ -67,5 +68,12 @@ acknowledged host (optional, can be W4).
 
 ## Decision
 
-Filled in at the daily sync: accepted / rejected, one-line reason, and the steward's note about contract
-or timeline impact. Please also record whether local/loopback LLM endpoints are in scope.
+**Accepted 2026-11-14** by the repo owner (acting steward).
+
+**Local-endpoint question — resolved:** local LLM endpoints (Ollama, LM Studio, vLLM) stay in scope. The
+same policy as proposal 05 applies: a loopback / private `base_url` is allowed, but the admin must set the
+explicit local-endpoint flag **and** the discretion acknowledgement is re-required whenever `base_url` or
+`api_key` changes. Cloud-metadata ranges remain blocked even with the flag set.
+
+**Contract impact acknowledged:** new 400s on provider create/update and a re-required acknowledgement on
+mutation. Response shapes are unchanged except for one additive field recording the acknowledged host.

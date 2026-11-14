@@ -1,6 +1,6 @@
 # Fix plan — M1–M4 audit findings
 
-Author: M1 · Date: 2026-11-14 · Status: **W0, W1 and W3 landed · proposals 05-08 open · W2 blocked**
+Author: M1 · Date: 2026-11-14 · Status: **W0, W1, W2a and W3 landed · proposals 05/07 accepted, 06/08 open**
 
 ## Wave status
 
@@ -8,7 +8,8 @@ Author: M1 · Date: 2026-11-14 · Status: **W0, W1 and W3 landed · proposals 05
 |---|---|---|
 | W0 | **landed 2026-11-14** | `pytest` 188 passed (178 + 10 regressions); `npm run build` 0 errors; lint 0 errors / 8 warnings (baseline); dark + light + 720px visual checks passed |
 | W1 | **quick wins landed; decision gate still open** | `pytest` 190 passed (+2); build 0 errors; lint 0 errors / **7 warnings** (one fewer, as predicted); reconnect proven by forcing 5 aborted `/events` attempts then restoring the route and observing a 200 |
-| W2 | **blocked** — needs proposals 05-08 accepted + decisions 1, 2, 5 | — |
+| W2a | **landed 2026-11-14** — scope & authorization contract | `pytest` 211 passed (+14); build 0 errors; lint 0 errors / 7 warnings; live checks: missing `authorization_ref` 422, bad `base_url` 422, assessor `full_intrusive` 403 (create and patch), partial PATCH preserves scope, `PUT` now 405, assessor UI shows the option disabled |
+| W2b | **next** — host guard + secret handling. Proposals 05/07 accepted; 08 still open (its fallback path is the one to ship) | — |
 | W3 | **landed 2026-11-14** | `pytest` 197 passed (+7); build 0 errors; lint 0 errors / 7 warnings; live cancel run ended `cancelled` with jobs `cancelled` (not `failed`), and the happy path still ends `completed` |
 | W4-W5 | not started | — |
 
@@ -46,6 +47,25 @@ W3 as-built notes:
 - **Cancelled-before-start jobs have no log line.** `_mark_cancelled` only flips status; the `[cancelled]`
   message is written by `_run_job` when a job was already running. Both are correct, they just describe
   different moments.
+
+W2a as-built notes (scope & authorization, not the SSRF guard):
+
+- **Two deviations from the plan.** (1) `--` was **not** added before the nmap target: rejecting a
+  leading-dash hostname closes the injection completely, and nmap's own parser does not document `--`, so
+  inserting it risked breaking every scan. (2) The host-level SSRF guard is **not** in this wave — it is
+  accepted policy but unimplemented, and it is the first item of W2b.
+- **Pydantic does not run field validators on defaults.** `authorization_ref` inherited `""` from
+  `TargetBase`, so the validator was skipped and an empty reference was accepted. It had to be redeclared
+  without a default in `TargetCreate` to become required. Worth remembering for any "make this required"
+  change on an inherited field.
+- **`PUT` → `PATCH` was safe** because nothing called it: the frontend only POSTs and GETs `/api/targets`.
+  Verified by grep before changing the verb; it now returns 405.
+- **The UI had to move with the contract**, or the change would have been a trap: the authorization field is
+  now `required`, and the `full_intrusive` option is disabled for non-admins instead of letting them submit
+  and collect a 403.
+- **Downgrade notes are appended, not assigned.** The first attempt set `assessment.notes` before the run
+  and the "Pipeline complete; ..." line overwrote it; the downgrade note is now composed into the final
+  string.
 
 Source: read-only audit of 2026-11-13 (five parallel module audits, each claim re-verified against  
 source). This is a working plan, not a decision record: `docs/PLAN.md` and `docs/TASK_PLAN.md` are  
