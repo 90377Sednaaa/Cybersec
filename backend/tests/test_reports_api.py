@@ -31,6 +31,7 @@ def _seed_assessment(client, auth: dict[str, str]) -> int:
         json={
             "name": "Juice Shop",
             "base_url": "http://localhost:3000",
+            "authorization_ref": "TEST-AUTH-003",
             "allowed_intensity": "passive_safe",
             "in_scope_assets": ["http://localhost:3000"],
         },

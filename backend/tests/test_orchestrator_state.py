@@ -127,7 +127,7 @@ def test_cancel_during_interpretation_marks_run_cancelled(monkeypatch):
     to be overwritten with `completed`."""
     assessment_id, target_id = _seed_assessment()
 
-    async def fake_run_job(db, _handle, _assessment, _target, job):
+    async def fake_run_job(db, _handle, _assessment, _target, job, _effective=None):
         job.status = JobStatus.completed
         db.commit()
 
@@ -155,7 +155,7 @@ def test_no_cancel_still_completes(monkeypatch):
     """Guard against the F-03 fix over-firing: a run nobody cancelled completes."""
     assessment_id, target_id = _seed_assessment()
 
-    async def fake_run_job(db, _handle, _assessment, _target, job):
+    async def fake_run_job(db, _handle, _assessment, _target, job, _effective=None):
         job.status = JobStatus.completed
         db.commit()
 

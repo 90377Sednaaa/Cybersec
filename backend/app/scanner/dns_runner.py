@@ -23,6 +23,19 @@ from app.scanner.registry import register
 
 SUBDOMAIN_WORDLIST = ["www", "mail", "api", "dev", "staging", "test", "admin", "portal", "vpn", "intranet"]
 
+# getaddrinfo has no timeout parameter of its own; a stalled resolver would pin a
+# worker thread for the life of the process.
+RESOLVE_TIMEOUT_SECONDS = 5.0
+
+
+async def _resolve(fn, *args):
+    """Blocking resolver call off the loop, with a hard timeout.
+
+    The underlying thread cannot be cancelled, so a timed-out lookup may linger
+    until the OS resolver gives up - but the job no longer waits for it.
+    """
+    return await asyncio.wait_for(asyncio.to_thread(fn, *args), timeout=RESOLVE_TIMEOUT_SECONDS)
+
 
 def target_hostname(base_url: str) -> str:
     return urlsplit(base_url).hostname or ""
@@ -61,10 +74,19 @@ class DnsRunner(BaseRunner):
 
         ctx.log(f"Resolving records for {hostname}")
         ctx.progress(0.2)
-        records: dict = {"hostname": hostname, "addresses": await asyncio.to_thread(resolve_addr, hostname)}
+        records: dict = {"hostname": hostname}
+        try:
+            records["addresses"] = await _resolve(resolve_addr, hostname)
+        except asyncio.TimeoutError:
+            records["addresses"] = {"ipv4": [], "ipv6": [], "error": "resolver timed out"}
 
         for i, rtype in enumerate(("MX", "NS", "TXT")):
-            records[rtype.lower()] = await asyncio.to_thread(resolve_record_type, hostname, rtype)
+            if ctx.cancelled():
+                raise RunnerError("Cancelled")
+            try:
+                records[rtype.lower()] = await _resolve(resolve_record_type, hostname, rtype)
+            except asyncio.TimeoutError:
+                records[rtype.lower()] = []
             ctx.progress(0.2 + 0.2 * (i + 1))
 
         subdomains: dict[str, list[str]] = {}
@@ -72,8 +94,13 @@ class DnsRunner(BaseRunner):
             ctx.log("Probing subdomain wordlist (full intensity)")
             total = len(SUBDOMAIN_WORDLIST)
             for i, name in enumerate(SUBDOMAIN_WORDLIST):
+                if ctx.cancelled():
+                    raise RunnerError("Cancelled")
                 fqdn = f"{name}.{hostname}"
-                found = await asyncio.to_thread(resolve_addr, fqdn)
+                try:
+                    found = await _resolve(resolve_addr, fqdn)
+                except asyncio.TimeoutError:
+                    found = {}
                 if found.get("ipv4") or found.get("ipv6"):
                     subdomains[fqdn] = found.get("ipv4") or found.get("ipv6")
                 ctx.progress(0.8 + 0.15 * i / total)

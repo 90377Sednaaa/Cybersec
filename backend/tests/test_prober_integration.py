@@ -123,7 +123,12 @@ def test_gate_and_role_endpoints(client, auth):
     run - racing a real pipeline inside TestClient is timing-flaky.)"""
     resp = client.post(
         "/api/targets",
-        json={"name": "Gate", "base_url": "http://127.0.0.1:9", "allowed_intensity": "passive_safe"},
+        json={
+            "name": "Gate",
+            "base_url": "http://127.0.0.1:9",
+            "authorization_ref": "TEST-AUTH-002",
+            "allowed_intensity": "passive_safe",
+        },
         headers=auth,
     )
     target_id = resp.json()["id"]

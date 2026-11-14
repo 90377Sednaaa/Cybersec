@@ -44,6 +44,9 @@ class ScanContext:
     emit_log: Callable[[str], None] = field(repr=False)
     emit_progress: Callable[[float], None] = field(repr=False)
     cancelled: Callable[[], bool] = field(repr=False)
+    # The level the run may actually use. Defaults to the assessment's frozen
+    # intensity for callers that do not compute it.
+    effective_intensity: ScanIntensity | None = None
 
     def log(self, line: str) -> None:
         self.emit_log(line)
@@ -53,12 +56,17 @@ class ScanContext:
 
     @property
     def intensity(self):
-        return self.assessment.intensity
+        return self.effective_intensity or self.assessment.intensity
 
     @property
     def is_full(self) -> bool:
-        """True when the assessment may run intrusive tooling."""
-        return self.assessment.intensity == ScanIntensity.full_intrusive
+        """True when this run may use intrusive tooling.
+
+        Reads the *effective* intensity, not `assessment.intensity`: a target's
+        allowed level can be lowered after the run was created, and the frozen
+        assessment value would then authorise tools the target no longer allows.
+        """
+        return self.intensity == ScanIntensity.full_intrusive
 
 
 class BaseRunner(ABC):

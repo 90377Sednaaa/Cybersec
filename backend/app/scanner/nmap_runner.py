@@ -40,6 +40,13 @@ def build_nmap_target_args(base_url: str) -> list[str]:
     host = parts.hostname
     if not host:
         raise RunnerError(f"Invalid base_url '{base_url}' - no hostname to scan")
+    # A hostname can never legitimately start with "-", but urlsplit happily
+    # returns one ("http://-6" -> "-6"). nmap's own option parser would then read
+    # it as a flag (-6, -v, --open, ...) and escape the conservative profile.
+    # Rejected outright rather than relying on a "--" terminator, whose support
+    # in nmap is not documented.
+    if host.startswith("-"):
+        raise RunnerError(f"Invalid hostname '{host}' - it would be parsed as an nmap option")
     args: list[str] = []
     if parts.port:
         args += ["-p", str(parts.port)]

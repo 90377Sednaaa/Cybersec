@@ -1,8 +1,9 @@
 """Pydantic request/response schemas."""
 
 from datetime import datetime
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.models import (
     AssessmentStatus,
@@ -51,8 +52,75 @@ class TargetBase(BaseModel):
     out_of_scope_assets: list[str] = []
 
 
+def _validate_base_url(value: str) -> str:
+    """Require an absolute http(s) URL with a hostname (proposal 05).
+
+    Deliberately does not normalize: Pydantic's HttpUrl would append a trailing
+    slash and silently rewrite stored values. Only the scheme and host are
+    enforced here; the private/loopback policy lives in the scan engine, which
+    can see the authorization record.
+    """
+    raw = value.strip()
+    parts = urlsplit(raw)
+    if parts.scheme not in ("http", "https"):
+        raise ValueError("base_url must start with http:// or https://")
+    if not parts.hostname:
+        raise ValueError("base_url must include a hostname")
+    return raw
+
+
+def _validate_authorization_ref(value: str) -> str:
+    cleaned = value.strip()
+    if len(cleaned) < 3:
+        raise ValueError(
+            "authorization_ref is required: record who authorized this assessment (ticket, contract or sign-off)"
+        )
+    return cleaned
+
+
 class TargetCreate(TargetBase):
-    pass
+    """New target. `authorization_ref` is mandatory (proposal 05) - a target
+    with no authorization record may not be registered at all.
+
+    Declared without a default so it is required: Pydantic does not run field
+    validators on defaults, so inheriting `""` would have accepted an empty
+    reference.
+    """
+
+    authorization_ref: str
+
+    @field_validator("base_url")
+    @classmethod
+    def _check_base_url(cls, value: str) -> str:
+        return _validate_base_url(value)
+
+    @field_validator("authorization_ref")
+    @classmethod
+    def _check_authorization_ref(cls, value: str) -> str:
+        return _validate_authorization_ref(value)
+
+
+class TargetPatch(BaseModel):
+    """Partial update. Replaces the old PUT mass-assign, which reset
+    `authorization_ref` and both scope lists whenever a caller sent a partial
+    body. Only fields present in the request are applied."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    base_url: str | None = Field(default=None, min_length=1)
+    authorization_ref: str | None = None
+    allowed_intensity: ScanIntensity | None = None
+    in_scope_assets: list[str] | None = None
+    out_of_scope_assets: list[str] | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def _check_base_url(cls, value: str | None) -> str | None:
+        return None if value is None else _validate_base_url(value)
+
+    @field_validator("authorization_ref")
+    @classmethod
+    def _check_authorization_ref(cls, value: str | None) -> str | None:
+        return None if value is None else _validate_authorization_ref(value)
 
 
 class TargetOut(TargetBase):

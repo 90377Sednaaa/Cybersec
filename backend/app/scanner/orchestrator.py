@@ -53,6 +53,19 @@ def broadcast(handle: PipelineHandle, event: dict) -> None:
         queue.put_nowait(event)
 
 
+def effective_intensity(assessment: Assessment, target: Target) -> ScanIntensity:
+    """The level a run may actually use.
+
+    `assessment.intensity` is frozen when the run is created, but the target's
+    allowed level can be lowered afterwards (or the target repointed). Never
+    exceed what the target currently allows - this is the re-check the
+    assessments.py docstring has always claimed the orchestrator performs.
+    """
+    if target.allowed_intensity == ScanIntensity.passive_safe:
+        return ScanIntensity.passive_safe
+    return assessment.intensity
+
+
 def _mark_cancelled(jobs: list[Job], assessment: Assessment) -> None:
     """Terminal state for a cancelled run: jobs still pending or running become
     `cancelled` (never `failed`) and the assessment is marked cancelled."""
@@ -93,6 +106,13 @@ async def run_pipeline(assessment_id: int, handle: PipelineHandle) -> None:
             broadcast(handle, {"type": "assessment", "status": AssessmentStatus.failed.value})
             return
         target = assessment.target
+        effective = effective_intensity(assessment, target)
+        downgrade_note = ""
+        if effective != assessment.intensity:
+            downgrade_note = (
+                f" Intensity downgraded to {effective.value}: the target's allowed intensity was "
+                f"lowered after this run was created."
+            )
 
         assessment.status = AssessmentStatus.running
         assessment.started_at = utcnow()
@@ -110,7 +130,21 @@ async def run_pipeline(assessment_id: int, handle: PipelineHandle) -> None:
         for job in jobs:
             if handle.cancel_event.is_set():
                 break
-            await _run_job(db, handle, assessment, target, job)
+            if job.tool in INTRUSIVE_TOOLS and effective != ScanIntensity.full_intrusive:
+                # The API already created the job row; do not run it.
+                job.status = JobStatus.cancelled
+                job.finished_at = utcnow()
+                job.log += (
+                    f"[cancelled] skipped: target allowed intensity is {effective.value}, "
+                    "so intrusive tools may not run\n"
+                )
+                db.commit()
+                broadcast(
+                    handle,
+                    {"type": "job", "job_id": job.id, "status": job.status.value, "progress": job.progress},
+                )
+                continue
+            await _run_job(db, handle, assessment, target, job, effective)
 
         if handle.cancel_event.is_set():
             _mark_cancelled(jobs, assessment)
@@ -119,7 +153,10 @@ async def run_pipeline(assessment_id: int, handle: PipelineHandle) -> None:
             # M2 hook (T2.4): run AI interpretation AFTER the note is composed -
             # the interpreter appends its outcome to assessment.notes and must
             # not be able to clobber the pipeline summary.
-            assessment.notes = f"Pipeline complete; {created} candidate finding(s) emitted by rule-based normalizer."
+            assessment.notes = (
+                f"Pipeline complete; {created} candidate finding(s) emitted by rule-based normalizer."
+                + downgrade_note
+            )
             await _run_interpret(db, handle, assessment, jobs, target)
             # The interpreter runs in a thread that can spend minutes waiting on
             # the provider. A cancel arriving during that window used to be
@@ -180,7 +217,14 @@ def target_deny_list(target) -> list[str]:
     return [t for t in terms if t and len(t) >= 3]
 
 
-async def _run_job(db, handle: PipelineHandle, assessment, target, job: Job) -> None:
+async def _run_job(
+    db,
+    handle: PipelineHandle,
+    assessment,
+    target,
+    job: Job,
+    effective: ScanIntensity | None = None,
+) -> None:
     job.status = JobStatus.running
     job.started_at = utcnow()
     db.commit()
@@ -204,6 +248,7 @@ async def _run_job(db, handle: PipelineHandle, assessment, target, job: Job) -> 
         emit_log=emit_log,
         emit_progress=emit_progress,
         cancelled=lambda: handle.cancel_event.is_set(),
+        effective_intensity=effective,
     )
 
     try:

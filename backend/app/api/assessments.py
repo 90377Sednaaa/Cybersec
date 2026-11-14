@@ -51,6 +51,20 @@ async def create_assessment(
             f"Intensity gate: target '{target.name}' allows '{target.allowed_intensity.value}' but "
             f"'{requested.value}' was requested. Raise the target's allowed intensity first.",
         )
+    # One live run per target: two concurrent pipelines would scan the same host
+    # twice, contend for ports, and double-normalize the same results.
+    active = db.scalar(
+        select(Assessment)
+        .where(Assessment.target_id == target.id, Assessment.status == AssessmentStatus.running)
+        .limit(1)
+    )
+    if active is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Target '{target.name}' already has a running assessment (#{active.id}). "
+            "Cancel it or wait for it to finish.",
+        )
+
     categories = payload.categories or []
     if not categories:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Select at least one assessment category.")

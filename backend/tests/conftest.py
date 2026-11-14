@@ -45,6 +45,7 @@ def passive_target(client, auth):
         json={
             "name": "Self",
             "base_url": "http://127.0.0.1:8000",
+            "authorization_ref": "TEST-AUTH-001",
             "allowed_intensity": "passive_safe",
             "in_scope_assets": ["http://127.0.0.1:8000"],
         },
