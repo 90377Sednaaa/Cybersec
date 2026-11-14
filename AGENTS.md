@@ -130,15 +130,20 @@ table in [README.md](README.md) is kept in sync by the M5 steward.
 | **M5** Docs/QA/deploy | in progress | Router hand-offs merged (T5.4 partial). Tool dependencies pending install (Nmap, OWASP ZAP, Playwright Chromium). Evidence pack & rehearsal pending. |
 
 Verification on this snapshot: `npm run build` passes (0 errors), `npm run lint` reports 0 errors / 8 warnings,
-`pytest tests -q` reports **178 passed**; live smoke test returned 200 for `/health`, login, and all list endpoints.
+`pytest tests -q` reports **188 passed** (178 + 10 Wave 0 regression tests); live smoke test returned 200 for
+`/health`, login, and all list endpoints.
 The model catalog, model-aware effort levels, settings UI, the assessment run page and the dashboard charts were
 also verified in the running app in both themes.
 All M1-M4 modules are code complete; backend and frontend are ready for integration waves I1-I4 (`TASK_PLAN.md`).
 
 **Active working plan:** [docs/fix-plan.md](docs/fix-plan.md) — the 2026-11-13 M1-M4 audit (39 findings,
 five of them high), sequenced into waves W0-W5 with four proposals (`05`-`08`) and five open decisions.
-Open for review; no fix code has landed yet. This is additive and does not reorder the course milestones
-below. When a wave lands, refresh the module rows and test counts here in that wave's final commit.
+**Wave 0 landed 2026-11-14:** 11 fixes across M1/M2/M3/M4 and shared core (nmap double-decode crash, TLS
+expiry dead code, fenced summary JSON, logout cache leak, JobTimeline axis, auth 401 handling, shortcut
+dialog guard, stale delete error, report pending wedge, raw error reflection, malformed-token 500).
+W1 is a decision gate: proposals 05-08 must be accepted before W2 code lands. This plan is additive and
+does not reorder the course milestones below. When a wave lands, refresh the module rows and test counts
+here in that wave's final commit.
 
 **Next up, in order:**
 1. **M5 T5.1** — install Nmap, the OWASP ZAP daemon, and Playwright Chromium (`PLAN.md` §11). None are

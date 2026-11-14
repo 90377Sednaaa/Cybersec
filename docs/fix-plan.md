@@ -1,6 +1,19 @@
 # Fix plan — M1–M4 audit findings
 
-Author: M1 · Date: 2026-11-14 · Status: **open for review, no code changed**
+Author: M1 · Date: 2026-11-14 · Status: **W0 landed 2026-11-14 · W1 open (decision gate)**
+
+## Wave status
+
+| Wave | State | Verification |
+|---|---|---|
+| W0 | **landed 2026-11-14** | `pytest` 188 passed (178 + 10 new regressions); `npm run build` 0 errors; lint 0 errors / 8 warnings (baseline); dark + light + 720px visual checks passed |
+| W1 | open — blocked on decisions 1-3 and proposals 05-08 | — |
+| W2-W5 | not started | — |
+
+W0 note: F-22 (JobTimeline) needed a second correction during visual verification. The first attempt
+included `now` in the axis max unconditionally, which stretched a *finished* run's axis from its end date
+to today and crushed every bar to a sliver. The landed fix includes `now` only while `runFinishedAt` is
+null. Recorded here because it is the kind of regression a build cannot catch.
 
 Source: read-only audit of 2026-11-13 (five parallel module audits, each claim re-verified against  
 source). This is a working plan, not a decision record: `docs/PLAN.md` and `docs/TASK_PLAN.md` are  
@@ -108,8 +121,16 @@ per line changed and unblocks honest verification of everything after it.
 
 ### W0 — Zero-risk correctness (no contracts, no decisions)
 
-Eleven isolated fixes, each ≤10 lines, each with one regression test. Land first so later waves are  
-verified against a correct baseline rather than a broken one.
+Eleven isolated fixes. Land first so later waves are verified against a correct baseline rather than a
+broken one.
+
+**As-built corrections to the original W0 estimate:** ten new backend regression tests were added
+(F-01, F-06, F-12, F-29 ×3, F-33 ×2, F-36). The five M3 fixes have **no** automated regression tests
+because the frontend has no test harness — that gap is M5-owned and explicitly out of scope. They were
+verified by build, lint and live browser checks in dark, light and 720px viewports instead. F-29 also
+exceeded the ≤10-line estimate: guarding the final commit plus adding stale-pending recovery in
+`api/reports.py` needed a helper and a small API behaviour change (over-age `pending` rows now settle to
+`failed` instead of staying undeletable forever).
 
 | Fix  | Change                                                                                                                                                                                                                       |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
