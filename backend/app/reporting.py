@@ -10,6 +10,7 @@ AI summary (M2) is an optional context key - until M2 lands, the template
 renders a clean placeholder.
 """
 
+import re
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -169,22 +170,33 @@ def generate_pdf_bytes(html: str) -> bytes:
             f"PDF generation failed: {exc}. If Chromium is missing, run 'playwright install chromium'."
         ) from exc
 
+_ABS_PATH_RE = re.compile(
+    r"(?:[A-Za-z]:[\\/]|\/(?:Users|home|tmp|var|usr|opt|root)\/)[^\s\"'<>]+"
+)
+
+
+def _safe_error(message: str) -> str:
+    """Keep the actionable part of a worker error but drop absolute filesystem
+    paths. This text is stored on the row, returned by the API and rendered in
+    the report list, so local paths must not leak through it."""
+    return _ABS_PATH_RE.sub("<path>", message)[:2000]
+
+
 def run_report_job(report_id: int) -> None:
-    """Background job: render, print, persist. Never raises - failures land on the row."""
+    """Background job: render, print, persist. Never raises - failures land on
+    the row. The final commit is guarded too: when it raised (e.g. a locked DB)
+    the row stayed `pending` forever, and `delete_report` refuses pending rows
+    with 409, so the wedged report could never be removed."""
     from app.database import SessionLocal
 
     with SessionLocal() as db:
         report = db.get(Report, report_id)
         if report is None:
             return
-        assessment = db.get(Assessment, report.assessment_id)
-        if assessment is None:
-            report.status = ReportStatus.failed
-            report.error = "Assessment no longer exists"
-            report.finished_at = utcnow()
-            db.commit()
-            return
         try:
+            assessment = db.get(Assessment, report.assessment_id)
+            if assessment is None:
+                raise ReportError("Assessment no longer exists")
             html = render_report_html(db, assessment)
             pdf = generate_pdf_bytes(html)
             REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -192,11 +204,26 @@ def run_report_job(report_id: int) -> None:
             (REPORTS_DIR / stored_name).write_bytes(pdf)
             report.file_path = stored_name
             report.status = ReportStatus.ready
+            report.error = ""
         except ReportError as exc:
             report.status = ReportStatus.failed
-            report.error = str(exc)[:2000]
+            report.error = _safe_error(str(exc))
         except Exception as exc:  # defensive: a report job must never crash the API
             report.status = ReportStatus.failed
-            report.error = f"Unexpected report failure: {exc}"[:2000]
+            report.error = _safe_error(f"Unexpected report failure: {exc}")
         report.finished_at = utcnow()
-        db.commit()
+        try:
+            db.commit()
+        except Exception as exc:  # a failed commit must not wedge the row
+            db.rollback()
+            try:
+                stale = db.get(Report, report_id)
+                if stale is not None:
+                    stale.status = ReportStatus.failed
+                    stale.error = _safe_error(f"Report could not be saved: {exc}")
+                    stale.finished_at = utcnow()
+                    db.commit()
+            except Exception:
+                # DB is unavailable. The API's stale-pending recovery is the
+                # backstop for a worker that died before it could write at all.
+                pass

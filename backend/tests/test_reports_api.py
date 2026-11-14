@@ -6,6 +6,8 @@ Chromium is installed; if it is not, the lifecycle test asserts the graceful
 suite is green either way and honest about which path ran.
 """
 
+from datetime import datetime, timedelta, timezone
+
 from app.database import SessionLocal
 from app.models import (
     Assessment,
@@ -272,6 +274,102 @@ def test_delete_report_outside_reports_dir_keeps_the_file(client, auth, tmp_path
 
 def test_delete_report_unknown_404(client, auth):
     assert client.delete("/api/reports/99999", headers=auth).status_code == 404
+
+
+# --- Wave 0 regressions: F-29 (pending wedge), F-33 (error reflection) ---------
+
+def _backdate_pending(report_id: int) -> None:
+    with SessionLocal() as db:
+        row = db.get(Report, report_id)
+        row.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        db.commit()
+
+
+def test_report_job_commit_failure_marks_row_failed(client, auth, monkeypatch, tmp_path):
+    """F-29: db.commit() used to sit outside the try. When it raised (locked DB)
+    the row stayed `pending` forever, and delete_report refuses pending rows."""
+    from app import database
+    from app import reporting
+
+    assessment_id = _seed_assessment(client, auth)
+    report_id = _seed_report(assessment_id, status=ReportStatus.pending)
+
+    real_factory = database.SessionLocal
+    monkeypatch.setattr(reporting, "REPORTS_DIR", tmp_path)
+    monkeypatch.setattr(reporting, "generate_pdf_bytes", lambda _html: b"%PDF-1.4 fake")
+
+    def flaky_session():
+        session = real_factory()
+        original, state = session.commit, {"raised": False}
+
+        def commit():
+            if not state["raised"]:
+                state["raised"] = True
+                raise RuntimeError("database is locked")
+            return original()
+
+        monkeypatch.setattr(session, "commit", commit)
+        return session
+
+    monkeypatch.setattr(database, "SessionLocal", flaky_session)
+    reporting.run_report_job(report_id)
+    # Restore real sessions before the API call below, otherwise the delete
+    # endpoint would inherit the deliberately flaky commit too.
+    monkeypatch.undo()
+
+    with real_factory() as db:
+        row = db.get(Report, report_id)
+        assert row.status == ReportStatus.failed
+        assert row.finished_at is not None
+        assert "could not be saved" in row.error
+    # A failed (not pending) row is now deletable.
+    assert client.delete(f"/api/reports/{report_id}", headers=auth).status_code == 204
+
+
+def test_stale_pending_report_settles_on_list(client, auth):
+    """F-29 backstop: a worker that died before writing anything leaves a row
+    the UI would poll forever. Listing ages it out to failed."""
+    assessment_id = _seed_assessment(client, auth)
+    report_id = _seed_report(assessment_id, status=ReportStatus.pending)
+    _backdate_pending(report_id)
+
+    listed = client.get(f"/api/assessments/{assessment_id}/reports", headers=auth).json()
+    row = [r for r in listed if r["id"] == report_id][0]
+    assert row["status"] == "failed"
+    assert row["finished_at"] is not None
+
+
+def test_delete_stale_pending_without_listing(client, auth):
+    assessment_id = _seed_assessment(client, auth)
+    report_id = _seed_report(assessment_id, status=ReportStatus.pending)
+    _backdate_pending(report_id)
+    assert client.delete(f"/api/reports/{report_id}", headers=auth).status_code == 204
+
+
+def test_safe_error_strips_absolute_paths():
+    from app.reporting import _safe_error
+
+    cleaned = _safe_error(r"failed at C:\Users\PC\app\chrome.exe and /home/runner/browser")
+    assert r"C:\Users" not in cleaned
+    assert "/home/runner" not in cleaned
+    assert "<path>" in cleaned
+
+
+def test_failed_report_download_does_not_reflect_internal_error(client, auth):
+    """F-33: the download 409 used to echo the raw Playwright error, including
+    local filesystem paths. The detail now stays on the row for the UI toggle."""
+    assessment_id = _seed_assessment(client, auth)
+    report_id = _seed_report(assessment_id, status=ReportStatus.failed)
+    with SessionLocal() as db:
+        row = db.get(Report, report_id)
+        row.error = r"PDF generation failed: C:\Users\PC\AppData\chrome.exe missing"
+        db.commit()
+
+    resp = client.get(f"/api/reports/{report_id}", headers=auth)
+    assert resp.status_code == 409
+    assert "AppData" not in resp.text
+    assert "C:" not in resp.text
+    assert "report list" in resp.text
 
 
 def test_delete_report_viewer_403(client, auth):

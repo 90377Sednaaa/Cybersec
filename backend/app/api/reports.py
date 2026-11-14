@@ -8,6 +8,7 @@ Deleting a report removes the row and its PDF, and is refused while the
 background job still owns the row.
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -18,16 +19,40 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models import Assessment, Report, ReportStatus, Role, User
+from app.models.user import utcnow
 from app.reporting import REPORTS_DIR, run_report_job
 from app.schemas.findings import ReportOut
 
 router = APIRouter(tags=["reports"])
+
+# A report job that died before its final commit (or before it was ever
+# scheduled) leaves a `pending` row that can neither be downloaded nor deleted.
+# Age it out so the UI stops polling and the row becomes removable.
+STALE_PENDING_SECONDS = 15 * 60
+
 
 def _get_report_or_404(db: Session, report_id: int) -> Report:
     report = db.get(Report, report_id)
     if report is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Report not found")
     return report
+
+
+def _settle_stale_pending(db: Session, report: Report) -> bool:
+    """Flip an over-age `pending` row to `failed`. Fresh pending rows are left
+    alone, so a genuinely running job still gets its 409 and is never deleted
+    out from under the worker."""
+    if report.status != ReportStatus.pending:
+        return False
+    created = report.created_at
+    if created.tzinfo is None:  # SQLite drops tzinfo on round-trip
+        created = created.replace(tzinfo=timezone.utc)
+    if (datetime.now(timezone.utc) - created).total_seconds() <= STALE_PENDING_SECONDS:
+        return False
+    report.status = ReportStatus.failed
+    report.error = "Report generation timed out (worker stopped before completing)"
+    report.finished_at = utcnow()
+    return True
 
 @router.post("/assessments/{assessment_id}/report", response_model=ReportOut, status_code=status.HTTP_202_ACCEPTED)
 def create_report(
@@ -53,9 +78,15 @@ def list_reports(
 ) -> list[Report]:
     if db.get(Assessment, assessment_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
-    return list(
+    reports = list(
         db.scalars(select(Report).where(Report.assessment_id == assessment_id).order_by(Report.id.desc()))
     )
+    settled = False
+    for report in reports:
+        settled = _settle_stale_pending(db, report) or settled
+    if settled:
+        db.commit()
+    return reports
 
 @router.get("/reports/{report_id}")
 def download_report(
@@ -64,10 +95,14 @@ def download_report(
     db: Session = Depends(get_db),
 ) -> FileResponse:
     report = _get_report_or_404(db, report_id)
+    if _settle_stale_pending(db, report):
+        db.commit()
     if report.status == ReportStatus.pending:
         raise HTTPException(status.HTTP_409_CONFLICT, "Report generation is still in progress")
     if report.status == ReportStatus.failed:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"Report generation failed: {report.error}")
+        # The detailed, path-sanitized error stays on the row and is rendered by
+        # the report list's <details> toggle; do not reflect it in an HTTP error.
+        raise HTTPException(status.HTTP_409_CONFLICT, "Report generation failed; see the report list for details")
     if not report.file_path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Report file missing")
 
@@ -89,12 +124,16 @@ def delete_report(
 ) -> None:
     """Delete a report row and its generated PDF.
 
-    A pending report is refused: the background job still owns the row and would
-    fail against a deleted record. The file is only unlinked after its path is
-    proven to live inside REPORTS_DIR, the same guard the download uses, so a
-    tampered `file_path` can never delete something outside the reports folder.
+    A *live* pending report is refused: the background job still owns the row
+    and would fail against a deleted record. An over-age pending row is settled
+    to failed first, so a worker that died before committing cannot wedge the
+    report forever. The file is only unlinked after its path is proven to live
+    inside REPORTS_DIR, the same guard the download uses, so a tampered
+    `file_path` can never delete something outside the reports folder.
     """
     report = _get_report_or_404(db, report_id)
+    if _settle_stale_pending(db, report):
+        db.commit()
     if report.status == ReportStatus.pending:
         raise HTTPException(status.HTTP_409_CONFLICT, "Report generation is still in progress")
 
