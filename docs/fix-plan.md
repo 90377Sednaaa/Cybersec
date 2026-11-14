@@ -1,19 +1,34 @@
 # Fix plan — M1–M4 audit findings
 
-Author: M1 · Date: 2026-11-14 · Status: **W0 landed 2026-11-14 · W1 open (decision gate)**
+Author: M1 · Date: 2026-11-14 · Status: **W0 + W1 quick wins landed · proposals 05-08 open · W2 blocked**
 
 ## Wave status
 
 | Wave | State | Verification |
 |---|---|---|
-| W0 | **landed 2026-11-14** | `pytest` 188 passed (178 + 10 new regressions); `npm run build` 0 errors; lint 0 errors / 8 warnings (baseline); dark + light + 720px visual checks passed |
-| W1 | open — blocked on decisions 1-3 and proposals 05-08 | — |
-| W2-W5 | not started | — |
+| W0 | **landed 2026-11-14** | `pytest` 188 passed (178 + 10 regressions); `npm run build` 0 errors; lint 0 errors / 8 warnings (baseline); dark + light + 720px visual checks passed |
+| W1 | **quick wins landed 2026-11-14; decision gate still open** | `pytest` 190 passed (+2); build 0 errors; lint 0 errors / **7 warnings** (one fewer, as predicted); reconnect proven by forcing 5 aborted `/events` attempts then restoring the route and observing a 200 |
+| W2 | **blocked** — needs proposals 05-08 accepted + decisions 1, 2, 5 | — |
+| W3-W5 | not started | — |
 
 W0 note: F-22 (JobTimeline) needed a second correction during visual verification. The first attempt
 included `now` in the axis max unconditionally, which stretched a *finished* run's axis from its end date
 to today and crushed every bar to a sliver. The landed fix includes `now` only while `runFinishedAt` is
 null. Recorded here because it is the kind of regression a build cannot catch.
+
+W1 as-built notes:
+
+- **F-30 shipped as idempotency, not a 409.** A second POST for the same assessment now returns the
+  existing `pending` row with the same 202 instead of creating a duplicate render. That is additive — no
+  new response status, no proposal needed. A stale `pending` row is settled first so a wedged row cannot
+  make report generation permanently unavailable. **Residual gap, filed as F-40 in §2:** two requests that
+  arrive inside the same pre-check window can still both insert, because SQLite has no row lock here. The
+  real fix is a partial unique index (`ON reports(assessment_id) WHERE status = 'pending'`) plus an
+  `IntegrityError` fallback, which needs a dedup step for databases that already contain duplicates. That
+  is W4 work, deliberately not bundled into a quick win.
+- **F-23 reconnects but does not replay.** Log lines emitted during a disconnect are lost; the API sends no
+  event ids or backfill. The `snapshot` event on reconnect restores job/assessment state, so progress and
+  status recover even though the log has a gap. Worth stating in the QA checklist (M5).
 
 Source: read-only audit of 2026-11-13 (five parallel module audits, each claim re-verified against  
 source). This is a working plan, not a decision record: `docs/PLAN.md` and `docs/TASK_PLAN.md` are  
@@ -105,6 +120,7 @@ Two M2 findings were omitted from the audit's chat summary and are restored here
 | F-37 | M   | Shared      | `jwt.decode` does not require `exp`/`sub`; a signed token with no `exp` never expires                                      | `core/security.py:30`                                                                                                             | S    | W2      | P08      |
 | F-38 | M   | Shared      | Password change does not revoke existing 12h JWTs (documented, deliberate)                                                 | `api/auth.py:47-48`                                                                                                               | L    | W5      | decision |
 | F-39 | M   | Shared      | No WAL / `busy_timeout`; SSE holds a DB session for the whole stream while workers commit                                  | `database.py:11-14,36-41`, `api/assessments.py:104-143`                                                                           | M    | W4      |          |
+| F-40 | L   | M4          | Report idempotency is a pre-check only; two requests inside the same window can both insert                              | `api/reports.py` create_report, needs a partial unique index                                                                      | S    | W4      |          |
 
 **Discarded as false positives** (do not schedule): `LLMProviderOut` leaking `api_key_encrypted`  
 (Pydantic `extra="ignore"`); any AI path auto-verifying a finding; `risk.py` arithmetic; evidence  

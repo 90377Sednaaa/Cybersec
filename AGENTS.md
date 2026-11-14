@@ -129,9 +129,10 @@ table in [README.md](README.md) is kept in sync by the M5 steward.
 | **M4** Findings & reports | done | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. Log refreshed to final state: `docs/member-logs/m4-findings-reports.md`. M3 hand-off spec: `docs/m3-findings-page-spec.md`. |
 | **M5** Docs/QA/deploy | in progress | Router hand-offs merged (T5.4 partial). Tool dependencies pending install (Nmap, OWASP ZAP, Playwright Chromium). Evidence pack & rehearsal pending. |
 
-Verification on this snapshot: `npm run build` passes (0 errors), `npm run lint` reports 0 errors / 8 warnings,
-`pytest tests -q` reports **188 passed** (178 + 10 Wave 0 regression tests); live smoke test returned 200 for
-`/health`, login, and all list endpoints.
+Verification on this snapshot: `npm run build` passes (0 errors), `npm run lint` reports 0 errors / **7 warnings**
+(W1 removed the `scan-events.ts` set-state-in-effect warning; the remaining 7 are all in `GradientASCII.tsx`),
+`pytest tests -q` reports **190 passed** (178 + 10 Wave 0 + 2 Wave 1 regression tests); live smoke test returned
+200 for `/health`, login, and all list endpoints.
 The model catalog, model-aware effort levels, settings UI, the assessment run page and the dashboard charts were
 also verified in the running app in both themes.
 All M1-M4 modules are code complete; backend and frontend are ready for integration waves I1-I4 (`TASK_PLAN.md`).
@@ -141,7 +142,11 @@ five of them high), sequenced into waves W0-W5 with four proposals (`05`-`08`) a
 **Wave 0 landed 2026-11-14:** 11 fixes across M1/M2/M3/M4 and shared core (nmap double-decode crash, TLS
 expiry dead code, fenced summary JSON, logout cache leak, JobTimeline axis, auth 401 handling, shortcut
 dialog guard, stale delete error, report pending wedge, raw error reflection, malformed-token 500).
-W1 is a decision gate: proposals 05-08 must be accepted before W2 code lands. This plan is additive and
+**Wave 1 quick wins landed 2026-11-14:** SSE reconnect with capped backoff, idempotent report creation
+(a second POST returns the existing pending row with the same 202 instead of a duplicate render), and the
+dashboard's 200-cap caveat. **Proposals 05-08 are filed `Status: open`** in `docs/proposals/` and are NOT
+adopted — `TASK_PLAN.md`'s adopted-changes table is still empty. **W2 code must not land until the steward
+accepts them and the five open decisions in `docs/fix-plan.md` §7 are answered.** This plan is additive and
 does not reorder the course milestones below. When a wave lands, refresh the module rows and test counts
 here in that wave's final commit.
 
