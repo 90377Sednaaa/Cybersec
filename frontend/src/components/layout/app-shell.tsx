@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react"
-import { NavLink, Outlet } from "react-router-dom"
+import { Link, NavLink, Outlet } from "react-router-dom"
 import {
+  BookOpen,
   Crosshair,
   LayoutDashboard,
   LogOut,
@@ -16,6 +17,7 @@ import logo from "@/assets/aletheia-logo.png"
 import { ShortcutsMenu } from "@/components/shortcuts-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -181,6 +183,16 @@ export function AppShell() {
           <Separator orientation="vertical" className="mr-1 !h-5" />
           <p className="text-sm text-muted-foreground">Security Assessment &amp; Vulnerability Analysis</p>
           <div className="ml-auto flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="User Guide" asChild>
+                  <Link to="/guide" target="_blank" rel="noopener noreferrer">
+                    <BookOpen className="size-4" />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>User Guide</TooltipContent>
+            </Tooltip>
             <ShortcutsMenu open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
             <ThemeToggle />
           </div>
