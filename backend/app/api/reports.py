@@ -9,7 +9,6 @@ background job still owns the row.
 """
 
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import FileResponse, HTMLResponse
@@ -21,7 +20,7 @@ from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models import Assessment, Report, ReportStatus, Role, User
 from app.models.user import utcnow
-from app.reporting import REPORTS_DIR, render_report_html, run_report_job
+from app.reporting import REPORTS_DIR, ensure_ai_summary, render_report_html, run_report_job
 from app.schemas.findings import ReportOut
 
 router = APIRouter(tags=["reports"])
@@ -53,7 +52,7 @@ def unlink_report_file(file_path: str | None) -> None:
         resolved.unlink(missing_ok=True)
 
 
-def _settle_stale_pending(db: Session, report: Report) -> bool:
+def _settle_stale_pending(report: Report) -> bool:
     """Flip an over-age `pending` row to `failed`. Fresh pending rows are left
     alone, so a genuinely running job still gets its 409 and is never deleted
     out from under the worker."""
@@ -80,19 +79,24 @@ def _live_pending(db: Session, assessment_id: int) -> list[Report]:
     )
     settled = False
     for row in pending:
-        settled = _settle_stale_pending(db, row) or settled
+        settled = _settle_stale_pending(row) or settled
     if settled:
         db.commit()
     return [row for row in pending if row.status == ReportStatus.pending]
 
 
-@router.post("/assessments/{assessment_id}/report", response_model=ReportOut, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/assessments/{assessment_id}/report",
+    response_model=ReportOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 def create_report(
     assessment_id: int,
     background_tasks: BackgroundTasks,
     user: User = Depends(require_role(Role.admin, Role.assessor)),
     db: Session = Depends(get_db),
 ) -> Report:
+    """Queue a PDF render. Duplicate clicks return the existing pending row."""
     if db.get(Assessment, assessment_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
 
@@ -135,14 +139,19 @@ def list_reports(
     _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[Report]:
+    """List report rows for one assessment, settling any over-age pending rows."""
     if db.get(Assessment, assessment_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
     reports = list(
-        db.scalars(select(Report).where(Report.assessment_id == assessment_id).order_by(Report.id.desc()))
+        db.scalars(
+            select(Report)
+            .where(Report.assessment_id == assessment_id)
+            .order_by(Report.id.desc())
+        )
     )
     settled = False
     for report in reports:
-        settled = _settle_stale_pending(db, report) or settled
+        settled = _settle_stale_pending(report) or settled
     if settled:
         db.commit()
     return reports
@@ -150,7 +159,7 @@ def list_reports(
 @router.get("/assessments/{assessment_id}/report/preview")
 def preview_report(
     assessment_id: int,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Render the report template as HTML for in-app preview.
@@ -166,6 +175,11 @@ def preview_report(
     assessment = db.get(Assessment, assessment_id)
     if assessment is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
+    # A summary may need generating on first view. Viewers stay strictly
+    # read-only: they see the cached summary (or the placeholder), never cause
+    # an outbound LLM call or an AIOutput write.
+    if user.role in (Role.admin, Role.assessor):
+        ensure_ai_summary(db, assessment)
     return HTMLResponse(render_report_html(db, assessment))
 
 
@@ -175,15 +189,19 @@ def download_report(
     _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> FileResponse:
+    """Stream a ready PDF. Pending or failed rows return 409 with a safe reason."""
     report = _get_report_or_404(db, report_id)
-    if _settle_stale_pending(db, report):
+    if _settle_stale_pending(report):
         db.commit()
     if report.status == ReportStatus.pending:
         raise HTTPException(status.HTTP_409_CONFLICT, "Report generation is still in progress")
     if report.status == ReportStatus.failed:
         # The detailed, path-sanitized error stays on the row and is rendered by
         # the report list's <details> toggle; do not reflect it in an HTTP error.
-        raise HTTPException(status.HTTP_409_CONFLICT, "Report generation failed; see the report list for details")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Report generation failed; see the report list for details",
+        )
     if not report.file_path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Report file missing")
 
@@ -213,7 +231,7 @@ def delete_report(
     `file_path` can never delete something outside the reports folder.
     """
     report = _get_report_or_404(db, report_id)
-    if _settle_stale_pending(db, report):
+    if _settle_stale_pending(report):
         db.commit()
     if report.status == ReportStatus.pending:
         raise HTTPException(status.HTTP_409_CONFLICT, "Report generation is still in progress")
