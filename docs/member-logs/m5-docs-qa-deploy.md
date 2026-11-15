@@ -67,8 +67,15 @@ untouched while other sessions continue on `main`.
   install documentation (`Insecure.Nmap`).
 - The setup script was parsed with the PowerShell parser for syntax errors; it was **not executed** because
   the task scope explicitly excluded system installs.
-- Backend tests / frontend build: `[TO FILL - run from the main tree and record counts]`.
-- I1-I4 rehearsal and evidence capture: **not executed** (blocker chain in `docs/INTEGRATION_LOG.md`).
+- Backend tests / frontend build (re-run 2026-11-15 from the main checkout): pytest **268 passed**,
+  `npm run build` 0 errors, `npm run lint` 0 errors / 7 warnings.
+- Setup script ran against `D:\Cybersec` on 2026-11-15: Nmap 7.80 and Playwright Chromium installed,
+  `backend/.env` created with a random `SECRET_KEY`, frontend build passed. ZAP 2.17.0 + JRE 17 installed
+  separately via winget. The Juice Shop `npm install` postinstall failed and the sandbox blocked `reg.exe`.
+- **Live end-to-end smoke test passed**: authorized `127.0.0.1:8000` target -> `dns`/`nmap`/`prober` all
+  completed -> 7 findings -> 1 verified -> report `ready` -> 150,584-byte `%PDF-` download. Details in
+  `docs/INTEGRATION_LOG.md` §2b. This is an environment check, not an I1-I4 wave pass.
+- I1-I4 UI rehearsal and evidence capture: **not executed** (blocker chain in `docs/INTEGRATION_LOG.md`).
 
 ## Honest limitations
 
@@ -78,8 +85,9 @@ untouched while other sessions continue on `main`.
 - Rubric criterion wording is provisional until the course brief is pasted in.
 - No screenshots, no generated PDF, no AI outputs and no verified-findings export exist yet; the evidence
   pack is an empty scaffold.
-- Nmap, ZAP daemon and Playwright Chromium are still not installed, so the app is not yet workable end to
-  end on a clean machine. The setup script is written but its installs have not been run.
+- Nmap, ZAP and Playwright Chromium are now installed and the core pipeline works, but ZAP's daemon is not
+  started, the local Juice Shop build failed, and no LLM provider exists yet. The *graded* eight-step demo
+  on a deliberately vulnerable target therefore still cannot be captured.
 - `docs/auth-checklist.md` (M4) is out of date relative to the shipped API; flagged, not fixed.
 - The M5 owner must add their own voice to this log; an AI-written defense script is not a substitute for a
   member who can explain and defend each decision.

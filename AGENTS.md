@@ -127,7 +127,7 @@ table in [README.md](README.md) is kept in sync by the M5 steward.
 | **M2** AI pipeline | done | T2.0-T2.5: OpenAI-compatible client, Fernet-encrypted provider settings + discretion gate, redaction before every call, interpreter, summarizer + `ai_outputs` audit. 67 AI tests. Additive enhancement (2026-11-12): live model-catalog proxy `app/ai/catalog.py` + `GET /api/settings/llm/providers/{id}/models` with TTL cache, normalized pricing/capability metadata, per-model `supported_efforts`/`default_effort`, persisted `LLMTaskConfig.effort` (idempotent startup migration) and offline fallback; proposal `docs/proposals/01-live-model-catalog.md`. Wave 4 (2026-11-14): every interpretation attempt now writes an `AIOutput` audit row, success and failure alike. Log: `docs/member-logs/m2-ai-pipeline.md`. |
 | **M3** Frontend | done | T3.0-T3.5 complete: assessments wizard + authenticated SSE live log (T3.1), filterable findings table + detail drawer + verify/false-positive/needs-evidence actions with notes + WCAG AA contrast (T3.2), LLM provider settings + per-task models + test connection (T3.3), live dashboard with real counts + responsive chart + recent assessments (T3.4), report generation + authenticated download (T3.5). Additive enhancement (2026-11-12): searchable `ModelPicker` dialog (`src/components/model-picker.tsx`), model-aware reasoning effort control driven by the live catalog (`src/lib/model-effort.ts`), shadcn `Switch`/`Checkbox` primitives and modernized AI settings UI (`src/pages/settings.tsx`, `src/pages/settings-tasks.tsx`), verified in dark and light themes. Additive enhancement (2026-11-13): sonner toasts on every mutating action, dedicated `/assessments/:id` run page with a shared-axis job timeline, dashboard "Verification progress" stacked bar + "Findings per run" bar chart, shared `EmptyState`, `g`-chord keyboard shortcuts documented in a header panel (keyboard icon beside the theme toggle, or `?`) with a default-off switch to print the hints in the sidebar, and a `--state-verified` token so the four review states are four distinct hues. Wave 4 (2026-11-14): `api.ts` split into `api`/`apiWithMeta`/`apiBlob`; the dashboard's review percentage uses real per-state totals from `X-Total-Count` (the severity and per-run charts keep the 200-row caveat); report download goes through the auth-aware blob helper so a 401 reaches the session handler. Log: `docs/member-logs/m3-frontend.md`. |
 | **M4** Findings & reports | done | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. Wave 4 (2026-11-14): `GET /api/findings` takes bounded `limit`/`offset` and sends `X-Total-Count` over the filtered set (P06), `DELETE /api/evidence/{id}` unlinks the blob and target deletion reuses the same unlink helpers (F-32), and a partial unique index allows one pending report per assessment with a dedup step for pre-existing duplicates (F-40). Wave 5 (2026-11-14): a finding PATCH compare-and-swaps on the status it validated, so an overlapping decision is a 409 instead of a silent lost update (F-35), and the report context eager-loads evidence with `selectinload` (F-34). Log refreshed to final state: `docs/member-logs/m4-findings-reports.md`. M3 hand-off spec: `docs/m3-findings-page-spec.md`. |
-| **M5** Docs/QA/deploy | in progress | Router hand-offs merged (T5.4 partial). On branch `m5/docs-qa-deploy` (worktree `D:\Cybersec-m5`): T5.0 `docs/proposal.md`, T5.2 `docs/system-design.md` (architecture/ERD/workflow/state machine checked against the shipped code), T5.3 `docs/qa-checklist.md` + `docs/evidence/` stage scaffold, T5.4 `docs/INTEGRATION_LOG.md` (I1-I4 honestly logged as NOT RUN, with the existing verification evidence cited separately), T5.5 `docs/final-report.md` + `docs/presentation-skeleton.md`, and T5.1 `scripts/setup-dev.ps1` (PowerShell-parser validated, installs not executed). Still pending: installing Nmap, the ZAP daemon and Playwright Chromium, a real LLM provider key, the I1-I4 rehearsal, evidence artifact capture, and each member's sign-off. Log: `docs/member-logs/m5-docs-qa-deploy.md`. |
+| **M5** Docs/QA/deploy | in progress | Router hand-offs merged (T5.4 partial). On branch `m5/docs-qa-deploy` (worktree `D:\Cybersec-m5`): T5.0 `docs/proposal.md`, T5.2 `docs/system-design.md` (architecture/ERD/workflow/state machine checked against the shipped code), T5.3 `docs/qa-checklist.md` + `docs/evidence/` stage scaffold, T5.4 `docs/INTEGRATION_LOG.md` (I1-I4 honestly logged as NOT RUN, with the existing verification evidence cited separately), T5.5 `docs/final-report.md` + `docs/presentation-skeleton.md`, and T5.1 `scripts/setup-dev.ps1` (PowerShell-parser validated, installs not executed). T5.1 installs run 2026-11-15: **Nmap 7.80 and Playwright Chromium installed**, `backend/.env` created with a random `SECRET_KEY` + ZAP key; the localhost pipeline now runs end to end and produces a real PDF (`docs/INTEGRATION_LOG.md` §2b). Still pending: the ZAP daemon (only for `full_intrusive`), a working local Juice Shop build (its `npm install` postinstall failed and the sandbox blocked `reg.exe`), a real LLM provider key, the I1-I4 UI rehearsal, evidence artifact capture and each member's sign-off. Log: `docs/member-logs/m5-docs-qa-deploy.md`. |
 
 Verification on this snapshot (re-run 2026-11-15 from the code-identical `main` checkout, because the M5
 worktree has no `node_modules`/`.venv`; this branch is docs-and-scripts only, so no application code changed):
@@ -137,6 +137,11 @@ worktree has no `node_modules`/`.venv`; this branch is docs-and-scripts only, so
 `pytest tests -q` reports **268 passed** (178 + 10 Wave 0 + 2 Wave 1 + 7 Wave 3 + 14 Wave 2a + 26 Wave 2b,
 plus 24 Wave 4 and 7 Wave 5 regression tests); live smoke test returned 200 for `/health`, login, and all
 list endpoints.
+**2026-11-15 live end-to-end smoke test (API-level):** with Nmap and Chromium installed, an authorized
+`127.0.0.1:8000` target ran `dns` + `nmap` + `prober` to `completed`, produced 7 findings, one was
+`verified`, and the report reached `ready` with a 150,584-byte `%PDF-` download (`docs/INTEGRATION_LOG.md`
+§2b). This is an environment check, **not** an I1-I4 wave pass: no UI/SSE/cancel rehearsal, no ZAP, no AI
+provider and no Juice Shop demo yet.
 Wave 4 was additionally verified against a live server: `X-Total-Count` matched the filtered set with
 `limit=2`, `limit=501` returned 422, CORS exposed the header, `PRAGMA journal_mode` reported `wal`, an
 evidence DELETE returned 204 and unlinked its blob, and the SSE stream returned a snapshot plus a terminal
@@ -183,9 +188,11 @@ does not reorder the course milestones below. When a wave lands, refresh the mod
 here in that wave's final commit.
 
 **Next up, in order:**
-1. **M5 T5.1** — install Nmap, the OWASP ZAP daemon, and Playwright Chromium (`PLAN.md` §11). None are
-   installed yet: the ZAP runner degrades gracefully and the report job fails with an actionable log
-   line until they are.
+1. **M5 T5.1 (mostly done 2026-11-15)** — Nmap 7.80, OWASP ZAP 2.17.0 + Temurin JRE 17 and Playwright
+   Chromium are installed; `backend/.env` now has a random `SECRET_KEY` and ZAP API key. Remaining: start
+   the ZAP daemon when a `full_intrusive` run is needed, and finish the local Juice Shop build (its
+   `npm install` postinstall failed). Nmap lives at `C:\Program Files (x86)\Nmap` — restart the terminal
+   or add it to `PATH` before starting uvicorn.
 2. **Integration waves I1-I4 rehearsal** (`TASK_PLAN.md` §9) and the M5 evidence pack.
 3. **M5 close-out** — the T5.0/T5.2/T5.3/T5.4/T5.5 drafts and `scripts/setup-dev.ps1` now exist on
    `m5/docs-qa-deploy`. What remains: paste the official rubric wording into `docs/qa-checklist.md` §3,
@@ -205,19 +212,22 @@ the Wave 4 dashboard changes in dark, light and a narrow viewport; Playwright Ch
 - **Resolved:** Authenticated binary report download: solved with fetch-based blob download in `src/pages/assessment-reports.tsx`.
 - **Resolved:** `src/mocks/data.ts` task name drift: fixed with real `LLMTask` enum values.
 - Still open: Evidence binary download from the detail drawer (currently displays uploaded file metadata; download wiring can be added when needed).
-- Still open: **the app is not yet workable end to end on a clean machine.** Nmap is not on `PATH`, the ZAP
-  daemon is not installed, and Playwright Chromium is missing, so `dns`/`prober` succeed while `nmap` fails and
-  PDF report generation errors out. All three are M5 T5.1 installs, not code defects.
+- **Mostly resolved 2026-11-15:** Nmap 7.80, ZAP 2.17.0 and Playwright Chromium are installed, and a live
+  authorized localhost assessment now runs `dns` + `nmap` + `prober` to completion, verifies a finding and
+  produces a real PDF (see `docs/INTEGRATION_LOG.md` §2b). Still open: the ZAP daemon is installed but not
+  started (needed only for `full_intrusive`), the local Juice Shop build failed, and Nmap is not on `PATH` in
+  already-open shells. These were environment tasks, not code defects.
 - Still open: **`DELETE /api/targets/{id}` orphans data.** SQLite foreign keys are never enabled (no
   `PRAGMA foreign_keys=ON`, no SQLAlchemy event listener), so deleting a target leaves its assessments, findings,
   jobs and reports pointing at a dead id. The declared FKs are decorative. Needs either the pragma + real cascade
   rules (M1, `backend/app/models/**`) or an explicit dependent-delete in the endpoint. Wave 4 now unlinks the
   target's evidence blobs and report PDFs, but the rows themselves are still orphaned, so the UI should keep not
   offering target deletion.
-- Still open: **AI interpretation needs a real provider key.** The OpenRouter provider row is disabled with no
-  key, so scans complete on the rule-based normalizer alone and skip AI cleanly (`NoProviderConfigured`).
-  Paste a real key in Settings and re-enable the provider to turn AI findings on. Placeholder keys are now
-  rejected at save time (400), so a stub can no longer be stored as `has_api_key: true`.
+- Still open: **AI interpretation needs a real provider key.** `llm_providers` is empty and all four task
+  configs have `provider_id = NULL` with an empty model, so scans run on the rule-based normalizer alone and
+  skip AI cleanly (`NoProviderConfigured`). An admin must add a provider in Settings, tick the external
+  processing acknowledgement, assign models to `interpretation` and `summary`, then use Test connection.
+  Placeholder keys are rejected at save time (400).
 - Frontend has no automated test harness (Vitest/Playwright config pending). Verified by live browser runs and build/lint.
   The only "test" controls in the UI are the LLM Settings "Test Connection" probe and `npm run lint` (oxlint);
   neither is a test suite.

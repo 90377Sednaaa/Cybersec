@@ -14,13 +14,15 @@ into `main` during the waves without the steward.
 
 | Wave | Integration | Participants | Pass condition (`TASK_PLAN.md` §9) | Result | Date | Evidence |
 |---|---|---|---|---|---|---|
-| **I1** | Assessments live | M1 + M3 | Create assessment in UI -> pipeline runs -> SSE progress + logs visible -> cancel works | **NOT RUN** (blocked: Nmap not installed; full live run pending T5.1) | - | - |
+| **I1** | Assessments live | M1 + M3 | Create assessment in UI -> pipeline runs -> SSE progress + logs visible -> cancel works | **PARTIAL / NOT RUN as a wave** (API-level pipeline passed 2026-11-15, see §2b; UI wizard, SSE and cancel were not exercised) | 2026-11-15 | `docs/INTEGRATION_LOG.md` §2b |
 | **I2** | Findings + verification | M1 + M4 + M3 | Orchestrator emits candidates -> findings page lists them marked `ai_candidate` -> assessor verifies one with evidence -> status persists | **NOT RUN** (blocked by I1) | - | - |
 | **I3** | AI wiring | M2 + M1 + M4 + M3 | Post-scan interpretation produces candidates automatically (redaction on); settings page configures a real key; report includes AI summary + verified findings | **NOT RUN** (blocked by I2 and by missing provider key) | - | - |
 | **I4** | Full rehearsal | All + M5 | The brief's 8-step demo: scope -> recon -> scan -> assessment -> AI analysis -> human verification -> risk -> PDF report, executed live from a clean shell | **NOT RUN** (blocked by I1-I3 and missing Playwright Chromium) | - | - |
 
-**Current blocker chain:** T5.1 installs (Nmap, ZAP daemon, Playwright Chromium) -> I1 -> I2 -> provider key
--> I3 -> I4 -> evidence capture -> final report. `AGENTS.md` "Next up" carries the same order.
+**Current blocker chain (updated 2026-11-15):** Nmap and Playwright Chromium are now installed, so the
+pipeline is runnable. Remaining: ZAP daemon (only for `full_intrusive`), a working local Juice Shop build,
+a real LLM provider key -> I1 UI rehearsal (SSE + cancel) -> I2 -> I3 -> I4 -> evidence capture -> final
+report. `AGENTS.md` "Next up" carries the same order.
 
 ---
 
@@ -39,6 +41,37 @@ substitutes for the rehearsals.
 | M1-M4 module status | all code complete; contracts frozen; audit W0-W5 closed | `AGENTS.md`, `docs/fix-plan.md`, `docs/member-logs/` |
 | Hard-rule tests | intensity gate 409, viewer 403, illegal transition 409, redaction scrub, SSRF host guard | `backend/tests/` |
 | Known blockers resolved | SSE authentication via fetch streaming; authenticated PDF blob download; mock task-name drift | `AGENTS.md` "Known integration blockers" |
+
+### 2b. Environment smoke test - 2026-11-15 (API-level, not a wave pass)
+
+Executed against the live stack after the T5.1 installs: uvicorn on :8000 (with
+`C:\Program Files (x86)\Nmap` added to PATH) and the Vite dev server on :5173. No Juice Shop instance, no
+ZAP daemon and no LLM provider were configured.
+
+| Step | Observed result |
+|---|---|
+| `GET /health`, frontend :5173 | 200 / 200 |
+| `POST /api/auth/login` (OAuth2 form) | 200, admin JWT |
+| `POST /api/targets` | 201, id 2, `http://127.0.0.1:8000`, `authorization_ref` set, `in_scope_assets: ["127.0.0.1"]`, `passive_safe` |
+| `POST /api/assessments` | 201, id 2, `running` with the three planned jobs |
+| Jobs | `dns`, `nmap`, `prober` all **completed** (assessment `completed` in about 14 s). Nmap 7.80 now works; the earlier `nmap` failure is resolved |
+| `GET /api/findings?assessment_id=2` | 200, `X-Total-Count: 7`, 7 candidate rows |
+| `PATCH /api/findings/{id}` -> `verified` | 200, state machine accepted the transition |
+| `POST /api/assessments/2/report` | 202 `pending`, then `ready` |
+| `GET /api/reports/2` | 200 `application/pdf`, **150,584 bytes**, signature `%PDF-`; file `backend/reports/report-2-20261115115519.pdf` |
+
+**Result: PASS as an environment and pipeline smoke test.** The two blockers that stopped the app before
+(missing Nmap binary, missing Playwright Chromium) are fixed. `backend/.env` was created with a
+cryptographically random `SECRET_KEY` and a ZAP API key. OWASP ZAP 2.17.0 (with Temurin JRE 17) was
+installed immediately afterwards via winget, but its daemon was deliberately not started, so no intrusive
+run was attempted.
+
+**Not covered, so I1-I4 stay open:** the UI wizard, the authenticated SSE stream, cancel, ZAP/intrusive
+scanning, AI interpretation (no provider configured), and the Juice Shop demo target. The local Juice Shop
+clone exists at `D:\juice-shop` but its `npm install` postinstall failed
+(`Cannot read properties of null (reading 'edgesOut')`) and the sandbox blocked `reg.exe`, so it has no
+built server/frontend yet. The PDF above was produced from a localhost-API assessment, **not** from the
+graded Juice Shop demo, and is not evidence artifact `E-12`.
 
 ---
 
