@@ -13,6 +13,7 @@ import { AssessmentRunPage } from "@/pages/assessment-run"
 import { FindingsPage } from "@/pages/findings"
 import { SettingsPage } from "@/pages/settings"
 import { TargetsPage } from "@/pages/targets"
+import { UserGuidePage } from "@/pages/user-guide"
 
 
 
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="/findings" element={<FindingsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
+        <Route path="/guide" element={<UserGuidePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
