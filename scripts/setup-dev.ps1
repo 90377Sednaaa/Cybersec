@@ -24,12 +24,18 @@
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\scripts\setup-dev.ps1 -InstallJuiceShop -StartZap
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File .\scripts\setup-dev.ps1 -RepoRoot D:\Cybersec
 #>
 
 #requires -Version 5.1
 
 [CmdletBinding()]
 param(
+    # Repository root to set up. Defaults to this script's parent directory, so a
+    # linked worktree can also prepare the main checkout where the runtime DB lives.
+    [string]$RepoRoot = "",
     # Skip the external tool installs (Nmap, ZAP). Useful on a restricted machine.
     [switch]$SkipTools,
     # Skip the pytest run.
@@ -54,7 +60,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$script:RepoRoot = Split-Path -Parent $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+    $script:RepoRoot = Split-Path -Parent $PSScriptRoot
+} else {
+    $script:RepoRoot = (Resolve-Path -Path $RepoRoot).Path
+}
 $script:Backend = Join-Path $script:RepoRoot "backend"
 $script:Frontend = Join-Path $script:RepoRoot "frontend"
 $script:VenvPython = Join-Path $script:Backend ".venv\Scripts\python.exe"
@@ -94,6 +104,22 @@ function New-LocalKey {
     param([int]$Length = 32)
     $alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     return (-join (1..$Length | ForEach-Object { $alphabet[(Get-Random -Maximum $alphabet.Length)] }))
+}
+
+function New-StrongSecret {
+    # SECRET_KEY signs JWTs and derives the Fernet key that encrypts LLM provider
+    # keys. .env.example ships a literal placeholder, so a fresh .env must get a
+    # cryptographically random value instead. Existing .env files are never
+    # rewritten: changing SECRET_KEY would invalidate sessions and any stored key.
+    param([int]$ByteLength = 48)
+    $bytes = New-Object byte[] $ByteLength
+    $rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider
+    try {
+        $rng.GetBytes($bytes)
+    } finally {
+        $rng.Dispose()
+    }
+    return ([BitConverter]::ToString($bytes).Replace("-", "").ToLowerInvariant())
 }
 
 function Find-ZapBat {
@@ -249,16 +275,20 @@ Invoke-Section "6. OWASP ZAP daemon and API key" {
         $zapBat = Find-ZapBat -Explicit ""
     }
 
-    if (-not (Test-Path $script:EnvFile)) {
+    $createdEnv = -not (Test-Path $script:EnvFile)
+    if ($createdEnv) {
         Copy-Item -Path $script:EnvExample -Destination $script:EnvFile
         Write-Pass "Created backend/.env from .env.example (gitignored, never commit it)."
     }
+    $strongSecret = New-StrongSecret
 
     # Write without a BOM: pydantic-settings reads the file as utf-8 and a BOM
-    # would corrupt the first variable (SECRET_KEY).
+    # would corrupt the first variable (SECRET_KEY). An existing .env keeps its
+    # SECRET_KEY verbatim so stored provider keys and JWTs stay valid.
     $envLines = Get-Content -Path $script:EnvFile
     $envLines = $envLines | ForEach-Object {
-        if ($_ -match "^ZAP_API_KEY=") { "ZAP_API_KEY=$ZapApiKey" }
+        if ($_ -match "^SECRET_KEY=" -and $createdEnv) { "SECRET_KEY=$strongSecret" }
+        elseif ($_ -match "^ZAP_API_KEY=") { "ZAP_API_KEY=$ZapApiKey" }
         elseif ($_ -match "^ZAP_API_URL=") { "ZAP_API_URL=http://127.0.0.1:$ZapPort" }
         else { $_ }
     }
@@ -269,6 +299,7 @@ Invoke-Section "6. OWASP ZAP daemon and API key" {
         $utf8NoBom
     )
     Write-Pass "ZAP_API_URL and ZAP_API_KEY written to backend/.env (key value not printed)."
+    if ($createdEnv) { Write-Pass "Generated a random SECRET_KEY for the new .env (value not printed)." }
 
     if (-not [string]::IsNullOrWhiteSpace($zapBat)) {
         Write-Pass "zap.bat found: $zapBat"
