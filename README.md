@@ -61,10 +61,18 @@ exposed files & directories, information disclosure, session management *(stretc
 ```
 backend/   FastAPI + SQLAlchemy 2.0 + SQLite (JWT auth, targets, assessments, findings, evidence, LLM config)
 frontend/  React 19 + Vite + TypeScript + Tailwind v4 + shadcn/ui (TanStack Query, Recharts, react-router)
-docs/      PLAN.md (confirmed decisions), later: proposal, system design, reports
+docs/      PLAN.md (decisions), TASK_PLAN.md, proposal.md, system-design.md, qa-checklist.md,
+           INTEGRATION_LOG.md, final-report.md, presentation-skeleton.md, evidence/, member-logs/
+scripts/   setup-dev.ps1 (Windows environment setup, PLAN.md section 11)
 ```
 
 ## Quick start (Windows, native)
+
+On a clean machine, run `powershell -ExecutionPolicy Bypass -File scripts\setup-dev.ps1` first. It installs
+and verifies the Python venv, npm dependencies, Playwright Chromium, Nmap and the OWASP ZAP daemon, writes a
+gitignored `backend/.env` with a ZAP API key, and prints the `PLAN.md` §11 checklist. Use
+`-InstallJuiceShop` to clone the demo target and `-StartZap` to launch the daemon. The manual steps below are
+what the script runs; see [docs/ONBOARDING.md](docs/ONBOARDING.md) for the full walkthrough.
 
 ### 1. Backend
 
@@ -126,3 +134,7 @@ Build log for M2 (approach, decisions, defense notes): [docs/member-logs/m2-ai-p
 M1 scan engine · M2 AI pipeline · M3 frontend · M4 findings/reports/auth · M5 docs/QA/deployment — see PLAN.md §8.
 Detailed per-member tasks, expected outputs, and the sequenced integration plan: **[docs/TASK_PLAN.md](docs/TASK_PLAN.md)**.
 New team member? Start here: **[docs/ONBOARDING.md](docs/ONBOARDING.md)**.
+Project deliverables: [proposal](docs/proposal.md) · [system design](docs/system-design.md) ·
+[QA checklist](docs/qa-checklist.md) · [evidence pack](docs/evidence/README.md) ·
+[integration log](docs/INTEGRATION_LOG.md) · [final report](docs/final-report.md) ·
+[presentation skeleton](docs/presentation-skeleton.md).

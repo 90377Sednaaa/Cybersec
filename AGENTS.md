@@ -118,7 +118,7 @@ the users API.
 
 ## Current state / next up
 
-**Snapshot: 2026-11-14.** Living content — see "Milestone status upkeep" in Conventions. The build-order
+**Snapshot: 2026-11-15.** Living content — see "Milestone status upkeep" in Conventions. The build-order
 table in [README.md](README.md) is kept in sync by the M5 steward.
 
 | Module | State | What landed |
@@ -127,9 +127,11 @@ table in [README.md](README.md) is kept in sync by the M5 steward.
 | **M2** AI pipeline | done | T2.0-T2.5: OpenAI-compatible client, Fernet-encrypted provider settings + discretion gate, redaction before every call, interpreter, summarizer + `ai_outputs` audit. 67 AI tests. Additive enhancement (2026-11-12): live model-catalog proxy `app/ai/catalog.py` + `GET /api/settings/llm/providers/{id}/models` with TTL cache, normalized pricing/capability metadata, per-model `supported_efforts`/`default_effort`, persisted `LLMTaskConfig.effort` (idempotent startup migration) and offline fallback; proposal `docs/proposals/01-live-model-catalog.md`. Wave 4 (2026-11-14): every interpretation attempt now writes an `AIOutput` audit row, success and failure alike. Log: `docs/member-logs/m2-ai-pipeline.md`. |
 | **M3** Frontend | done | T3.0-T3.5 complete: assessments wizard + authenticated SSE live log (T3.1), filterable findings table + detail drawer + verify/false-positive/needs-evidence actions with notes + WCAG AA contrast (T3.2), LLM provider settings + per-task models + test connection (T3.3), live dashboard with real counts + responsive chart + recent assessments (T3.4), report generation + authenticated download (T3.5). Additive enhancement (2026-11-12): searchable `ModelPicker` dialog (`src/components/model-picker.tsx`), model-aware reasoning effort control driven by the live catalog (`src/lib/model-effort.ts`), shadcn `Switch`/`Checkbox` primitives and modernized AI settings UI (`src/pages/settings.tsx`, `src/pages/settings-tasks.tsx`), verified in dark and light themes. Additive enhancement (2026-11-13): sonner toasts on every mutating action, dedicated `/assessments/:id` run page with a shared-axis job timeline, dashboard "Verification progress" stacked bar + "Findings per run" bar chart, shared `EmptyState`, `g`-chord keyboard shortcuts documented in a header panel (keyboard icon beside the theme toggle, or `?`) with a default-off switch to print the hints in the sidebar, and a `--state-verified` token so the four review states are four distinct hues. Wave 4 (2026-11-14): `api.ts` split into `api`/`apiWithMeta`/`apiBlob`; the dashboard's review percentage uses real per-state totals from `X-Total-Count` (the severity and per-run charts keep the 200-row caveat); report download goes through the auth-aware blob helper so a 401 reaches the session handler. Log: `docs/member-logs/m3-frontend.md`. |
 | **M4** Findings & reports | done | T4.0-T4.5 shipped: verification state machine, evidence upload/download, OWASP risk mapping, Jinja2 + Playwright PDF (202 -> poll -> download), auth hardening. Wave 4 (2026-11-14): `GET /api/findings` takes bounded `limit`/`offset` and sends `X-Total-Count` over the filtered set (P06), `DELETE /api/evidence/{id}` unlinks the blob and target deletion reuses the same unlink helpers (F-32), and a partial unique index allows one pending report per assessment with a dedup step for pre-existing duplicates (F-40). Wave 5 (2026-11-14): a finding PATCH compare-and-swaps on the status it validated, so an overlapping decision is a 409 instead of a silent lost update (F-35), and the report context eager-loads evidence with `selectinload` (F-34). Log refreshed to final state: `docs/member-logs/m4-findings-reports.md`. M3 hand-off spec: `docs/m3-findings-page-spec.md`. |
-| **M5** Docs/QA/deploy | in progress | Router hand-offs merged (T5.4 partial). Tool dependencies pending install (Nmap, OWASP ZAP, Playwright Chromium). Evidence pack & rehearsal pending. |
+| **M5** Docs/QA/deploy | in progress | Router hand-offs merged (T5.4 partial). On branch `m5/docs-qa-deploy` (worktree `D:\Cybersec-m5`): T5.0 `docs/proposal.md`, T5.2 `docs/system-design.md` (architecture/ERD/workflow/state machine checked against the shipped code), T5.3 `docs/qa-checklist.md` + `docs/evidence/` stage scaffold, T5.4 `docs/INTEGRATION_LOG.md` (I1-I4 honestly logged as NOT RUN, with the existing verification evidence cited separately), T5.5 `docs/final-report.md` + `docs/presentation-skeleton.md`, and T5.1 `scripts/setup-dev.ps1` (PowerShell-parser validated, installs not executed). Still pending: installing Nmap, the ZAP daemon and Playwright Chromium, a real LLM provider key, the I1-I4 rehearsal, evidence artifact capture, and each member's sign-off. Log: `docs/member-logs/m5-docs-qa-deploy.md`. |
 
-Verification on this snapshot: `npm run build` passes (0 errors), `npm run lint` reports 0 errors / **7 warnings**
+Verification on this snapshot (re-run 2026-11-15 from the code-identical `main` checkout, because the M5
+worktree has no `node_modules`/`.venv`; this branch is docs-and-scripts only, so no application code changed):
+`npm run build` passes (0 errors), `npm run lint` reports 0 errors / **7 warnings**
 (unchanged baseline: five shadcn fast-refresh/`Math.random` warnings in `components/ui`, one
 `use-mobile.ts` set-state-in-effect, one ref-during-render in `GradientASCII.tsx`),
 `pytest tests -q` reports **268 passed** (178 + 10 Wave 0 + 2 Wave 1 + 7 Wave 3 + 14 Wave 2a + 26 Wave 2b,
@@ -185,7 +187,14 @@ here in that wave's final commit.
    installed yet: the ZAP runner degrades gracefully and the report job fails with an actionable log
    line until they are.
 2. **Integration waves I1-I4 rehearsal** (`TASK_PLAN.md` §9) and the M5 evidence pack.
-3. **M5 documentation** — `docs/proposal.md`, `docs/system-design.md`, `docs/qa-checklist.md`, `scripts/setup-dev.ps1`.
+3. **M5 close-out** — the T5.0/T5.2/T5.3/T5.4/T5.5 drafts and `scripts/setup-dev.ps1` now exist on
+   `m5/docs-qa-deploy`. What remains: paste the official rubric wording into `docs/qa-checklist.md` §3,
+   generate M4's PDF, capture `E-01`-`E-16`, have each member review their contribution section, and have
+   the M5 owner refresh their member log before the branch is merged.
+
+**M5 docs live on branch `m5/docs-qa-deploy` (worktree `D:\Cybersec-m5`).** Do not recreate them on `main`;
+merge or PR the branch after the M5 owner signs off. The drafts are explicitly skeletons: no I1-I4 wave has
+been run and no evidence artifact has been captured.
 
 Wave 4 and Wave 5 are code-complete and committed. The only outstanding verification is the visual pass for
 the Wave 4 dashboard changes in dark, light and a narrow viewport; Playwright Chromium is still missing
