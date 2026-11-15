@@ -495,3 +495,17 @@ def test_report_total_matches_the_findings_api_total(client, auth):
         with SessionLocal() as db:
             db.query(Finding).filter(Finding.assessment_id == assessment_id).delete()
             db.commit()
+
+
+def test_report_preview_returns_html_without_generating_pdf(client, auth):
+    """In-app preview is authenticated, read-only and needs no PDF viewer."""
+    assessment_id = _seed_assessment(client, auth)
+
+    resp = client.get(f"/api/assessments/{assessment_id}/report/preview", headers=auth)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    assert "Security Assessment Report" in resp.text
+    assert "1. Executive summary" in resp.text
+
+    assert client.get("/api/assessments/99999/report/preview", headers=auth).status_code == 404
+    assert client.get(f"/api/assessments/{assessment_id}/report/preview").status_code in (401, 403)

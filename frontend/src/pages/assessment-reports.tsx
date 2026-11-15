@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Trash2 } from "lucide-react"
+import { Eye, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -43,6 +43,15 @@ async function downloadReport(report: Report) {
   URL.revokeObjectURL(url)
 }
 
+// An iframe src cannot carry the Authorization header, so the HTML is fetched
+// through the shared authenticated helper and injected with srcDoc instead.
+// This avoids the browser's built-in PDF viewer, which is unavailable in some
+// embedded browsers, and needs no report to have been generated first.
+async function loadReportHtml(assessmentId: number): Promise<string> {
+  const blob = await apiBlob(`/api/assessments/${assessmentId}/report/preview`)
+  return blob.text()
+}
+
 export function AssessmentReports({
   assessmentId,
   assessmentStatus,
@@ -55,6 +64,9 @@ export function AssessmentReports({
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<number | null>(null)
   const [deleting, setDeleting] = useState<Report | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState(false)
 
   const reports = useQuery({
     queryKey: ["reports", assessmentId],
@@ -99,7 +111,21 @@ export function AssessmentReports({
     }
   }
 
+  async function openPreview() {
+    setPreviewError(null)
+    setPreviewing(true)
+    try {
+      setPreview(await loadReportHtml(assessmentId))
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : "Preview failed")
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
   const canGenerate = hasRole("admin", "assessor")
+  const readyReports = reports.data?.filter((row) => row.status === "ready") ?? []
+  const latestReady = readyReports.length > 0 ? readyReports[readyReports.length - 1] : null
   const hasPending = reports.data?.some((r) => r.status === "pending") ?? false
   const running = assessmentStatus === "running"
 
@@ -113,15 +139,21 @@ export function AssessmentReports({
             report.
           </HelpHint>
         </div>
-        {canGenerate && (
-          <Button
-            size="sm"
-            disabled={running || hasPending || generate.isPending}
-            onClick={() => generate.mutate()}
-          >
-            {generate.isPending || hasPending ? "Generating…" : "Generate report"}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Button size="sm" variant="outline" disabled={previewing} onClick={() => void openPreview()}>
+            <Eye className="size-3.5" />
+            {previewing ? "Loading…" : "Preview report"}
           </Button>
-        )}
+          {canGenerate && (
+            <Button
+              size="sm"
+              disabled={running || hasPending || generate.isPending}
+              onClick={() => generate.mutate()}
+            >
+              {generate.isPending || hasPending ? "Generating…" : "Generate report"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {running && canGenerate && (
@@ -136,6 +168,11 @@ export function AssessmentReports({
       {downloadError && (
         <Alert variant="destructive">
           <AlertDescription>{downloadError}</AlertDescription>
+        </Alert>
+      )}
+      {previewError && (
+        <Alert variant="destructive">
+          <AlertDescription>{previewError}</AlertDescription>
         </Alert>
       )}
       {reports.error && (
@@ -225,6 +262,38 @@ export function AssessmentReports({
               onClick={() => deleting && remove.mutate(deleting.id)}
             >
               {remove.isPending ? "Deleting…" : "Delete report"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
+        <DialogContent className="max-w-5xl sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Report preview - assessment #{assessmentId}</DialogTitle>
+            <DialogDescription>
+              Rendered live from the current findings. No download or PDF generation is needed to read it.
+            </DialogDescription>
+          </DialogHeader>
+          {preview && (
+            <iframe
+              title={`Security report preview for assessment ${assessmentId}`}
+              srcDoc={preview}
+              sandbox=""
+              className="h-[65vh] w-full rounded-md border bg-white"
+            />
+          )}
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!latestReady}
+              onClick={() => latestReady && void handleDownload(latestReady)}
+            >
+              Download PDF
+            </Button>
+            <Button type="button" onClick={() => setPreview(null)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

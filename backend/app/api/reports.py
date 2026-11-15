@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -21,7 +21,7 @@ from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models import Assessment, Report, ReportStatus, Role, User
 from app.models.user import utcnow
-from app.reporting import REPORTS_DIR, run_report_job
+from app.reporting import REPORTS_DIR, render_report_html, run_report_job
 from app.schemas.findings import ReportOut
 
 router = APIRouter(tags=["reports"])
@@ -146,6 +146,28 @@ def list_reports(
     if settled:
         db.commit()
     return reports
+
+@router.get("/assessments/{assessment_id}/report/preview")
+def preview_report(
+    assessment_id: int,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Render the report template as HTML for in-app preview.
+
+    Read-only and authenticated. The frontend cannot put a Bearer token on an
+    iframe src, so it fetches this as text and injects it through srcDoc with a
+    sandbox. The template is self-contained (inline CSS/SVG, no scripts), so it
+    renders in embedded browsers that have no built-in PDF viewer.
+
+    This is a live view over the current findings, not a stored PDF: it can be
+    read before any report is generated, and it may be newer than a saved PDF.
+    """
+    assessment = db.get(Assessment, assessment_id)
+    if assessment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
+    return HTMLResponse(render_report_html(db, assessment))
+
 
 @router.get("/reports/{report_id}")
 def download_report(
