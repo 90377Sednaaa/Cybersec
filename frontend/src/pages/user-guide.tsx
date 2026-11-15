@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import {
   Activity,
   AlertTriangle,
@@ -60,7 +60,16 @@ const TOC_SECTIONS: TocItem[] = [
 
 export function UserGuidePage() {
   const { theme, toggle } = useTheme()
+  const navigate = useNavigate()
   const [activeSection, setActiveSection] = useState<string>("overview")
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1)
+    } else {
+      navigate("/")
+    }
+  }
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -106,11 +115,9 @@ export function UserGuidePage() {
           <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
             {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </Button>
-          <Button asChild size="sm" variant="outline">
-            <Link to="/">
-              <ArrowLeft className="size-4 mr-1.5" />
-              <span>Back to App</span>
-            </Link>
+          <Button size="sm" variant="outline" onClick={handleBack}>
+            <ArrowLeft className="size-4 mr-1.5" />
+            <span>Back to App</span>
           </Button>
         </div>
       </header>

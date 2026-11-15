@@ -190,7 +190,7 @@ export function AppShell() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="User Guide" asChild>
-                  <Link to="/guide" target="_blank" rel="noopener noreferrer">
+                  <Link to="/guide">
                     <BookOpen className="size-4" />
                   </Link>
                 </Button>
