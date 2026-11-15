@@ -17,13 +17,17 @@ git config pull.rebase true
 
 ## 2. Set up your environment (10 min)
 
+> The full prerequisite list (Nmap, OWASP ZAP, Playwright Chromium, Juice Shop, `backend/.env` and the
+> authorized-target rules) is in **[README.md § Prerequisites](../README.md#prerequisites)**. On a clean
+> machine, run `powershell -ExecutionPolicy Bypass -File scripts\setup-dev.ps1` before the steps below.
+
 Backend (Python 3.13):
 
 ```bash
 cd backend
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt -r requirements-dev.txt
-.venv\Scripts\python -m pytest tests -q        # must pass: currently 9 tests
+.venv\Scripts\python -m pytest tests -q        # must pass: currently 268 tests
 .venv\Scripts\python -m uvicorn app.main:app --port 8000   # http://127.0.0.1:8000/docs
 ```
 
