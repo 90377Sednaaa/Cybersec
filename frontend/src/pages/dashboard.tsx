@@ -48,29 +48,29 @@ interface StatCardProps {
 function StatCard({ title, value, icon: Icon, hint, loading }: StatCardProps) {
   if (loading) {
     return (
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <Card className="transition-all duration-200">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <Skeleton className="h-4 w-28" />
-          <Skeleton className="size-8 rounded-md" />
+          <Skeleton className="size-8 rounded-lg" />
         </CardHeader>
         <CardContent>
-          <Skeleton className="h-7 w-12" />
-          <Skeleton className="mt-2 h-3 w-32" />
+          <Skeleton className="h-8 w-16" />
+          <Skeleton className="mt-2 h-3.5 w-32" />
         </CardContent>
       </Card>
     )
   }
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <span className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+    <Card className="group relative overflow-hidden transition-all duration-200 hover:border-primary/40 hover:shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</CardTitle>
+        <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
           <Icon className="size-4" />
         </span>
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-semibold tabular-nums">{value}</p>
-        <p className="text-xs text-muted-foreground">{hint}</p>
+        <p className="text-3xl font-bold tracking-tight tabular-nums text-foreground">{value}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
       </CardContent>
     </Card>
   )
@@ -234,7 +234,27 @@ export function DashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="severity" tickLine={false} axisLine={false} fontSize={12} />
                 <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
-                <Bar dataKey="count" radius={4}>
+                <Tooltip
+                  cursor={{ fill: "var(--muted)", opacity: 0.3 }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const item = payload[0]
+                      return (
+                        <div className="rounded-lg border bg-popover px-3 py-1.5 text-xs shadow-md">
+                          <div className="flex items-center gap-2">
+                            <span className="size-2 rounded-full" style={{ backgroundColor: item.payload.fill }} />
+                            <span className="font-semibold text-popover-foreground">{item.payload.severity}</span>
+                          </div>
+                          <p className="mt-1 font-mono text-muted-foreground tabular-nums">
+                            {item.value} {item.value === 1 ? "finding" : "findings"}
+                          </p>
+                        </div>
+                      )
+                    }
+                    return null
+                  }}
+                />
+                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                   {chartData.map((entry) => (
                     <Cell key={entry.severity} fill={entry.fill} />
                   ))}
@@ -251,20 +271,28 @@ export function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Verification progress</CardTitle>
-            <CardDescription>
-              {totalFindings === 0
-                ? "Nothing to review yet."
-                : `${reviewedCount} of ${totalFindings} findings reviewed (${reviewedPercent}%).`}
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+            <div className="space-y-1">
+              <CardTitle>Verification progress</CardTitle>
+              <CardDescription>
+                {totalFindings === 0
+                  ? "Nothing to review yet."
+                  : `${reviewedCount} of ${totalFindings} findings reviewed`}
+              </CardDescription>
+            </div>
+            {totalFindings > 0 && (
+              <Badge variant="outline" className="font-mono text-xs tabular-nums">
+                {reviewedPercent}%
+              </Badge>
+            )}
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/80 p-0.5">
               {reviewBuckets.map((bucket) =>
                 bucket.count > 0 ? (
                   <div
                     key={bucket.key}
+                    className="first:rounded-l-full last:rounded-r-full transition-all duration-300"
                     style={{
                       width: `${(bucket.count / Math.max(totalFindings, 1)) * 100}%`,
                       backgroundColor: bucket.color,
@@ -274,20 +302,22 @@ export function DashboardPage() {
                 ) : null,
               )}
             </div>
-            <ul className="space-y-2">
+            <ul className="space-y-1.5">
               {reviewBuckets.map((bucket) => (
-                <li key={bucket.key} className="flex items-center gap-2 text-sm">
-                  <span
-                    className="size-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: bucket.color }}
-                    aria-hidden="true"
-                  />
-                  <span className="text-muted-foreground">{bucket.label}</span>
-                  <span className="ml-auto font-medium tabular-nums">{bucket.count}</span>
+                <li key={bucket.key} className="flex items-center justify-between rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted/40">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: bucket.color }}
+                      aria-hidden="true"
+                    />
+                    <span className="text-muted-foreground font-medium">{bucket.label}</span>
+                  </div>
+                  <span className="font-semibold tabular-nums text-foreground">{bucket.count}</span>
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground/80 leading-relaxed border-t pt-2.5">
               Only verified findings count as confirmed. AI candidates stay marked until an assessor decides.
             </p>
           </CardContent>
@@ -359,11 +389,16 @@ export function DashboardPage() {
             <Link
               key={assessment.id}
               to={`/assessments/${assessment.id}`}
-              className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm hover:bg-muted/50"
+              className="group flex items-center justify-between gap-3 rounded-lg border p-3.5 text-sm transition-all duration-150 hover:border-primary/40 hover:bg-muted/40"
             >
-              <span className="font-medium">
-                #{assessment.id} · {targetNames.get(assessment.target_id) ?? `Target #${assessment.target_id}`}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="flex size-7 items-center justify-center rounded-md bg-muted font-mono text-xs font-semibold text-muted-foreground group-hover:text-foreground">
+                  #{assessment.id}
+                </span>
+                <span className="font-medium text-foreground">
+                  {targetNames.get(assessment.target_id) ?? `Target #${assessment.target_id}`}
+                </span>
+              </div>
               <span className="flex items-center gap-3">
                 <span className="text-xs text-muted-foreground">
                   {assessment.started_at ? new Date(assessment.started_at).toLocaleString() : "-"}
