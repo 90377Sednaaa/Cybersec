@@ -138,10 +138,10 @@ export function UserGuidePage() {
                     key={item.id}
                     href={`#${item.id}`}
                     className={cn(
-                      "flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium transition-colors",
+                      "group relative flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium transition-all duration-150",
                       isActive
-                        ? "bg-primary/10 text-primary font-semibold"
-                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                        ? "bg-primary/10 text-primary font-semibold before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-r before:bg-primary"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     )}
                   >
                     <div className="flex items-center gap-2.5 truncate">
@@ -184,10 +184,6 @@ export function UserGuidePage() {
           {/* Section 1: Overview */}
           <section id="overview" className="scroll-mt-20 flex flex-col gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Badge variant="outline" className="text-primary border-primary/30">Philosophy &amp; Pipeline</Badge>
-                <span className="text-xs text-muted-foreground">Section 1</span>
-              </div>
               <h1 className="text-3xl font-bold tracking-tight">Overview &amp; The Human-in-the-Loop Concept</h1>
               <p className="mt-2 text-base text-muted-foreground leading-relaxed">
                 <strong>Aletheia</strong> is an AI-assisted security assessment and vulnerability analysis platform designed to combine battle-tested discovery tools (Nmap, OWASP ZAP, custom HTTP prober, DNS) with modern LLM-driven interpretation, while keeping the <strong>human security assessor in charge</strong> of verified findings.
@@ -235,10 +231,6 @@ export function UserGuidePage() {
           {/* Section 2: Quick Start */}
           <section id="quickstart" className="scroll-mt-20 flex flex-col gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Badge variant="outline" className="text-primary border-primary/30">Get Started in 3 Minutes</Badge>
-                <span className="text-xs text-muted-foreground">Section 2</span>
-              </div>
               <h2 className="text-2xl font-bold tracking-tight">Quick Start Walkthrough</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Follow this quick 3-step path to execute your first end-to-end assessment.
@@ -296,10 +288,6 @@ export function UserGuidePage() {
           {/* Section 3: Target Scoping */}
           <section id="scoping" className="scroll-mt-20 flex flex-col gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Badge variant="outline" className="text-primary border-primary/30">Scope Protection</Badge>
-                <span className="text-xs text-muted-foreground">Section 3</span>
-              </div>
               <h2 className="text-2xl font-bold tracking-tight">Scope &amp; Target Registry</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Aletheia enforces rigid scoping gates in the orchestrator before any packet is transmitted.
@@ -369,10 +357,6 @@ export function UserGuidePage() {
           {/* Section 4: Running Assessments */}
           <section id="assessments" className="scroll-mt-20 flex flex-col gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Badge variant="outline" className="text-primary border-primary/30">Execution Engine</Badge>
-                <span className="text-xs text-muted-foreground">Section 4</span>
-              </div>
               <h2 className="text-2xl font-bold tracking-tight">Scans &amp; Real-Time SSE Stream</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Aletheia executes assessments using an in-process asynchronous runner and streams real-time updates over Server-Sent Events (SSE).
@@ -438,10 +422,6 @@ export function UserGuidePage() {
           {/* Section 5: Human Verification */}
           <section id="verification" className="scroll-mt-20 flex flex-col gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Badge variant="outline" className="text-primary border-primary/30">Assessor Responsibility</Badge>
-                <span className="text-xs text-muted-foreground">Section 5</span>
-              </div>
               <h2 className="text-2xl font-bold tracking-tight">Human Finding Verification</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Findings start as unconfirmed AI candidates and require explicit verification by an assessor.
@@ -509,10 +489,6 @@ export function UserGuidePage() {
           {/* Section 6: Reporting */}
           <section id="reporting" className="scroll-mt-20 flex flex-col gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Badge variant="outline" className="text-primary border-primary/30">Deliverables</Badge>
-                <span className="text-xs text-muted-foreground">Section 6</span>
-              </div>
               <h2 className="text-2xl font-bold tracking-tight">Reports &amp; Live HTML Preview</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Aletheia provides both an instant in-app HTML preview and official Playwright-rendered PDF reports.
@@ -563,10 +539,6 @@ export function UserGuidePage() {
           {/* Section 7: AI Pipeline & Redaction */}
           <section id="ai-pipeline" className="scroll-mt-20 flex flex-col gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Badge variant="outline" className="text-primary border-primary/30">Intelligence Engine</Badge>
-                <span className="text-xs text-muted-foreground">Section 7</span>
-              </div>
               <h2 className="text-2xl font-bold tracking-tight">AI Pipeline &amp; Secret Redaction</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 How LLM providers integrate safely with zero credential leakage.
@@ -617,10 +589,6 @@ export function UserGuidePage() {
           {/* Section 8: Keyboard Shortcuts */}
           <section id="keyboard-shortcuts" className="scroll-mt-20 flex flex-col gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Badge variant="outline" className="text-primary border-primary/30">Efficiency</Badge>
-                <span className="text-xs text-muted-foreground">Section 8</span>
-              </div>
               <h2 className="text-2xl font-bold tracking-tight">Keyboard Shortcuts</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Power-user navigation chords for rapid assessor movement.
@@ -651,10 +619,6 @@ export function UserGuidePage() {
           {/* Section 9: Troubleshooting */}
           <section id="troubleshooting" className="scroll-mt-20 flex flex-col gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Badge variant="outline" className="text-primary border-primary/30">Assistance</Badge>
-                <span className="text-xs text-muted-foreground">Section 9</span>
-              </div>
               <h2 className="text-2xl font-bold tracking-tight">Troubleshooting &amp; FAQ</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Common questions and resolutions when running or presenting Aletheia.
