@@ -10,6 +10,8 @@ AI summary (M2) is an optional context key - until M2 lands, the template
 renders a clean placeholder.
 """
 
+import json
+import logging
 import re
 from pathlib import Path
 
@@ -18,11 +20,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
+    AIOutput,
     Assessment,
     EvidenceKind,
     Finding,
     FindingStatus,
     Job,
+    LLMTask,
     Report,
     ReportStatus,
     Severity,
@@ -31,6 +35,8 @@ from app.models import (
 )
 from app.models.user import utcnow
 from app.risk import score_for
+
+logger = logging.getLogger(__name__)
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPORTS_DIR = BACKEND_DIR / "reports"  # generated PDFs (runtime artifacts, gitignored)
@@ -46,6 +52,65 @@ SEVERITY_ORDER = (
 
 class ReportError(RuntimeError):
     """Raised when PDF generation cannot proceed; message must be actionable."""
+
+def _latest_summary_row(db: Session, assessment_id: int) -> AIOutput | None:
+    """The most recent assessment-level summary row (not a per-finding one)."""
+    return db.scalar(
+        select(AIOutput)
+        .where(
+            AIOutput.task == LLMTask.summary,
+            AIOutput.assessment_id == assessment_id,
+            AIOutput.finding_id.is_(None),
+        )
+        .order_by(AIOutput.id.desc())
+    )
+
+
+def latest_ai_summary(db: Session, assessment_id: int) -> str | None:
+    """Read the stored executive summary. Read-only: never calls a provider."""
+    row = _latest_summary_row(db, assessment_id)
+    if row is None:
+        return None
+    try:
+        payload = json.loads(row.content)
+    except (TypeError, ValueError):
+        return None
+    text = payload.get("executive_summary") if isinstance(payload, dict) else None
+    return text.strip() if isinstance(text, str) and text.strip() else None
+
+
+def ensure_ai_summary(db: Session, assessment: Assessment) -> None:
+    """Generate a summary when the cached one is missing or older than a verification.
+
+    M2's `summarize_assessment` stores its output in `ai_outputs` and uses only
+    VERIFIED findings. AI is optional: a missing provider, a rejected model or
+    malformed output must never break a report, so every failure degrades to the
+    template's "AI executive summary pending" placeholder.
+    """
+    # Imported lazily: app.ai.* pulls in the provider client, and reporting.py
+    # is imported while the app factory is still assembling routers.
+    from app.ai.summarize import summarize_assessment, verified_findings_for
+
+    verified = verified_findings_for(db, assessment.id)
+    if not verified:
+        return
+
+    cached = _latest_summary_row(db, assessment.id)
+    if cached is not None:
+        stamps = [f.verified_at for f in verified if f.verified_at is not None]
+        latest = max(stamps) if stamps else None
+        if latest is not None and latest.tzinfo is not None:
+            # SQLite drops tzinfo on round-trip; AIOutput.created_at is naive.
+            latest = latest.replace(tzinfo=None)
+        if latest is None or cached.created_at >= latest:
+            return
+
+    try:
+        summarize_assessment(db, assessment, verified)
+    except Exception as exc:  # noqa: BLE001 - AI is optional, the report must render
+        logger.warning("AI summary unavailable for assessment %s: %s", assessment.id, exc)
+        db.rollback()
+
 
 def build_report_context(db: Session, assessment: Assessment) -> dict:
     """Collect everything the template needs (no ORM objects cross the boundary)."""
@@ -139,7 +204,7 @@ def build_report_context(db: Session, assessment: Assessment) -> dict:
         "verified_count": verified_count,
         "unverified_count": len(findings) - verified_count,
         "recommendations": recommendations,
-        "ai_summary": None,  # M2 summarizer output renders here once available
+        "ai_summary": latest_ai_summary(db, assessment.id),
     }
 
 def render_report_html(db: Session, assessment: Assessment) -> str:
@@ -177,7 +242,8 @@ def generate_pdf_bytes(html: str) -> bytes:
         raise
     except Exception as exc:  # missing chromium executable, launch failures, ...
         raise ReportError(
-            f"PDF generation failed: {exc}. If Chromium is missing, run 'playwright install chromium'."
+            "PDF generation failed: "
+            f"{exc}. If Chromium is missing, run 'playwright install chromium'."
         ) from exc
 
 _ABS_PATH_RE = re.compile(
@@ -207,6 +273,9 @@ def run_report_job(report_id: int) -> None:
             assessment = db.get(Assessment, report.assessment_id)
             if assessment is None:
                 raise ReportError("Assessment no longer exists")
+            # M2 T2.5: summarise verified findings before the template is
+            # rendered, so the PDF carries the AI executive summary.
+            ensure_ai_summary(db, assessment)
             html = render_report_html(db, assessment)
             pdf = generate_pdf_bytes(html)
             REPORTS_DIR.mkdir(parents=True, exist_ok=True)

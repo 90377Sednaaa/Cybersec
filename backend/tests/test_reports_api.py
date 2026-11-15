@@ -6,22 +6,25 @@ Chromium is installed; if it is not, the lifecycle test asserts the graceful
 suite is green either way and honest about which path ran.
 """
 
+import json
 from datetime import datetime, timedelta, timezone
 
 from app.database import SessionLocal
 from app.models import (
+    AIOutput,
     Assessment,
     AssessmentStatus,
     Evidence,
     EvidenceKind,
     Finding,
     FindingStatus,
+    LLMTask,
     Report,
     ReportStatus,
     ScanIntensity,
     Severity,
 )
-from app.reporting import REPORTS_DIR, build_report_context, render_report_html
+from app.reporting import REPORTS_DIR, build_report_context, ensure_ai_summary, render_report_html
 from app.schemas.findings import ReportOut
 
 def _seed_assessment(client, auth: dict[str, str]) -> int:
@@ -495,3 +498,58 @@ def test_report_total_matches_the_findings_api_total(client, auth):
         with SessionLocal() as db:
             db.query(Finding).filter(Finding.assessment_id == assessment_id).delete()
             db.commit()
+
+
+def test_report_preview_returns_html_without_generating_pdf(client, auth):
+    """In-app preview is authenticated, read-only and needs no PDF viewer."""
+    assessment_id = _seed_assessment(client, auth)
+
+    resp = client.get(f"/api/assessments/{assessment_id}/report/preview", headers=auth)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    assert "Security Assessment Report" in resp.text
+    assert "1. Executive summary" in resp.text
+
+    assert client.get("/api/assessments/99999/report/preview", headers=auth).status_code == 404
+    assert client.get(f"/api/assessments/{assessment_id}/report/preview").status_code in (401, 403)
+
+
+def test_report_renders_stored_ai_summary(client, auth):
+    """M2's stored summary reaches both the context and the rendered HTML."""
+    assessment_id = _seed_assessment(client, auth)
+    _verify_one(client, auth, assessment_id)
+    summary = "Verified exposure is limited to one missing-header finding."
+
+    with SessionLocal() as db:
+        db.add(
+            AIOutput(
+                task=LLMTask.summary,
+                assessment_id=assessment_id,
+                model="test-model",
+                content=json.dumps({"executive_summary": summary}),
+            )
+        )
+        db.commit()
+
+    with SessionLocal() as db:
+        assessment = db.get(Assessment, assessment_id)
+        assert build_report_context(db, assessment)["ai_summary"] == summary
+        html = render_report_html(db, assessment)
+    assert summary in html
+    assert "AI executive summary pending" not in html
+
+
+def test_ensure_ai_summary_degrades_when_provider_fails(client, auth, monkeypatch):
+    """A broken provider must never break the report or the live preview."""
+    assessment_id = _seed_assessment(client, auth)
+    _verify_one(client, auth, assessment_id)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr("app.ai.summarize.summarize_assessment", boom)
+    with SessionLocal() as db:
+        assessment = db.get(Assessment, assessment_id)
+        ensure_ai_summary(db, assessment)
+        html = render_report_html(db, assessment)
+    assert "AI executive summary pending" in html
