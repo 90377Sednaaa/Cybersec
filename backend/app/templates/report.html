@@ -16,7 +16,19 @@
     --accent: #2563eb;
   }
   * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: var(--ink); font-size: 11pt; line-height: 1.5; margin: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: var(--ink);
+    font-size: 11pt;
+    line-height: 1.5;
+    margin: 0;
+    padding: 24pt 36pt 40pt;
+  }
+  @media print {
+    body {
+      padding: 0;
+    }
+  }
   h1 { font-size: 20pt; margin: 0 0 4pt; }
   h2 { font-size: 14pt; margin: 18pt 0 6pt; border-bottom: 2px solid var(--accent); padding-bottom: 3pt; page-break-after: avoid; }
   h3 { font-size: 12pt; margin: 12pt 0 4pt; page-break-after: avoid; }

@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Check, CheckCircle2, Copy } from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -213,6 +213,34 @@ export function AssessmentRunPage() {
   const finishedJobs = data?.jobs.filter((j) => j.status === "completed" || j.status === "failed").length ?? 0
   const jobTool = new Map(data?.jobs.map((j) => [j.id, j.tool]))
   const canCancel = hasRole("admin", "assessor")
+  const isFinished = data?.status === "completed" || data?.status === "failed" || data?.status === "cancelled"
+  const [copiedLog, setCopiedLog] = useState(false)
+
+  // Merge live lines with persisted job logs so historical runs display their outputs
+  const displayLines = (() => {
+    if (lines.length > 0) return lines
+    const parsed: { id: string; jobId: number; text: string }[] = []
+    if (data?.jobs) {
+      for (const job of data.jobs) {
+        if (!job.log) continue
+        const rawLines = job.log.split("\n")
+        for (let i = 0; i < rawLines.length; i++) {
+          const text = rawLines[i].trim()
+          if (text) {
+            parsed.push({ id: `persisted-${job.id}-${i}`, jobId: job.id, text })
+          }
+        }
+      }
+    }
+    return parsed
+  })()
+
+  function handleCopyLog() {
+    const fullText = displayLines.map((l) => `[${jobTool.get(l.jobId) ?? `job ${l.jobId}`}] ${l.text}`).join("\n")
+    navigator.clipboard.writeText(fullText)
+    setCopiedLog(true)
+    setTimeout(() => setCopiedLog(false), 2000)
+  }
 
   if (!validId) {
     return (
@@ -327,16 +355,43 @@ export function AssessmentRunPage() {
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
                   <div className="space-y-1.5">
-                    <CardTitle className="text-base">Live output</CardTitle>
-                    <CardDescription>Streamed straight from the running tools.</CardDescription>
+                    <CardTitle className="text-base">
+                      {isFinished ? "Execution output" : "Live output"}
+                    </CardTitle>
+                    <CardDescription>
+                      {isFinished
+                        ? "Preserved log output from all executed jobs."
+                        : "Streamed straight from the running tools."}
+                    </CardDescription>
                   </div>
-                  <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                    <span
-                      className={`size-1.5 rounded-full ${connected ? "animate-pulse bg-primary motion-reduce:animate-none" : "bg-muted-foreground/40"}`}
-                      aria-hidden="true"
-                    />
-                    {connected ? "live" : "not connected"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {displayLines.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCopyLog}
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        {copiedLog ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                        <span className="ml-1 text-[11px]">{copiedLog ? "Copied" : "Copy"}</span>
+                      </Button>
+                    )}
+                    {isFinished ? (
+                      <Badge variant="outline" className="gap-1.5 py-0.5 text-xs font-normal">
+                        <CheckCircle2 className="size-3 text-emerald-500" />
+                        Completed
+                      </Badge>
+                    ) : (
+                      <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                        <span
+                          className={`size-1.5 rounded-full ${connected ? "animate-pulse bg-primary motion-reduce:animate-none" : "bg-muted-foreground/40"}`}
+                          aria-hidden="true"
+                        />
+                        {connected ? "live" : "not connected"}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -344,14 +399,16 @@ export function AssessmentRunPage() {
                   ref={logRef}
                   className="h-[26rem] overflow-y-auto rounded-md border bg-muted/40 p-2 font-mono text-xs"
                 >
-                  {lines.length === 0 ? (
+                  {displayLines.length === 0 ? (
                     <p className="text-muted-foreground">
                       {connected
                         ? "Waiting for output…"
+                        : isFinished
+                        ? "No output was recorded for this run."
                         : "No live output. Logs stream only while a run is active."}
                     </p>
                   ) : (
-                    lines.map((line) => (
+                    displayLines.map((line) => (
                       <div key={line.id} className="whitespace-pre-wrap break-all">
                         <span className="text-muted-foreground">[{jobTool.get(line.jobId) ?? `job ${line.jobId}`}]</span>{" "}
                         {line.text}

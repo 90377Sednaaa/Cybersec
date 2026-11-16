@@ -73,6 +73,7 @@ export interface Job {
   command: string
   status: JobStatus
   progress: number
+  log?: string
   started_at: string | null
   finished_at: string | null
 }
