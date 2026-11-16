@@ -196,3 +196,81 @@ def test_answer_finding_question_no_provider():
         finding = Finding(id=999, assessment_id=1, title="Test", severity=Severity.low, status=FindingStatus.ai_candidate)
         with pytest.raises(ai_client.NoProviderConfigured):
             answer_finding_question(db, finding, "Is this vulnerable?")
+
+
+def _get_token(client, email: str, role: str, auth: dict) -> dict:
+    client.post("/api/users", json={"email": email, "password": "password123", "role": role}, headers=auth)
+    res = client.post("/api/auth/login", data={"username": email, "password": "password123"})
+    assert res.status_code == 200, res.text
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}
+
+
+def test_ask_finding_qa_endpoint_success(client, auth, qa_configured, sample_finding, monkeypatch):
+    finding_id, ev_id = sample_finding
+    assessor_auth = _get_token(client, "assessor-qa@example.com", "assessor", auth)
+
+    def fake_send(base_url, headers, body, timeout, transport):
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": f"Confirmed from [Evidence #{ev_id}] that CSP header is missing.",
+                        "reasoning_content": "Inspected headers.",
+                    },
+                    "finish_reason": "stop",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(ai_client, "_send_with_retry", fake_send)
+
+    resp = client.post(
+        f"/api/findings/{finding_id}/qa",
+        json={"question": "What does the evidence show?"},
+        headers=assessor_auth,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert "Confirmed from [Evidence" in data["answer"]
+    assert data["reasoning"] == "Inspected headers."
+    assert data["grounded_evidence_ids"] == [ev_id]
+    assert data["model"] == MODEL
+
+
+def test_ask_finding_qa_endpoint_viewer_forbidden(client, auth, qa_configured, sample_finding):
+    finding_id, _ = sample_finding
+    viewer_auth = _get_token(client, "viewer-qa@example.com", "viewer", auth)
+
+    resp = client.post(
+        f"/api/findings/{finding_id}/qa",
+        json={"question": "Can I query this?"},
+        headers=viewer_auth,
+    )
+    assert resp.status_code == 403, resp.text
+
+
+def test_ask_finding_qa_endpoint_no_provider(client, auth, sample_finding):
+    finding_id, _ = sample_finding
+    with SessionLocal() as db:
+        db.execute(delete(LLMTaskConfig))
+        db.execute(delete(LLMProvider))
+        db.commit()
+
+    resp = client.post(
+        f"/api/findings/{finding_id}/qa",
+        json={"question": "Is this vulnerable?"},
+        headers=auth,
+    )
+    assert resp.status_code == 400, resp.text
+    assert "No AI provider or model is configured for Finding Q&A" in resp.json()["detail"]
+
+
+def test_ask_finding_qa_endpoint_not_found(client, auth, qa_configured):
+    resp = client.post(
+        "/api/findings/99999/qa",
+        json={"question": "Does this exist?"},
+        headers=auth,
+    )
+    assert resp.status_code == 404, resp.text
+
