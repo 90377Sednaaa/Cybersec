@@ -11,6 +11,7 @@ import { LoginPage } from "@/pages/login"
 import { AssessmentsPage } from "@/pages/assessments"
 import { AssessmentRunPage } from "@/pages/assessment-run"
 import { FindingsPage } from "@/pages/findings"
+import { FindingDetailPage } from "@/pages/finding-detail-page"
 import { SettingsPage } from "@/pages/settings"
 import { TargetsPage } from "@/pages/targets"
 import { UserGuidePage } from "@/pages/user-guide"
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/assessments" element={<AssessmentsPage />} />
           <Route path="/assessments/:id" element={<AssessmentRunPage />} />
           <Route path="/findings" element={<FindingsPage />} />
+          <Route path="/findings/:id" element={<FindingDetailPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="/guide" element={<UserGuidePage />} />

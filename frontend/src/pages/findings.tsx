@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useNavigate } from "react-router-dom"
 import { ShieldAlert } from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -23,7 +24,6 @@ import {
 } from "@/lib/finding-style"
 import { ASSESSMENT_CATEGORIES } from "@/lib/types"
 import type { Finding } from "@/lib/types"
-import { FindingDetailModal } from "@/pages/finding-detail"
 
 const ALL = "all"
 
@@ -61,10 +61,10 @@ function FilterSelect({
 }
 
 export function FindingsPage() {
+  const navigate = useNavigate()
   const [status, setStatus] = useState(ALL)
   const [severity, setSeverity] = useState(ALL)
   const [category, setCategory] = useState(ALL)
-  const [selectedId, setSelectedId] = useState<number | null>(null)
 
   const params = new URLSearchParams()
   if (status !== ALL) params.set("status", status)
@@ -180,9 +180,9 @@ export function FindingsPage() {
                   key={finding.id}
                   className="cursor-pointer"
                   tabIndex={0}
-                  onClick={() => setSelectedId(finding.id)}
+                  onClick={() => navigate(`/findings/${finding.id}`)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") setSelectedId(finding.id)
+                    if (event.key === "Enter") navigate(`/findings/${finding.id}`)
                   }}
                 >
                   <TableCell className="font-mono text-xs">#{finding.id}</TableCell>
@@ -206,8 +206,6 @@ export function FindingsPage() {
           </Table>
         </CardContent>
       </Card>
-
-      <FindingDetailModal findingId={selectedId} onClose={() => setSelectedId(null)} />
     </div>
   )
 }
