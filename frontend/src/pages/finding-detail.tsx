@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FindingReview } from "@/pages/finding-review"
+import { FindingQAPanel } from "@/components/finding-qa-panel"
 import { api } from "@/lib/api"
 import {
   SEVERITY_CLASS,
@@ -122,6 +123,7 @@ export function FindingDetailModal({
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="evidence">Evidence ({data.evidence.length})</TabsTrigger>
                   <TabsTrigger value="remediation">Remediation</TabsTrigger>
+                  <TabsTrigger value="qa">Ask AI</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-4 pt-2">
@@ -153,6 +155,10 @@ export function FindingDetailModal({
 
                 <TabsContent value="remediation" className="pt-2">
                   <Field label="Recommended fix">{data.remediation || "No remediation guidance yet."}</Field>
+                </TabsContent>
+
+                <TabsContent value="qa" className="pt-2">
+                  <FindingQAPanel finding={data} />
                 </TabsContent>
               </Tabs>
 
