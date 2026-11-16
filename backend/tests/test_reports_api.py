@@ -158,6 +158,10 @@ def test_report_context_groups_and_scores(client, auth):
     assert ctx["counts"]["high"] == 1 and ctx["counts"]["critical"] == 1
     assert ctx["verified_count"] == 1 and ctx["total_findings"] == 2
     assert [tier for tier, rows in ctx["findings_by_severity"]] == ["critical", "high"]
+    assert ctx["overall_posture"]["tier"] == "critical"
+    assert ctx["overall_posture"]["label"] == "CRITICAL RISK"
+    assert len(ctx["roadmap"]["immediate"]) == 2
+    assert isinstance(ctx["logo_base64"], str)
     # explicit score 0 falls back to the representative band value (high -> 8.0)
     high_row = ctx["findings_by_severity"][1][1][0]
     assert high_row["score"] == 8.0
@@ -179,6 +183,10 @@ def test_report_html_sections_render(client, auth):
         "Serve a Content-Security-Policy header",
         "AI executive summary pending",  # M2 placeholder while M2 is not wired
         "Assessor notes",  # not set here -> placeholder sections still valid
+        "CONFIDENTIAL",
+        "CRITICAL RISK",
+        "Prioritized remediation roadmap",
+        "Phase 1: Immediate Actions",
     ):
         assert marker in html, f"report HTML missing: {marker}"
     # evidence excerpt made it into the rendered report
