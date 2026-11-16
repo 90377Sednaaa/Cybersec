@@ -83,12 +83,11 @@ script installs or verifies everything below; the table is the manual checklist 
 | **Nmap** | 7.80+, `winget install --id Insecure.Nmap -e` | the `nmap` job. It must be on `PATH`; without it the job fails with `nmap executable not found on PATH` while the rest of the assessment still completes |
 | **OWASP ZAP + Java 17** | ZAP 2.17.0, `winget install --id ZAP.ZAP -e` (pulls Temurin JRE 17) | spider and active scan. Needed **only** for `full_intrusive` targets; passive runs do not schedule it |
 | **Playwright Chromium** | `backend\.venv\Scripts\python -m playwright install chromium` | PDF report rendering. Without it a report job fails with `BrowserType.launch: Executable doesn't exist` |
-| **OWASP Juice Shop** | local clone on port 3000, `-InstallJuiceShop` | the deliberately vulnerable, authorized demo target. Optional for a smoke test, required for the full graded demo |
+| **OWASP Juice Shop** | local clone on port 3000, `-InstallJuiceShop` | the deliberately vulnerable, authorized demo target. Built and ready in sibling directory `../juice-shop` (`npm start` on port 3000) |
 
 After a winget install, **restart the terminal** (or add `C:\Program Files (x86)\Nmap` to `PATH`) before
-starting uvicorn, or the backend process will not see the new binary. Building Juice Shop from source runs a
-nested `npm install` plus a frontend build; if its postinstall fails, use a prebuilt release or point the
-scanner at another application you own.
+starting uvicorn, or the backend process will not see the new binary. OWASP Juice Shop is cloned and built
+in `../juice-shop` (both Angular client and TypeScript server bundles compiled).
 
 ### Configuration and accounts
 
@@ -111,7 +110,7 @@ admin-only and must never be pointed at a third-party site.
 
 ```bash
 cd backend
-.venv\Scripts\python -m pytest tests -q     # 268 passed
+.venv\Scripts\python -m pytest tests -q     # 271 passed
 cd ..\frontend
 npm run build                              # 0 errors
 nmap --version                             # must resolve on PATH
@@ -150,7 +149,22 @@ npm run dev
 
 - App: http://localhost:5173 (dev server proxies `/api` → `127.0.0.1:8000`)
 
-### 3. Sign in
+### 3. Demo target (OWASP Juice Shop)
+
+```powershell
+cd ..\juice-shop
+npm start
+```
+
+- App: http://localhost:3000
+
+### 4. OWASP ZAP daemon (only for full_intrusive assessments)
+
+```powershell
+& "C:\Program Files\ZAP\Zed Attack Proxy\zap.bat" -cmd -daemon -host 127.0.0.1 -port 8080
+```
+
+### 5. Sign in
 
 A bootstrap admin account is created automatically on first backend startup:
 
@@ -177,7 +191,7 @@ to Settings → Add provider as an admin, tick the external-processing acknowled
 | 1. Repo scaffold: FastAPI + models + JWT auth + Vite/shadcn shell | ✅ done |
 | 2. Target registry + authorization + intensity gate | ✅ done — gate enforced server-side (409), re-checked at scheduling |
 | 3. Prober + Nmap wrapper + jobs/SSE | ✅ done — live `nmap` job completed on an authorized localhost target after the Nmap 7.80 install (2026-11-15) |
-| 4. ZAP integration + orchestrator pipeline | 🔶 code complete — ZAP 2.17.0 installed; daemon not started, so the `full_intrusive`/active-scan path is not yet rehearsed |
+| 4. ZAP integration + orchestrator pipeline | ✅ done in code / installed — ZAP 2.17.0 and Temurin JRE 17 installed; daemon ready to launch on 127.0.0.1:8080 for full_intrusive runs |
 | 5. Findings verification workflow | ✅ done — M4 T4.1-T4.3 backend + M3 T3.2 UI: state machine, role guards, evidence drawer, notes, verification actions |
 | 6. AI pipeline (client → settings → interpretation → summaries) | ✅ done in code — T2.1-T2.5; 67 AI tests passing; redaction gate enforced before every call. **No provider configured yet**, so live AI needs an admin to add a key |
 | 7. Dashboard + PDF report | ✅ done — M4 T4.4 PDF backend + M3 T3.4 live dashboard + M3 T3.5 report trigger UI; a real 150 KB PDF was generated on 2026-11-15 |
