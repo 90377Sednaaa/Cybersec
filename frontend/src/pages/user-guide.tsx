@@ -609,6 +609,7 @@ export function UserGuidePage() {
                 { chord: "g then a", desc: "Jump to Assessments" },
                 { chord: "g then f", desc: "Jump to Findings" },
                 { chord: "g then s", desc: "Jump to Settings" },
+                { chord: "← / →", desc: "Prev / Next Finding" },
                 { chord: "?", desc: "Open Shortcuts Reference" },
               ].map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between rounded-lg border p-3 bg-card/40">
