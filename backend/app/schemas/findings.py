@@ -60,3 +60,24 @@ class ReportOut(BaseModel):
     error: str = ""
     created_at: datetime
     finished_at: datetime | None = None
+
+
+# --- Finding Q&A (T2.6) ------------------------------------------------------
+
+class FindingQAMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=4000)
+
+
+class FindingQARequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    history: list[FindingQAMessage] = Field(default_factory=list, max_length=6)
+
+
+class FindingQAResponse(BaseModel):
+    answer: str
+    reasoning: str | None = None
+    model: str
+    grounded_evidence_ids: list[int] = Field(default_factory=list)
+    created_at: datetime
+

@@ -35,6 +35,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FindingReview } from "@/pages/finding-review"
+import { FindingQAPanel } from "@/components/finding-qa-panel"
 import { api, apiBlob, getToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useShowShortcutHints } from "@/lib/shortcuts"
@@ -127,7 +128,7 @@ function EvidenceBlock({
   }
 
   return (
-    <div className="rounded-lg border bg-card/60 transition-colors">
+    <div id={`evidence-${item.id}`} className="rounded-lg border bg-card/60 transition-colors">
       <div className="flex items-center justify-between border-b px-4 py-2.5 bg-muted/30">
         <div className="flex items-center gap-2 min-w-0">
           <Icon className="size-4 text-primary shrink-0" />
@@ -652,6 +653,11 @@ export function FindingDetailPage() {
               ))}
             </div>
           )}
+
+          {/* Finding Q&A Analyst Assistant (T2.6 Stretch) */}
+          <div className="pt-2">
+            <FindingQAPanel finding={data} />
+          </div>
         </div>
       </div>
     </div>

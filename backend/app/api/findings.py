@@ -16,10 +16,12 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_role
 from app.database import get_db
-from app.models import Finding, FindingStatus, Role, Severity, User
+from app.models import Finding, FindingStatus, LLMTask, Role, Severity, User
 from app.models.user import utcnow
 from app.schemas.common import FindingOut
-from app.schemas.findings import FindingDetailOut, FindingUpdate
+from app.schemas.findings import FindingDetailOut, FindingQARequest, FindingQAResponse, FindingUpdate
+from app.ai import client as ai_client
+from app.ai.qa import answer_finding_question
 
 router = APIRouter(prefix="/findings", tags=["findings"])
 
@@ -168,3 +170,42 @@ def update_finding(
     db.commit()
     db.refresh(finding)
     return finding
+
+
+@router.post("/{finding_id}/qa", response_model=FindingQAResponse)
+def ask_finding_qa(
+    finding_id: int,
+    body: FindingQARequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(Role.assessor, Role.admin)),
+):
+    """Answers an analyst question grounded strictly in this finding's evidence (T2.6)."""
+    finding = _get_finding_or_404(db, finding_id)
+    try:
+        ai_client.resolve_task_config(db, LLMTask.qa)
+    except ai_client.NoProviderConfigured as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "No AI provider or model is configured for Finding Q&A. Configure one in Settings.",
+        ) from exc
+
+    deny_list: list[str] = []
+    if finding.assessment and finding.assessment.target:
+        target = finding.assessment.target
+        deny_list = [target.name, target.base_url]
+        if target.authorization_ref:
+            deny_list.append(target.authorization_ref)
+
+    try:
+        result = answer_finding_question(
+            db,
+            finding,
+            body.question,
+            history=body.history,
+            deny_list=deny_list,
+        )
+    except ai_client.LLMRequestError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"AI provider error: {exc}") from exc
+
+    return FindingQAResponse(**result, created_at=utcnow())
+
