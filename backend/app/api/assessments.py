@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -91,6 +91,119 @@ async def create_assessment(
     # Pipeline launches on the event loop after the commit; the task opens its
     # own DB session (orchestrator.run_pipeline).
     start_pipeline(assessment.id)
+    db.refresh(assessment)
+    return _detail(db, assessment)
+
+
+DEFAULT_CATEGORIES = [
+    "Input validation & injection",
+    "Security configuration & HTTPS",
+    "Exposed files & directories",
+    "Information disclosure",
+    "Session management",
+]
+
+
+@router.post("/import", response_model=AssessmentDetail, status_code=status.HTTP_201_CREATED)
+async def import_scan(
+    target_id: int = Form(...),
+    tool: str = Form(...),
+    file: UploadFile = File(...),
+    assessment_id: int | None = Form(None),
+    user: User = Depends(require_role(Role.admin, Role.assessor)),
+    db: Session = Depends(get_db),
+) -> AssessmentDetail:
+    from app.ai.interpret import interpret_assessment
+    from app.scanner.importer import parse_imported_scan
+    from app.scanner.normalize import normalize_job
+    from app.scanner.orchestrator import target_deny_list
+
+    tool_lower = (tool or "").strip().lower()
+    if tool_lower not in ("nmap", "zap"):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Unsupported tool '{tool}'. Aletheia supports 'nmap' and 'zap' scan imports.",
+        )
+
+    target = db.get(Target, target_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Target not found")
+
+    content_bytes = await file.read()
+    if not content_bytes:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Uploaded scan file is empty.")
+
+    try:
+        content_str = content_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            content_str = content_bytes.decode("latin-1")
+        except Exception as exc:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, "Could not decode scan file as UTF-8 or Latin-1 text."
+            ) from exc
+
+    try:
+        parsed_data = parse_imported_scan(tool_lower, content_str)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    if assessment_id is not None:
+        assessment = db.get(Assessment, assessment_id, options=(joinedload(Assessment.jobs),))
+        if assessment is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
+        if assessment.target_id != target.id:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Target ID does not match the assessment's target.")
+    else:
+        assessment = Assessment(
+            target_id=target.id,
+            intensity=target.allowed_intensity,
+            categories=DEFAULT_CATEGORIES,
+            started_by_id=user.id,
+            status=AssessmentStatus.completed,
+            started_at=utcnow(),
+            finished_at=utcnow(),
+            notes=f"Imported manual {tool_lower.upper()} scan from '{file.filename}'.",
+        )
+        db.add(assessment)
+        db.flush()
+
+    job = Job(
+        assessment_id=assessment.id,
+        tool=tool_lower,
+        status=JobStatus.completed,
+        raw_output=json.dumps(parsed_data),
+        log=f"Imported manual {tool_lower.upper()} scan from '{file.filename}'.\n",
+        progress=1.0,
+        started_at=utcnow(),
+        finished_at=utcnow(),
+    )
+    db.add(job)
+    db.flush()
+
+    # Deterministic normalization (M1)
+    created_norm = normalize_job(db, assessment, job)
+
+    # AI interpretation (M2) - runs over the newly imported job
+    created_ai = 0
+    try:
+        created_ai = interpret_assessment(
+            db,
+            assessment,
+            [job],
+            deny_list=target_deny_list(target),
+        )
+    except Exception:
+        pass  # Provider errors never break scan imports
+
+    notes_parts = [f"Imported manual {tool_lower.upper()} scan from '{file.filename}'."]
+    if created_norm:
+        notes_parts.append(f"{created_norm} candidate finding(s) emitted by rule-based normalizer.")
+    if created_ai:
+        notes_parts.append(f"{created_ai} candidate finding(s) added by AI interpretation.")
+    assessment.notes = " ".join(notes_parts)
+
+    db.commit()
     db.refresh(assessment)
     return _detail(db, assessment)
 

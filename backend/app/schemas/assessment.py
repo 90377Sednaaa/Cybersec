@@ -45,6 +45,7 @@ class JobOut(BaseModel):
     command: str
     status: JobStatus
     progress: float
+    log: str = ""
     started_at: datetime | None
     finished_at: datetime | None
 

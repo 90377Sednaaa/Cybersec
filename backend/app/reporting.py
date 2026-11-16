@@ -10,6 +10,7 @@ AI summary (M2) is an optional context key - until M2 lands, the template
 renders a clean placeholder.
 """
 
+import base64
 import json
 import logging
 import re
@@ -49,6 +50,23 @@ SEVERITY_ORDER = (
     Severity.low,
     Severity.info,
 )
+
+_LOGO_CACHE: str | None = None
+
+def get_logo_base64() -> str:
+    global _LOGO_CACHE
+    if _LOGO_CACHE is not None:
+        return _LOGO_CACHE
+    logo_file = BACKEND_DIR.parent / "frontend" / "src" / "assets" / "aletheia-logo.png"
+    if logo_file.exists():
+        try:
+            b64 = base64.b64encode(logo_file.read_bytes()).decode("ascii")
+            _LOGO_CACHE = f"data:image/png;base64,{b64}"
+            return _LOGO_CACHE
+        except Exception:
+            pass
+    _LOGO_CACHE = ""
+    return _LOGO_CACHE
 
 class ReportError(RuntimeError):
     """Raised when PDF generation cannot proceed; message must be actionable."""
@@ -169,8 +187,70 @@ def build_report_context(db: Session, assessment: Assessment) -> dict:
             recommendations.append(f.remediation)
 
     verified_count = sum(1 for f in findings if f.status == FindingStatus.verified)
+
+    # Calculate overall security posture
+    max_severity = Severity.info
+    for tier in SEVERITY_ORDER:
+        if by_severity[tier]:
+            max_severity = tier
+            break
+
+    posture_meta = {
+        Severity.critical: {
+            "tier": "critical",
+            "label": "CRITICAL RISK",
+            "summary": "Urgent attention required. Critical vulnerabilities were identified that allow significant system compromise or high-impact data exposure.",
+        },
+        Severity.high: {
+            "tier": "high",
+            "label": "HIGH RISK",
+            "summary": "Elevated risk profile. Direct exploitation vectors exist that could compromise critical application resources or user sessions.",
+        },
+        Severity.medium: {
+            "tier": "medium",
+            "label": "MODERATE RISK",
+            "summary": "Moderate risk profile. Several security weaknesses were detected that should be addressed in upcoming scheduled maintenance.",
+        },
+        Severity.low: {
+            "tier": "low",
+            "label": "LOW RISK",
+            "summary": "Low risk profile. Identified items primarily consist of security header configurations and defense-in-depth hardening.",
+        },
+        Severity.info: {
+            "tier": "info",
+            "label": "INFORMATIONAL",
+            "summary": "Clean baseline. No actionable exploitable vulnerabilities were identified in the scoped evaluation.",
+        },
+    }
+    overall_posture = posture_meta.get(max_severity, posture_meta[Severity.info])
+
+    # Prioritized remediation roadmap
+    roadmap = {
+        "immediate": [],
+        "short_term": [],
+        "long_term": [],
+    }
+    for f in findings:
+        item = {
+            "id": f.id,
+            "title": f.title,
+            "severity": f.severity.value,
+            "category": f.category,
+            "remediation": f.remediation,
+            "status": f.status.value,
+        }
+        if f.severity in (Severity.critical, Severity.high):
+            roadmap["immediate"].append(item)
+        elif f.severity == Severity.medium:
+            roadmap["short_term"].append(item)
+        else:
+            roadmap["long_term"].append(item)
+
     return {
         "platform": "Aletheia - AI-Assisted Security Assessment Platform",
+        "logo_base64": get_logo_base64(),
+        "overall_posture": overall_posture,
+        "roadmap": roadmap,
         "generated_at": utcnow(),
         "assessment": {
             "id": assessment.id,

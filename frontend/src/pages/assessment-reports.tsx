@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Eye, Trash2 } from "lucide-react"
+import { Download, FileText, Maximize2, Minimize2, RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Spinner } from "@/components/ui/spinner"
 import { HelpHint } from "@/components/help-hint"
 import { api, apiBlob } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
@@ -45,8 +46,6 @@ async function downloadReport(report: Report) {
 
 // An iframe src cannot carry the Authorization header, so the HTML is fetched
 // through the shared authenticated helper and injected with srcDoc instead.
-// This avoids the browser's built-in PDF viewer, which is unavailable in some
-// embedded browsers, and needs no report to have been generated first.
 async function loadReportHtml(assessmentId: number): Promise<string> {
   const blob = await apiBlob(`/api/assessments/${assessmentId}/report/preview`)
   return blob.text()
@@ -64,21 +63,36 @@ export function AssessmentReports({
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<number | null>(null)
   const [deleting, setDeleting] = useState<Report | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
-  const [previewError, setPreviewError] = useState<string | null>(null)
-  const [previewing, setPreviewing] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   const reports = useQuery({
     queryKey: ["reports", assessmentId],
     queryFn: () => api<Report[]>(`/api/assessments/${assessmentId}/reports`),
-    // Poll while a PDF is still being generated.
     refetchInterval: (query) => (query.state.data?.some((r) => r.status === "pending") ? 2000 : false),
   })
+
+  // Load live HTML report directly into the card
+  const reportHtml = useQuery({
+    queryKey: ["report-preview-html", assessmentId],
+    queryFn: () => loadReportHtml(assessmentId),
+    enabled: assessmentStatus !== "running",
+  })
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isFullscreen])
 
   const generate = useMutation({
     mutationFn: () => api<Report>(`/api/assessments/${assessmentId}/report`, { method: "POST" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reports", assessmentId] })
+      queryClient.invalidateQueries({ queryKey: ["report-preview-html", assessmentId] })
       toast.success("Report generation started")
     },
   })
@@ -92,8 +106,6 @@ export function AssessmentReports({
     },
   })
 
-  // Reset the mutation so a previous 409/404 is not shown again the next time
-  // the dialog is opened for a different report.
   function closeDeleteDialog() {
     setDeleting(null)
     remove.reset()
@@ -111,18 +123,6 @@ export function AssessmentReports({
     }
   }
 
-  async function openPreview() {
-    setPreviewError(null)
-    setPreviewing(true)
-    try {
-      setPreview(await loadReportHtml(assessmentId))
-    } catch (err) {
-      setPreviewError(err instanceof Error ? err.message : "Preview failed")
-    } finally {
-      setPreviewing(false)
-    }
-  }
-
   const canGenerate = hasRole("admin", "assessor")
   const readyReports = reports.data?.filter((row) => row.status === "ready") ?? []
   const latestReady = readyReports.length > 0 ? readyReports[readyReports.length - 1] : null
@@ -130,34 +130,66 @@ export function AssessmentReports({
   const running = assessmentStatus === "running"
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <p className="text-sm font-medium">Report</p>
+    <div className="space-y-4">
+      {/* Top Header & Actions Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <FileText className="size-4 text-primary" />
+          <p className="text-base font-semibold tracking-tight">Security Assessment Report</p>
           <HelpHint label="Security report">
-            Generates a PDF security assessment report for this run. Verify your findings before generating the final
-            report.
+            Rendered live from verified findings. You can review the report directly, view in full screen, or download a compiled PDF.
           </HelpHint>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Button size="sm" variant="outline" disabled={previewing} onClick={() => void openPreview()}>
-            <Eye className="size-3.5" />
-            {previewing ? "Loading…" : "Preview report"}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={reportHtml.isFetching || running}
+            onClick={() => void reportHtml.refetch()}
+            className="gap-1.5"
+          >
+            <RefreshCw className={`size-3.5 ${reportHtml.isFetching ? "animate-spin" : ""}`} />
+            Refresh
           </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!reportHtml.data}
+            onClick={() => setIsFullscreen(true)}
+            className="gap-1.5"
+          >
+            <Maximize2 className="size-3.5" />
+            Full screen
+          </Button>
+
+          {latestReady && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={downloadingId === latestReady.id}
+              onClick={() => void handleDownload(latestReady)}
+              className="gap-1.5"
+            >
+              <Download className="size-3.5" />
+              {downloadingId === latestReady.id ? "Downloading…" : "Download PDF"}
+            </Button>
+          )}
+
           {canGenerate && (
             <Button
               size="sm"
               disabled={running || hasPending || generate.isPending}
               onClick={() => generate.mutate()}
             >
-              {generate.isPending || hasPending ? "Generating…" : "Generate report"}
+              {generate.isPending || hasPending ? "Generating PDF…" : "Generate PDF"}
             </Button>
           )}
         </div>
       </div>
 
       {running && canGenerate && (
-        <p className="text-xs text-muted-foreground">Wait for the run to finish before generating a report.</p>
+        <p className="text-xs text-muted-foreground">Wait for the run to finish before generating the final PDF report.</p>
       )}
 
       {generate.error && (
@@ -170,73 +202,136 @@ export function AssessmentReports({
           <AlertDescription>{downloadError}</AlertDescription>
         </Alert>
       )}
-      {previewError && (
-        <Alert variant="destructive">
-          <AlertDescription>{previewError}</AlertDescription>
-        </Alert>
-      )}
       {reports.error && (
         <Alert variant="destructive">
           <AlertDescription>{reports.error.message}</AlertDescription>
         </Alert>
       )}
 
-      {!reports.isLoading && reports.data?.length === 0 && (
-        <p className="text-sm text-muted-foreground">No reports yet for this assessment.</p>
+      {/* Embedded Live Report Preview */}
+      {running ? (
+        <div className="flex h-64 flex-col items-center justify-center gap-2 rounded-lg border bg-muted/20 p-6 text-center">
+          <p className="text-sm font-medium">Scan in progress</p>
+          <p className="text-xs text-muted-foreground">The report preview will become available once the scan finishes.</p>
+        </div>
+      ) : reportHtml.isLoading ? (
+        <div className="flex h-96 flex-col items-center justify-center gap-2 rounded-lg border bg-muted/20 p-6 text-center">
+          <Spinner className="size-5" />
+          <p className="text-xs text-muted-foreground">Loading report preview…</p>
+        </div>
+      ) : reportHtml.isError ? (
+        <Alert variant="destructive">
+          <AlertDescription>Failed to load report: {reportHtml.error.message}</AlertDescription>
+        </Alert>
+      ) : reportHtml.data ? (
+        <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+          <iframe
+            title={`Security report preview for assessment ${assessmentId}`}
+            srcDoc={reportHtml.data}
+            sandbox=""
+            className="h-[650px] w-full border-0"
+          />
+        </div>
+      ) : (
+        <div className="flex h-64 flex-col items-center justify-center gap-2 rounded-lg border bg-muted/20 p-6 text-center">
+          <p className="text-sm font-medium">No report preview available</p>
+          <p className="text-xs text-muted-foreground">Verify candidate findings or click Refresh to regenerate the preview.</p>
+        </div>
       )}
 
-      {reports.data?.map((report) => (
-        <div key={report.id} className="space-y-1 rounded-md border p-3">
-          <div className="flex items-center justify-between gap-2">
+      {/* Fullscreen Overlay */}
+      {isFullscreen && reportHtml.data && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4 backdrop-blur-md sm:p-6">
+          <div className="flex items-center justify-between border-b pb-3">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Report #{report.id}</span>
-              <Badge variant={STATUS_VARIANT[report.status]}>{report.status}</Badge>
+              <FileText className="size-5 text-primary" />
+              <span className="text-lg font-semibold tracking-tight">Security Assessment Report</span>
+              <Badge variant="outline">Assessment #{assessmentId}</Badge>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              {report.status === "ready" && (
+            <div className="flex items-center gap-2">
+              {latestReady && (
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={downloadingId === report.id}
-                  onClick={() => handleDownload(report)}
+                  disabled={downloadingId === latestReady.id}
+                  onClick={() => void handleDownload(latestReady)}
+                  className="gap-1.5"
                 >
-                  {downloadingId === report.id ? "Downloading…" : "Download PDF"}
+                  <Download className="size-3.5" />
+                  {downloadingId === latestReady.id ? "Downloading…" : "Download PDF"}
                 </Button>
               )}
-              {canGenerate && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive"
-                  disabled={report.status === "pending"}
-                  onClick={() => {
-                    remove.reset()
-                    setDeleting(report)
-                  }}
-                >
-                  <Trash2 className="size-3.5" />
-                  Delete
-                </Button>
-              )}
+              <Button size="sm" variant="ghost" onClick={() => setIsFullscreen(false)} className="gap-1.5">
+                <Minimize2 className="size-4" />
+                Exit fullscreen
+              </Button>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Created {formatDate(report.created_at)}
-            {report.finished_at ? ` · finished ${formatDate(report.finished_at)}` : ""}
-          </p>
-          {report.status === "failed" && report.error && (
-            <details className="text-xs">
-              <summary className="cursor-pointer text-destructive">
-                Report generation failed. Show details
-              </summary>
-              <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 font-mono text-[11px] text-muted-foreground">
-                {report.error}
-              </pre>
-            </details>
-          )}
+          <iframe
+            title={`Security report preview for assessment ${assessmentId}`}
+            srcDoc={reportHtml.data}
+            sandbox=""
+            className="mt-3 flex-1 w-full rounded-md border bg-white shadow-2xl"
+          />
         </div>
-      ))}
+      )}
 
+      {/* Generated PDF history */}
+      {reports.data && reports.data.length > 0 && (
+        <div className="space-y-2 pt-2 border-t">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            PDF Exports ({reports.data.length})
+          </h4>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {reports.data.map((report) => (
+              <div key={report.id} className="flex items-center justify-between gap-2 rounded-md border p-2.5 bg-muted/20">
+                <div className="truncate">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium">Report #{report.id}</span>
+                    <Badge variant={STATUS_VARIANT[report.status]} className="text-[10px] px-1.5 py-0">
+                      {report.status}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground truncate pt-0.5">
+                    {formatDate(report.created_at)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {report.status === "ready" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      disabled={downloadingId === report.id}
+                      onClick={() => void handleDownload(report)}
+                    >
+                      <Download className="size-3" />
+                      <span className="sr-only">Download PDF</span>
+                    </Button>
+                  )}
+                  {canGenerate && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                      disabled={report.status === "pending"}
+                      onClick={() => {
+                        remove.reset()
+                        setDeleting(report)
+                      }}
+                    >
+                      <Trash2 className="size-3" />
+                      <span className="sr-only">Delete</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation dialog */}
       <Dialog open={deleting !== null} onOpenChange={(open) => !open && closeDeleteDialog()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -262,38 +357,6 @@ export function AssessmentReports({
               onClick={() => deleting && remove.mutate(deleting.id)}
             >
               {remove.isPending ? "Deleting…" : "Delete report"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
-        <DialogContent className="max-w-5xl sm:max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>Report preview - assessment #{assessmentId}</DialogTitle>
-            <DialogDescription>
-              Rendered live from the current findings. No download or PDF generation is needed to read it.
-            </DialogDescription>
-          </DialogHeader>
-          {preview && (
-            <iframe
-              title={`Security report preview for assessment ${assessmentId}`}
-              srcDoc={preview}
-              sandbox=""
-              className="h-[65vh] w-full rounded-md border bg-white"
-            />
-          )}
-          <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!latestReady}
-              onClick={() => latestReady && void handleDownload(latestReady)}
-            >
-              Download PDF
-            </Button>
-            <Button type="button" onClick={() => setPreview(null)}>
-              Close
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -29,6 +29,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { EmptyState } from "@/components/empty-state"
 import { HelpHint } from "@/components/help-hint"
+import { ImportScanDialog } from "@/components/import-scan-dialog"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { ASSESSMENT_CATEGORIES } from "@/lib/types"
@@ -244,7 +245,10 @@ export function AssessmentsPage() {
             Reconnaissance, scanning and security assessment runs.
           </p>
         </div>
-        <NewAssessmentDialog targets={targets.data ?? []} />
+        <div className="flex items-center gap-2">
+          <ImportScanDialog targets={targets.data ?? []} />
+          <NewAssessmentDialog targets={targets.data ?? []} />
+        </div>
       </div>
 
       <Card>

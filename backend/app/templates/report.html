@@ -16,19 +16,145 @@
     --accent: #2563eb;
   }
   * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: var(--ink); font-size: 11pt; line-height: 1.5; margin: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: var(--ink);
+    font-size: 11pt;
+    line-height: 1.5;
+    margin: 0;
+    padding: 24pt 36pt 40pt;
+  }
+  @media print {
+    body {
+      padding: 0;
+    }
+  }
   h1 { font-size: 20pt; margin: 0 0 4pt; }
   h2 { font-size: 14pt; margin: 18pt 0 6pt; border-bottom: 2px solid var(--accent); padding-bottom: 3pt; page-break-after: avoid; }
   h3 { font-size: 12pt; margin: 12pt 0 4pt; page-break-after: avoid; }
   p { margin: 4pt 0; }
   .muted { color: var(--muted); }
-  .cover { text-align: center; padding-top: 140pt; page-break-after: always; }
-  .cover .platform { color: var(--accent); font-weight: 600; letter-spacing: 1pt; text-transform: uppercase; font-size: 10pt; }
-  .cover h1 { font-size: 26pt; margin: 8pt 0; }
-  .cover table { margin: 26pt auto 0; border-collapse: collapse; }
-  .cover td { padding: 3pt 10pt; font-size: 11pt; }
-  .cover td.k { color: var(--muted); text-align: right; }
-  .cover td.v { font-weight: 600; text-align: left; }
+
+  /* Cover Styling */
+  .cover {
+    text-align: center;
+    padding-top: 40pt;
+    padding-bottom: 40pt;
+    page-break-after: always;
+  }
+  .confidential-bar {
+    display: inline-block;
+    padding: 4pt 14pt;
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+    border-radius: 4pt;
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 1.5pt;
+    text-transform: uppercase;
+    margin-bottom: 20pt;
+  }
+  .cover-logo {
+    max-height: 64pt;
+    max-width: 180pt;
+    margin: 0 auto 16pt;
+    display: block;
+    object-fit: contain;
+  }
+  .cover .platform {
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 1.5pt;
+    text-transform: uppercase;
+    font-size: 9.5pt;
+    margin-bottom: 6pt;
+  }
+  .cover h1 {
+    font-size: 24pt;
+    margin: 0 0 6pt;
+    color: #0f172a;
+    letter-spacing: -0.5pt;
+  }
+  .cover p.subtitle {
+    color: var(--muted);
+    font-size: 11pt;
+    margin: 0 0 24pt;
+  }
+  .cover-card {
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-radius: 8pt;
+    max-width: 460pt;
+    margin: 0 auto;
+    padding: 12pt 16pt;
+    text-align: left;
+  }
+  .cover table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .cover td {
+    padding: 4pt 8pt;
+    font-size: 10pt;
+  }
+  .cover td.k {
+    color: var(--muted);
+    width: 32%;
+    font-weight: 500;
+  }
+  .cover td.v {
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* Executive Posture Card */
+  .posture-card {
+    border-radius: 6pt;
+    padding: 10pt 14pt;
+    margin: 10pt 0 14pt;
+    border: 1px solid var(--line);
+    background: #f8fafc;
+  }
+  .posture-card.posture-critical { border-left: 5px solid var(--severity-critical); background: #fef2f2; }
+  .posture-card.posture-high { border-left: 5px solid var(--severity-high); background: #fff7ed; }
+  .posture-card.posture-medium { border-left: 5px solid var(--severity-medium); background: #fefce8; }
+  .posture-card.posture-low { border-left: 5px solid var(--severity-low); background: #eff6ff; }
+  .posture-card.posture-info { border-left: 5px solid var(--severity-info); background: #f8fafc; }
+
+  .posture-header {
+    display: flex;
+    align-items: center;
+    gap: 10pt;
+    margin-bottom: 4pt;
+  }
+  .posture-pill {
+    display: inline-block;
+    padding: 2pt 8pt;
+    border-radius: 12pt;
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.5pt;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  .pill-critical { background: var(--severity-critical); }
+  .pill-high { background: var(--severity-high); }
+  .pill-medium { background: var(--severity-medium); }
+  .pill-low { background: var(--severity-low); }
+  .pill-info { background: var(--severity-info); }
+  .posture-title {
+    font-size: 10.5pt;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .posture-desc {
+    margin: 2pt 0 0;
+    font-size: 9.5pt;
+    color: var(--ink);
+    line-height: 1.45;
+  }
+
   table.grid { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt; page-break-inside: avoid; }
   table.grid th, table.grid td { border: 1px solid var(--line); padding: 4pt 6pt; text-align: left; vertical-align: top; font-size: 10pt; }
   table.grid th { background: #f1f5f9; }
@@ -51,25 +177,90 @@
   footer { margin-top: 18pt; border-top: 1px solid var(--line); padding-top: 6pt; color: var(--muted); font-size: 9pt; }
   .chart { margin: 8pt 0 4pt; }
   .chart .axis { font-size: 9pt; fill: var(--muted); }
+
+  /* Roadmap Styling */
+  .roadmap-phase {
+    margin: 12pt 0;
+    border: 1px solid var(--line);
+    border-radius: 6pt;
+    overflow: hidden;
+    page-break-inside: avoid;
+  }
+  .roadmap-header {
+    padding: 6pt 10pt;
+    background: #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-weight: 600;
+    font-size: 10pt;
+    border-bottom: 1px solid var(--line);
+  }
+  .roadmap-badge {
+    font-size: 8.5pt;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .roadmap-items {
+    padding: 6pt 10pt;
+    margin: 0;
+    list-style: none;
+  }
+  .roadmap-item {
+    padding: 6pt 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .roadmap-item:last-child {
+    border-bottom: none;
+  }
+  .roadmap-title {
+    font-size: 9.5pt;
+    margin-bottom: 3pt;
+    display: flex;
+    align-items: center;
+    gap: 6pt;
+  }
+  .roadmap-action {
+    font-size: 9pt;
+    color: #334155;
+    line-height: 1.4;
+    padding-left: 2pt;
+  }
 </style>
 </head>
 <body>
 
 <section class="cover">
+  <div class="confidential-bar">CONFIDENTIAL · FOR INTERNAL ASSESSMENT USE ONLY</div>
+  {% if logo_base64 %}
+  <img src="{{ logo_base64 }}" class="cover-logo" alt="Aletheia Shield">
+  {% endif %}
   <div class="platform">{{ platform }}</div>
   <h1>Security Assessment Report</h1>
-  <p class="muted">Findings, verification and risk rating</p>
-  <table>
-    <tr><td class="k">Target</td><td class="v">{{ target.name }}</td></tr>
-    <tr><td class="k">Base URL</td><td class="v">{{ target.base_url }}</td></tr>
-    <tr><td class="k">Assessment</td><td class="v">#{{ assessment.id }} ({{ assessment.status }})</td></tr>
-    <tr><td class="k">Intensity</td><td class="v">{{ assessment.intensity }}</td></tr>
-    <tr><td class="k">Authorization</td><td class="v">{{ target.authorization_ref if target.authorization_ref else 'registered target' }}</td></tr>
-    <tr><td class="k">Generated</td><td class="v">{{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
-  </table>
+  <p class="subtitle">Findings, verification and risk rating</p>
+  <div class="cover-card">
+    <table>
+      <tr><td class="k">Target</td><td class="v">{{ target.name }}</td></tr>
+      <tr><td class="k">Base URL</td><td class="v">{{ target.base_url }}</td></tr>
+      <tr><td class="k">Assessment</td><td class="v">#{{ assessment.id }} ({{ assessment.status }})</td></tr>
+      <tr><td class="k">Intensity</td><td class="v">{{ assessment.intensity }}</td></tr>
+      <tr><td class="k">Authorization</td><td class="v">{{ target.authorization_ref if target.authorization_ref else 'registered target' }}</td></tr>
+      <tr><td class="k">Generated</td><td class="v">{{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
+    </table>
+  </div>
 </section>
 
 <h2>1. Executive summary</h2>
+{% if overall_posture %}
+<div class="posture-card posture-{{ overall_posture.tier }}">
+  <div class="posture-header">
+    <span class="posture-pill pill-{{ overall_posture.tier }}">{{ overall_posture.label }}</span>
+    <span class="posture-title">Overall Risk Posture Assessment</span>
+  </div>
+  <p class="posture-desc">{{ overall_posture.summary }}</p>
+</div>
+{% endif %}
+
 {% if ai_summary %}
 <p>{{ ai_summary }}</p>
 {% else %}
@@ -181,14 +372,82 @@
   {% endfor %}
 </table>
 
-<h2>7. Recommendations</h2>
-{% if recommendations %}
-<ol>
-  {% for r in recommendations %}<li>{{ r }}</li>{% endfor %}
-</ol>
+<h2>7. Prioritized remediation roadmap</h2>
+<p class="muted">
+  Remediation tasks are sequenced by threat severity and operational feasibility to reduce exposure systematically.
+</p>
+
+{% set immediate_items = roadmap.immediate if roadmap and roadmap.immediate else [] %}
+{% set short_term_items = roadmap.short_term if roadmap and roadmap.short_term else [] %}
+{% set long_term_items = roadmap.long_term if roadmap and roadmap.long_term else [] %}
+
+{% if immediate_items or short_term_items or long_term_items %}
+  {% if immediate_items %}
+  <div class="roadmap-phase phase-immediate">
+    <div class="roadmap-header">
+      <span>Phase 1: Immediate Actions (0 - 48 Hours)</span>
+      <span class="roadmap-badge">{{ immediate_items | length }} item(s) · Critical &amp; High</span>
+    </div>
+    <ul class="roadmap-items">
+      {% for item in immediate_items %}
+      <li class="roadmap-item">
+        <div class="roadmap-title">
+          <span class="pill {{ item.severity }}">{{ item.severity | capitalize }}</span>
+          <strong>#{{ item.id }} {{ item.title }}</strong>
+          <span class="muted">({{ item.status }})</span>
+        </div>
+        <div class="roadmap-action">{{ item.remediation if item.remediation else 'Investigate root cause and apply patch or mitigating firewall rule immediately.' }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if short_term_items %}
+  <div class="roadmap-phase phase-short">
+    <div class="roadmap-header">
+      <span>Phase 2: Short-term Remediation (1 - 2 Weeks)</span>
+      <span class="roadmap-badge">{{ short_term_items | length }} item(s) · Medium</span>
+    </div>
+    <ul class="roadmap-items">
+      {% for item in short_term_items %}
+      <li class="roadmap-item">
+        <div class="roadmap-title">
+          <span class="pill {{ item.severity }}">{{ item.severity | capitalize }}</span>
+          <strong>#{{ item.id }} {{ item.title }}</strong>
+          <span class="muted">({{ item.status }})</span>
+        </div>
+        <div class="roadmap-action">{{ item.remediation if item.remediation else 'Apply configuration change or security parameter update in the next deployment cycle.' }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if long_term_items %}
+  <div class="roadmap-phase phase-long">
+    <div class="roadmap-header">
+      <span>Phase 3: Long-term &amp; Security Hygiene</span>
+      <span class="roadmap-badge">{{ long_term_items | length }} item(s) · Low &amp; Info</span>
+    </div>
+    <ul class="roadmap-items">
+      {% for item in long_term_items %}
+      <li class="roadmap-item">
+        <div class="roadmap-title">
+          <span class="pill {{ item.severity }}">{{ item.severity | capitalize }}</span>
+          <strong>#{{ item.id }} {{ item.title }}</strong>
+          <span class="muted">({{ item.status }})</span>
+        </div>
+        <div class="roadmap-action">{{ item.remediation if item.remediation else 'Address during routine code refactoring or defense-in-depth baseline hardening.' }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 {% else %}
-<p class="muted">No remediation drafts recorded yet.</p>
+  <p class="muted">No remediation items recorded for this assessment.</p>
 {% endif %}
+
 <div class="note">
   <strong>Note on unverified findings:</strong> remediation items derived from
   ai_candidate findings are drafts. Treat them as advisory until an assessor verifies
