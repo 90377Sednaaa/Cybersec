@@ -62,10 +62,10 @@ export function MarkdownContent({
             key={`${keyPrefix}-cite-${idx}`}
             type="button"
             onClick={() => onCitationClick?.(evId)}
-            className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-primary/10 text-primary border border-primary/25 hover:bg-primary/20 hover:border-primary/40 transition-all cursor-pointer shadow-2xs select-none"
+            className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-muted hover:bg-muted/80 text-foreground border border-border hover:border-foreground/30 transition-all cursor-pointer shadow-2xs select-none"
             title={`Jump to Evidence #${evId}`}
           >
-            <ExternalLink className="size-2.5" />
+            <ExternalLink className="size-2.5 text-muted-foreground" />
             <span>Evidence #{evId}</span>
           </button>
         )
@@ -87,7 +87,7 @@ export function MarkdownContent({
             return (
               <h3
                 key={key}
-                className="text-xs font-semibold uppercase tracking-wider text-primary border-b border-border/40 pb-1 mt-3.5 mb-1.5 first:mt-0 flex items-center gap-1.5"
+                className="text-xs font-semibold uppercase tracking-wider text-foreground border-b border-border/40 pb-1 mt-4 mb-2 first:mt-0 flex items-center gap-1.5"
               >
                 {inner}
               </h3>
@@ -96,7 +96,7 @@ export function MarkdownContent({
           return (
             <h4
               key={key}
-              className="text-xs font-semibold text-foreground tracking-tight mt-2.5 mb-1 first:mt-0"
+              className="text-xs font-semibold text-foreground tracking-tight mt-3 mb-1.5 first:mt-0"
             >
               {inner}
             </h4>
@@ -134,7 +134,7 @@ export function MarkdownContent({
           return (
             <code
               key={key}
-              className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[11px] text-primary border border-border/50"
+              className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] text-foreground border border-border/60"
             >
               {token.text}
             </code>

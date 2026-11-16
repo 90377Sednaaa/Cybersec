@@ -139,18 +139,18 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
   }
 
   return (
-    <Card className="border-border shadow-sm flex flex-col overflow-hidden">
-      {/* Header with Impeccable Polish */}
-      <CardHeader className="p-4 pb-3 border-b bg-muted/20">
+    <Card className="border-border/60 bg-card shadow-xs flex flex-col overflow-hidden">
+      {/* Header */}
+      <CardHeader className="p-4 pb-3 border-b border-border/50 bg-muted/20">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shadow-2xs">
-              <Sparkles className="size-4" />
+            <div className="size-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center border border-border/60 shadow-2xs">
+              <Sparkles className="size-4 text-foreground/80" />
             </div>
             <div>
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
                 Ask the Analyst
-                <Badge variant="outline" className="text-[10px] font-mono py-0 text-muted-foreground border-border/70">
+                <Badge variant="outline" className="text-[10px] font-mono py-0 text-muted-foreground border-border/60">
                   Grounded Q&amp;A
                 </Badge>
               </CardTitle>
@@ -178,8 +178,8 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
       <CardContent className="p-4 space-y-4 max-h-[520px] overflow-y-auto">
         {messages.length === 0 ? (
           <div className="py-8 px-4 flex flex-col items-center justify-center text-center">
-            <div className="size-11 rounded-2xl bg-gradient-to-br from-primary/20 via-primary/10 to-transparent text-primary flex items-center justify-center mb-3 border border-primary/20 shadow-xs">
-              <Bot className="size-5.5" />
+            <div className="size-10 rounded-xl bg-muted text-muted-foreground flex items-center justify-center mb-3 border border-border/60 shadow-2xs">
+              <Bot className="size-5" />
             </div>
             <p className="text-xs font-semibold text-foreground tracking-tight">Interactive Evidence Investigation</p>
             <p className="text-[11px] text-muted-foreground max-w-md mt-1.5 mb-5 leading-relaxed">
@@ -197,9 +197,9 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
                       setInput(prompt)
                       qaMutation.mutate(prompt)
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium bg-secondary/60 text-secondary-foreground border border-border/70 hover:border-primary/50 hover:bg-secondary/90 hover:text-foreground transition-all cursor-pointer shadow-2xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium bg-muted/50 text-foreground/85 border border-border/70 hover:border-foreground/30 hover:bg-muted transition-all cursor-pointer shadow-2xs"
                   >
-                    <Sparkles className="size-3 text-primary shrink-0" />
+                    <Sparkles className="size-3 text-muted-foreground shrink-0" />
                     <span>{prompt}</span>
                   </button>
                 ))}
@@ -214,7 +214,7 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
                 className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 {msg.role === "assistant" && (
-                  <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 shadow-2xs mt-0.5">
+                  <div className="size-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0 border border-border/60 shadow-2xs mt-0.5">
                     <Bot className="size-4.5" />
                   </div>
                 )}
@@ -227,7 +227,7 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
                     </div>
                   ) : (
                     /* Assistant Surface */
-                    <div className="rounded-2xl rounded-tl-xs border border-border/70 bg-card/90 p-4 space-y-3 shadow-xs">
+                    <div className="rounded-2xl rounded-tl-xs border border-border/70 bg-card p-4 space-y-3 shadow-xs">
                       {/* Assistant Header */}
                       <div className="flex items-center justify-between border-b border-border/40 pb-2">
                         <div className="flex items-center gap-2 text-[11px]">
@@ -255,14 +255,14 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
 
                       {/* Collapsible Reasoning Trace (DeepSeek-R1 / Thinking Models) */}
                       {msg.reasoning && (
-                        <div className="rounded-lg border border-primary/20 bg-primary/5 overflow-hidden text-xs">
+                        <div className="rounded-lg border border-border/60 bg-muted/20 overflow-hidden text-xs">
                           <button
                             type="button"
                             onClick={() => toggleReasoning(idx)}
-                            className="flex items-center justify-between w-full px-3 py-2 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                            className="flex items-center justify-between w-full px-3 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
                           >
                             <span className="flex items-center gap-1.5">
-                              <Brain className="size-3.5" />
+                              <Brain className="size-3.5 text-muted-foreground" />
                               <span>Reasoning Trace (Thinking Process)</span>
                             </span>
                             {expandedReasoning[idx] ? (
@@ -272,7 +272,7 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
                             )}
                           </button>
                           {expandedReasoning[idx] && (
-                            <div className="px-3 py-2.5 text-[11px] text-muted-foreground font-mono whitespace-pre-wrap leading-relaxed border-t border-primary/10 bg-primary/3 max-h-48 overflow-y-auto">
+                            <div className="px-3 py-2.5 text-[11px] text-muted-foreground font-mono whitespace-pre-wrap leading-relaxed border-t border-border/40 bg-muted/10 max-h-48 overflow-y-auto">
                               {msg.reasoning}
                             </div>
                           )}
@@ -288,8 +288,8 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
 
                       {/* Grounding & Evidence Footer */}
                       {msg.grounded_evidence_ids && msg.grounded_evidence_ids.length > 0 && (
-                        <div className="flex items-center gap-1.5 border-t border-border/40 pt-2 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                          <ShieldCheck className="size-3.5" />
+                        <div className="flex items-center gap-1.5 border-t border-border/40 pt-2 text-[11px] text-muted-foreground font-medium">
+                          <ShieldCheck className="size-3.5 text-emerald-500" />
                           <span>Grounded in {msg.grounded_evidence_ids.length} technical evidence item(s)</span>
                         </div>
                       )}
@@ -314,12 +314,12 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
             {/* Analyzing Indicator with Smooth Shimmer */}
             {qaMutation.isPending && (
               <div className="flex gap-3 items-start">
-                <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/20 shadow-2xs">
+                <div className="size-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center shrink-0 border border-border/60 shadow-2xs">
                   <Bot className="size-4.5 animate-pulse" />
                 </div>
                 <div className="rounded-2xl rounded-tl-xs border border-border/60 bg-card p-3.5 space-y-2 shadow-2xs">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 className="size-3.5 animate-spin text-primary" />
+                    <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
                     <span className="font-medium text-foreground">Evaluating evidence against finding context...</span>
                   </div>
                   <p className="text-[11px] text-muted-foreground/80">
@@ -353,7 +353,7 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
       </CardContent>
 
       {/* Input Group with AI Elements Ergonomics */}
-      <CardFooter className="p-3 border-t bg-muted/10 flex flex-col gap-2">
+      <CardFooter className="p-3 border-t border-border/50 bg-muted/10 flex flex-col gap-2">
         {!canAsk ? (
           <div className="w-full py-2 px-3 rounded-lg border border-border/60 bg-muted/30 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
             <ShieldAlert className="size-4 text-amber-500" />
@@ -361,31 +361,30 @@ export function FindingQAPanel({ finding }: { finding: FindingDetail }) {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="w-full flex flex-col gap-1.5">
-            <div className="relative rounded-xl border border-border/80 bg-background/90 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all shadow-2xs p-2 flex flex-col gap-1.5">
+            <div className="relative rounded-lg border border-border/70 bg-card focus-within:border-muted-foreground/40 focus-within:ring-1 focus-within:ring-border transition-colors p-2.5 flex flex-col gap-1.5">
               <Textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask about this finding's evidence, exploitability, or remediation..."
                 rows={2}
-                className="resize-none border-0 shadow-none focus-visible:ring-0 p-0 text-xs leading-relaxed bg-transparent min-h-[44px]"
+                className="resize-none border-0 shadow-none focus-visible:ring-0 p-0 text-xs leading-relaxed bg-transparent min-h-[44px] text-foreground placeholder:text-muted-foreground"
                 disabled={qaMutation.isPending}
               />
               <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[10px] text-muted-foreground">
                 <span className="hidden sm:inline">Press <kbd className="px-1 py-0.5 rounded bg-muted font-mono text-[9px] border border-border">Enter</kbd> to send, <kbd className="px-1 py-0.5 rounded bg-muted font-mono text-[9px] border border-border">Shift+Enter</kbd> for newline</span>
                 <Button
                   type="submit"
-                  size="xs"
+                  size="icon"
                   disabled={!input.trim() || qaMutation.isPending}
-                  className="h-7 px-3 gap-1.5 ml-auto"
+                  className="size-7 rounded-md ml-auto shrink-0"
+                  title="Send query"
+                  aria-label="Send query"
                 >
                   {qaMutation.isPending ? (
-                    <Loader2 className="size-3 animate-spin" />
+                    <Loader2 className="size-3.5 animate-spin" />
                   ) : (
-                    <>
-                      <span>Send</span>
-                      <Send className="size-3" />
-                    </>
+                    <Send className="size-3.5" />
                   )}
                 </Button>
               </div>
