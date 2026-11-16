@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useParams, Link, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
@@ -18,6 +18,8 @@ import {
   ExternalLink,
   Terminal,
   Activity,
+  Trash2,
+  Server,
 } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -33,7 +35,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FindingReview } from "@/pages/finding-review"
-import { api, apiBlob } from "@/lib/api"
+import { api, apiBlob, getToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import {
   SEVERITY_CLASS,
@@ -43,7 +45,7 @@ import {
   capitalize,
   displayScore,
 } from "@/lib/finding-style"
-import type { Evidence, EvidenceKind, Finding, FindingDetail } from "@/lib/types"
+import type { Assessment, Evidence, EvidenceKind, Finding, FindingDetail, Target } from "@/lib/types"
 
 const KIND_LABEL: Record<EvidenceKind, string> = {
   http_transcript: "HTTP transcript",
@@ -89,8 +91,19 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function EvidenceBlock({ item }: { item: Evidence }) {
+function EvidenceBlock({
+  item,
+  canDelete,
+  onDelete,
+  isDeleting,
+}: {
+  item: Evidence
+  canDelete: boolean
+  onDelete: (id: number) => void
+  isDeleting: boolean
+}) {
   const [downloading, setDownloading] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const Icon = KIND_ICON[item.kind] ?? FileText
 
   const handleDownload = async () => {
@@ -134,6 +147,44 @@ function EvidenceBlock({ item }: { item: Evidence }) {
             {KIND_LABEL[item.kind]}
           </Badge>
           {item.content && <CopyButton text={item.content} />}
+
+          {/* Evidence Deletion */}
+          {canDelete && (
+            confirmDelete ? (
+              <div className="flex items-center gap-1 ml-1">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={isDeleting}
+                  className="h-6 px-2 text-[10px]"
+                  onClick={() => {
+                    onDelete(item.id)
+                    setConfirmDelete(false)
+                  }}
+                >
+                  Delete?
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 text-[10px]"
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-destructive transition-colors ml-1"
+                onClick={() => setConfirmDelete(true)}
+                title="Delete this evidence item"
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            )
+          )}
         </div>
       </div>
 
@@ -186,17 +237,30 @@ export function FindingDetailPage() {
     queryFn: () => api<Finding[]>("/api/findings"),
   })
 
+  // Query assessments and targets for context attribution
+  const assessmentsQuery = useQuery({
+    queryKey: ["assessments"],
+    queryFn: () => api<Assessment[]>("/api/assessments"),
+  })
+
+  const targetsQuery = useQuery({
+    queryKey: ["targets"],
+    queryFn: () => api<Target[]>("/api/targets"),
+  })
+
+  const assessment = assessmentsQuery.data?.find((a) => a.id === data?.assessment_id)
+  const target = targetsQuery.data?.find((t) => t.id === assessment?.target_id)
+
   // Mutation for uploading evidence
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData()
       formData.append("file", file)
+      const token = getToken()
       const res = await fetch(`/api/findings/${findingId}/evidence`, {
         method: "POST",
         body: formData,
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -211,6 +275,20 @@ export function FindingDetailPage() {
     },
     onError: (err: Error) => {
       toast.error(err.message)
+    },
+  })
+
+  // Mutation for deleting evidence
+  const deleteEvidenceMutation = useMutation({
+    mutationFn: async (evidenceId: number) => {
+      await api(`/api/evidence/${evidenceId}`, { method: "DELETE" })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["finding", findingId] })
+      toast.success("Evidence item removed")
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to delete evidence")
     },
   })
 
@@ -230,6 +308,32 @@ export function FindingDetailPage() {
   const prevFinding = currentIndex > 0 ? allFindings[currentIndex - 1] : null
   const nextFinding = currentIndex !== -1 && currentIndex < allFindings.length - 1 ? allFindings[currentIndex + 1] : null
 
+  // Keyboard navigation for [ and ]
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement
+      if (
+        el.tagName === "INPUT" ||
+        el.tagName === "TEXTAREA" ||
+        el.isContentEditable ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.altKey
+      ) {
+        return
+      }
+
+      if (e.key === "[" && prevFinding) {
+        navigate(`/findings/${prevFinding.id}`)
+      } else if (e.key === "]" && nextFinding) {
+        navigate(`/findings/${nextFinding.id}`)
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [prevFinding, nextFinding, navigate])
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -239,11 +343,11 @@ export function FindingDetailPage() {
         </div>
         <Skeleton className="h-10 w-2/3" />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-6 space-y-4">
+          <div className="lg:col-span-5 space-y-4">
             <Skeleton className="h-64 w-full" />
             <Skeleton className="h-48 w-full" />
           </div>
-          <div className="lg:col-span-6 space-y-4">
+          <div className="lg:col-span-7 space-y-4">
             <Skeleton className="h-96 w-full" />
           </div>
         </div>
@@ -279,7 +383,7 @@ export function FindingDetailPage() {
             </Link>
           </Button>
           <Separator orientation="vertical" className="!h-4" />
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>Finding</span>
             <span className="font-mono font-semibold text-foreground">#{data.id}</span>
             {data.assessment_id && (
@@ -294,6 +398,22 @@ export function FindingDetailPage() {
                 </Link>
               </>
             )}
+            {target && (
+              <>
+                <span>•</span>
+                <Link
+                  to="/targets"
+                  className="flex items-center gap-1 text-foreground hover:text-primary transition-colors font-medium"
+                  title={target.base_url}
+                >
+                  <Server className="size-3 text-primary shrink-0" />
+                  <span>{target.name}</span>
+                  <span className="font-mono text-muted-foreground text-[11px] hidden sm:inline">
+                    ({target.base_url})
+                  </span>
+                </Link>
+              </>
+            )}
           </div>
         </div>
 
@@ -304,10 +424,14 @@ export function FindingDetailPage() {
             size="sm"
             disabled={!prevFinding}
             onClick={() => prevFinding && navigate(`/findings/${prevFinding.id}`)}
-            title={prevFinding ? `Previous: ${prevFinding.title}` : "First finding"}
+            title={prevFinding ? `Previous: ${prevFinding.title} (press [)` : "First finding"}
+            className="text-xs"
           >
-            <ChevronLeft className="size-4 mr-1" />
+            <ChevronLeft className="size-4 mr-0.5" />
             <span>Previous</span>
+            <kbd className="hidden sm:inline-block ml-1 px-1 py-0.2 text-[9px] font-mono rounded bg-muted text-muted-foreground border">
+              [
+            </kbd>
           </Button>
 
           <Button
@@ -315,10 +439,14 @@ export function FindingDetailPage() {
             size="sm"
             disabled={!nextFinding}
             onClick={() => nextFinding && navigate(`/findings/${nextFinding.id}`)}
-            title={nextFinding ? `Next: ${nextFinding.title}` : "Last finding"}
+            title={nextFinding ? `Next: ${nextFinding.title} (press ])` : "Last finding"}
+            className="text-xs"
           >
             <span>Next</span>
-            <ChevronRight className="size-4 ml-1" />
+            <kbd className="hidden sm:inline-block ml-1 px-1 py-0.2 text-[9px] font-mono rounded bg-muted text-muted-foreground border">
+              ]
+            </kbd>
+            <ChevronRight className="size-4 ml-0.5" />
           </Button>
         </div>
       </div>
@@ -372,15 +500,31 @@ export function FindingDetailPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Target
+                  </p>
+                  <p className="font-medium text-foreground truncate" title={target?.base_url}>
+                    {target?.name || (assessment ? `Target #${assessment.target_id}` : "-")}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Category
                   </p>
-                  <p className="font-medium text-foreground">{data.category || "-"}</p>
+                  <p className="font-medium text-foreground truncate">{data.category || "-"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     AI Confidence
                   </p>
                   <p className="font-medium text-foreground">{Math.round(data.ai_confidence * 100)}%</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Assessment ID
+                  </p>
+                  <p className="font-mono font-medium text-foreground">
+                    {data.assessment_id ? `#${data.assessment_id}` : "-"}
+                  </p>
                 </div>
               </div>
 
@@ -489,7 +633,13 @@ export function FindingDetailPage() {
           ) : (
             <div className="space-y-3">
               {data.evidence.map((item) => (
-                <EvidenceBlock key={item.id} item={item} />
+                <EvidenceBlock
+                  key={item.id}
+                  item={item}
+                  canDelete={hasRole("admin", "assessor")}
+                  onDelete={(id) => deleteEvidenceMutation.mutate(id)}
+                  isDeleting={deleteEvidenceMutation.isPending}
+                />
               ))}
             </div>
           )}
