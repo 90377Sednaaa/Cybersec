@@ -155,6 +155,25 @@ export interface FindingDetail extends Finding {
   evidence: Evidence[]
 }
 
+// POST /api/findings/{id}/qa
+export interface FindingQAMessage {
+  role: "user" | "assistant"
+  content: string
+}
+
+export interface FindingQARequest {
+  question: string
+  history?: FindingQAMessage[]
+}
+
+export interface FindingQAResponse {
+  answer: string
+  reasoning?: string | null
+  model: string
+  grounded_evidence_ids: number[]
+  created_at: string
+}
+
 export interface Report {
   id: number
   assessment_id: number
