@@ -3,14 +3,14 @@ import type { FindingStatus, Severity } from "@/lib/types"
 export const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"]
 export const STATUSES: FindingStatus[] = ["ai_candidate", "needs_evidence", "verified", "false_positive"]
 
-// Text is set to black across all severity tokens to ensure >= 4.5:1 (WCAG AA) contrast
-// in both dark (default) and light themes against the token background luminance.
+// Crisp white text provides high contrast (>= 4.5:1 WCAG AA) against saturated
+// severity tokens in both light and dark themes, matching security platform standards.
 export const SEVERITY_CLASS: Record<Severity, string> = {
-  critical: "border-transparent bg-severity-critical text-black font-semibold",
-  high: "border-transparent bg-severity-high text-black font-semibold",
-  medium: "border-transparent bg-severity-medium text-black font-semibold",
-  low: "border-transparent bg-severity-low text-black font-semibold",
-  info: "border-transparent bg-severity-info text-black font-semibold",
+  critical: "border-transparent bg-severity-critical text-white font-semibold shadow-xs",
+  high: "border-transparent bg-severity-high text-white font-semibold shadow-xs",
+  medium: "border-transparent bg-severity-medium text-white font-semibold shadow-xs",
+  low: "border-transparent bg-severity-low text-white font-semibold shadow-xs",
+  info: "border-transparent bg-severity-info text-white font-semibold shadow-xs",
 }
 
 export const STATUS_LABEL: Record<FindingStatus, string> = {

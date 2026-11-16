@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { FindingReview } from "@/pages/finding-review"
 import { api, apiBlob, getToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { useShowShortcutHints } from "@/lib/shortcuts"
 import {
   SEVERITY_CLASS,
   STATUS_CLASS,
@@ -221,6 +222,7 @@ export function FindingDetailPage() {
   const findingId = id ? parseInt(id, 10) : null
   const navigate = useNavigate()
   const { hasRole } = useAuth()
+  const [showHints] = useShowShortcutHints()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -308,13 +310,14 @@ export function FindingDetailPage() {
   const prevFinding = currentIndex > 0 ? allFindings[currentIndex - 1] : null
   const nextFinding = currentIndex !== -1 && currentIndex < allFindings.length - 1 ? allFindings[currentIndex + 1] : null
 
-  // Keyboard navigation for [ and ]
+  // Keyboard navigation for ArrowLeft (Previous) and ArrowRight (Next)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement
       if (
         el.tagName === "INPUT" ||
         el.tagName === "TEXTAREA" ||
+        el.tagName === "SELECT" ||
         el.isContentEditable ||
         e.ctrlKey ||
         e.metaKey ||
@@ -323,9 +326,11 @@ export function FindingDetailPage() {
         return
       }
 
-      if (e.key === "[" && prevFinding) {
+      if (e.key === "ArrowLeft" && prevFinding) {
+        e.preventDefault()
         navigate(`/findings/${prevFinding.id}`)
-      } else if (e.key === "]" && nextFinding) {
+      } else if (e.key === "ArrowRight" && nextFinding) {
+        e.preventDefault()
         navigate(`/findings/${nextFinding.id}`)
       }
     }
@@ -424,14 +429,16 @@ export function FindingDetailPage() {
             size="sm"
             disabled={!prevFinding}
             onClick={() => prevFinding && navigate(`/findings/${prevFinding.id}`)}
-            title={prevFinding ? `Previous: ${prevFinding.title} (press [)` : "First finding"}
+            title={prevFinding ? `Previous: ${prevFinding.title} (←)` : "First finding"}
             className="text-xs"
           >
             <ChevronLeft className="size-4 mr-0.5" />
             <span>Previous</span>
-            <kbd className="hidden sm:inline-block ml-1 px-1 py-0.2 text-[9px] font-mono rounded bg-muted text-muted-foreground border">
-              [
-            </kbd>
+            {showHints && (
+              <kbd className="hidden sm:inline-block ml-1 px-1 py-0.2 text-[9px] font-mono rounded bg-muted text-muted-foreground border">
+                ←
+              </kbd>
+            )}
           </Button>
 
           <Button
@@ -439,13 +446,15 @@ export function FindingDetailPage() {
             size="sm"
             disabled={!nextFinding}
             onClick={() => nextFinding && navigate(`/findings/${nextFinding.id}`)}
-            title={nextFinding ? `Next: ${nextFinding.title} (press ])` : "Last finding"}
+            title={nextFinding ? `Next: ${nextFinding.title} (→)` : "Last finding"}
             className="text-xs"
           >
             <span>Next</span>
-            <kbd className="hidden sm:inline-block ml-1 px-1 py-0.2 text-[9px] font-mono rounded bg-muted text-muted-foreground border">
-              ]
-            </kbd>
+            {showHints && (
+              <kbd className="hidden sm:inline-block ml-1 px-1 py-0.2 text-[9px] font-mono rounded bg-muted text-muted-foreground border">
+                →
+              </kbd>
+            )}
             <ChevronRight className="size-4 ml-0.5" />
           </Button>
         </div>

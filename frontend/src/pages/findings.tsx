@@ -2,6 +2,7 @@ import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import { ShieldAlert, Search, RotateCcw, Server, ArrowUpDown } from "lucide-react"
+import { cn } from "cn"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -210,35 +211,19 @@ export function FindingsPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>Findings Repository</CardTitle>
-              <CardDescription className="mt-1">
-                {isLoading ? (
-                  "Loading findings…"
-                ) : (
-                  <span>
-                    Showing <strong className="text-foreground">{filteredFindings.length}</strong> of {data?.length ?? 0} findings
-                    {" · "}
-                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">{verifiedCount} verified</span>
-                    {filtersActive && " (filters applied)"}
-                  </span>
-                )}
-              </CardDescription>
-            </div>
-
-            {filtersActive && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleResetFilters}
-                className="text-xs h-8 text-muted-foreground hover:text-foreground"
-              >
-                <RotateCcw className="size-3 mr-1.5" />
-                Reset filters
-              </Button>
+          <CardTitle>Findings Repository</CardTitle>
+          <CardDescription className="mt-1">
+            {isLoading ? (
+              "Loading findings…"
+            ) : (
+              <span>
+                Showing <strong className="text-foreground">{filteredFindings.length}</strong> of {data?.length ?? 0} findings
+                {" · "}
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">{verifiedCount} verified</span>
+                {filtersActive && " (filters applied)"}
+              </span>
             )}
-          </div>
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -324,6 +309,27 @@ export function FindingsPage() {
                   <SelectItem value="confidence-desc" className="text-xs">AI Confidence</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Reset Filters Action (Stable layout slot) */}
+            <div className="grid gap-1.5">
+              <span className="text-xs text-transparent select-none font-medium h-4">Reset</span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!filtersActive}
+                onClick={handleResetFilters}
+                className={cn(
+                  "h-9 text-xs transition-colors",
+                  filtersActive
+                    ? "cursor-pointer text-foreground hover:bg-muted"
+                    : "opacity-40 cursor-not-allowed text-muted-foreground"
+                )}
+                title={filtersActive ? "Reset all active filters" : "No filters active"}
+              >
+                <RotateCcw className="size-3 mr-1.5" />
+                Reset
+              </Button>
             </div>
           </div>
 

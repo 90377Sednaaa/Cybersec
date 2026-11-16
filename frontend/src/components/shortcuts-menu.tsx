@@ -64,6 +64,11 @@ export function ShortcutsMenu({
         </ul>
         <Separator />
         <ul className="space-y-1 px-3 py-2">
+          <ShortcutRow label="Previous finding" keys={["←"]} />
+          <ShortcutRow label="Next finding" keys={["→"]} />
+        </ul>
+        <Separator />
+        <ul className="space-y-1 px-3 py-2">
           <ShortcutRow label="This panel" keys={["?"]} />
           <ShortcutRow label="Close panel" keys={["Esc"]} />
         </ul>
@@ -72,7 +77,7 @@ export function ShortcutsMenu({
           <label htmlFor="shortcut-hints" className="cursor-pointer select-none">
             <span className="block text-sm">Show hints in navigation</span>
             <span className="block text-xs text-muted-foreground">
-              Adds g d, g t, … beside each item.
+              Displays shortcut hints in sidebar and finding steppers.
             </span>
           </label>
           <Switch
