@@ -186,10 +186,13 @@ def test_full_pipeline_end_to_end(local_site):
         tools = {j.tool: j.status for j in assessment.jobs}
         assert tools["prober"] == JobStatus.completed
         assert tools["dns"] == JobStatus.completed
-        # nmap binary is not installed in this environment; the pipeline must
-        # fail that job gracefully and still complete.
-        assert tools["nmap"] == JobStatus.failed
-        assert any("nmap executable not found" in j.log for j in assessment.jobs)
+        import shutil
+
+        if shutil.which("nmap") is None:
+            assert tools["nmap"] == JobStatus.failed
+            assert any("nmap executable not found" in j.log for j in assessment.jobs)
+        else:
+            assert tools["nmap"] in (JobStatus.completed, JobStatus.failed)
         findings = db.query(Finding).filter(Finding.assessment_id == assessment_id).all()
         assert len(findings) >= 3
         assert all(f.status == FindingStatus.ai_candidate for f in findings)
