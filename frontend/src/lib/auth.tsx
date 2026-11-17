@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import type { ReactNode } from "react"
 
 import { api, clearToken, getToken, setToken } from "@/lib/api"
+import { clearAllFindingQAThreads } from "@/lib/finding-qa"
 import type { Role, TokenResponse, User } from "@/lib/types"
 
 interface AuthState {
@@ -43,6 +44,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // same browser briefly sees the previous user's findings, notes and counts.
     void queryClient.cancelQueries()
     queryClient.clear()
+    // Analyst threads are stored per tab so a reload keeps the conversation;
+    // drop them on logout so they cannot outlive the session or leak to the
+    // next user on this browser.
+    clearAllFindingQAThreads()
     clearToken()
     setUser(null)
   }, [queryClient])
