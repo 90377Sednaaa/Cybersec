@@ -87,7 +87,7 @@ export function MarkdownContent({
             return (
               <h3
                 key={key}
-                className="text-xs font-semibold uppercase tracking-wider text-foreground border-b border-border/40 pb-1 mt-4 mb-2 first:mt-0 flex items-center gap-1.5"
+                className="mb-1.5 mt-4 flex items-center gap-1.5 text-[13px] font-semibold leading-snug text-foreground first:mt-0"
               >
                 {inner}
               </h3>
@@ -199,7 +199,7 @@ export function MarkdownContent({
   const tokens = marked.lexer(content)
 
   return (
-    <div className={`text-xs space-y-1.5 ${className}`}>
+    <div className={`text-[13px] space-y-1.5 ${className}`}>
       {renderTokens(tokens, "root")}
     </div>
   )

@@ -6,12 +6,12 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Check,
   Download,
   FileText,
-  Lock,
-  Shield,
   ShieldAlert,
   ShieldCheck,
   Upload,
@@ -20,19 +20,14 @@ import {
   Activity,
   Trash2,
   Server,
+  Wrench,
 } from "lucide-react"
+import { cn } from "cn"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FindingReview } from "@/pages/finding-review"
 import { FindingQAPanel } from "@/components/finding-qa-panel"
@@ -83,10 +78,11 @@ function CopyButton({ text }: { text: string }) {
   return (
     <Button
       variant="ghost"
-      size="icon"
+      size="icon-sm"
       className="size-7 text-muted-foreground hover:text-foreground"
       onClick={handleCopy}
       title="Copy raw text"
+      aria-label="Copy raw text"
     >
       {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
     </Button>
@@ -98,15 +94,22 @@ function EvidenceBlock({
   canDelete,
   onDelete,
   isDeleting,
+  expanded,
+  onToggle,
 }: {
   item: Evidence
   canDelete: boolean
   onDelete: (id: number) => void
   isDeleting: boolean
+  expanded: boolean
+  onToggle: () => void
 }) {
   const [downloading, setDownloading] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const Icon = KIND_ICON[item.kind] ?? FileText
+  const lineCount = item.content ? item.content.split("\n").length : 0
+  const collapsible = item.kind !== "upload" && (item.content.length > 900 || lineCount > 14)
+  const label = item.label || KIND_LABEL[item.kind]
 
   const handleDownload = async () => {
     try {
@@ -128,32 +131,37 @@ function EvidenceBlock({
   }
 
   return (
-    <div id={`evidence-${item.id}`} className="rounded-lg border bg-card/60 transition-colors">
-      <div className="flex items-center justify-between border-b px-4 py-2.5 bg-muted/30">
-        <div className="flex items-center gap-2 min-w-0">
-          <Icon className="size-4 text-primary shrink-0" />
-          <span className="font-medium text-xs truncate text-foreground">
-            {item.label || KIND_LABEL[item.kind]}
-          </span>
-          {item.tool && (
-            <Badge variant="outline" className="text-[10px] font-mono py-0 shrink-0">
-              {item.tool}
-            </Badge>
-          )}
+    <div
+      id={`evidence-${item.id}`}
+      className="scroll-mt-24 overflow-hidden rounded-xl border bg-card transition-shadow"
+    >
+      <div className="flex items-start gap-2.5 px-3.5 py-3">
+        <Icon className="mt-0.5 size-4 shrink-0 text-primary" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium text-foreground" title={label}>
+            {label}
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
+            <span>{KIND_LABEL[item.kind]}</span>
+            {item.tool && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="font-mono text-[10px]">{item.tool}</span>
+              </>
+            )}
+            <span aria-hidden="true" className="hidden sm:inline">
+              ·
+            </span>
+            <span className="hidden sm:inline">{formatDate(item.captured_at)}</span>
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground hidden sm:inline">
-            {formatDate(item.captured_at)}
-          </span>
-          <Badge variant="secondary" className="text-[10px] shrink-0">
-            {KIND_LABEL[item.kind]}
-          </Badge>
-          {item.content && <CopyButton text={item.content} />}
 
-          {/* Evidence Deletion */}
-          {canDelete && (
-            confirmDelete ? (
-              <div className="flex items-center gap-1 ml-1">
+        <div className="flex shrink-0 items-center gap-0.5">
+          {item.content && item.kind !== "upload" && <CopyButton text={item.content} />}
+
+          {canDelete &&
+            (confirmDelete ? (
+              <div className="ml-1 flex items-center gap-1">
                 <Button
                   variant="destructive"
                   size="sm"
@@ -178,42 +186,101 @@ function EvidenceBlock({
             ) : (
               <Button
                 variant="ghost"
-                size="icon"
-                className="size-7 text-muted-foreground hover:text-destructive transition-colors ml-1"
+                size="icon-sm"
+                className="size-7 text-muted-foreground transition-colors hover:text-destructive"
                 onClick={() => setConfirmDelete(true)}
                 title="Delete this evidence item"
+                aria-label="Delete this evidence item"
               >
                 <Trash2 className="size-3.5" />
               </Button>
-            )
-          )}
+            ))}
         </div>
       </div>
 
-      <div className="p-3">
+      <div className="border-t bg-muted/15 p-3">
         {item.kind === "upload" ? (
-          <div className="flex items-center justify-between p-3 rounded-md bg-muted/40 border border-dashed">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <FileText className="size-4 text-primary" />
-              <span>{item.label || "Uploaded file artifact"}</span>
+          <div className="flex items-center justify-between gap-3 rounded-md border border-dashed bg-muted/30 p-3">
+            <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              <FileText className="size-4 shrink-0 text-primary" />
+              <span className="truncate">{item.label || "Uploaded file artifact"}</span>
             </div>
             <Button
               size="sm"
               variant="outline"
               disabled={downloading}
               onClick={handleDownload}
-              className="text-xs"
+              className="shrink-0 text-xs"
             >
-              <Download className="size-3.5 mr-1.5" />
-              {downloading ? "Downloading…" : "Download file"}
+              <Download className="size-3.5" />
+              {downloading ? "Downloading" : "Download"}
             </Button>
           </div>
         ) : (
-          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-md bg-zinc-950 p-3.5 font-mono text-xs text-zinc-100 border border-zinc-800 leading-relaxed selection:bg-primary/30">
-            {item.content || "(No transcript content recorded)"}
-          </pre>
+          <>
+            <div className="relative">
+              <pre
+                className={cn(
+                  "overflow-auto whitespace-pre-wrap break-all rounded-md border border-zinc-800 bg-zinc-950 p-3.5 font-mono text-[11px] leading-relaxed text-zinc-100 selection:bg-primary/30",
+                  collapsible && !expanded
+                    ? "max-h-48"
+                    : collapsible
+                      ? "max-h-[70vh]"
+                      : "max-h-96",
+                )}
+              >
+                {item.content || "(No transcript content recorded)"}
+              </pre>
+              {collapsible && !expanded && (
+                <div className="pointer-events-none absolute inset-x-px bottom-px h-14 rounded-b-md bg-gradient-to-t from-zinc-950 to-transparent" />
+              )}
+            </div>
+            {collapsible && (
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={expanded}
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border bg-background py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {expanded ? (
+                  <ChevronUp className="size-3.5" />
+                ) : (
+                  <ChevronDown className="size-3.5" />
+                )}
+                {expanded ? "Collapse output" : "Show full output"}
+              </button>
+            )}
+          </>
         )}
       </div>
+    </div>
+  )
+}
+
+function MetaItem({
+  label,
+  value,
+  mono,
+  wrap,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+  wrap?: boolean
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd
+        className={cn(
+          "mt-0.5 text-xs font-medium text-foreground",
+          mono && "font-mono",
+          wrap ? "break-words" : "truncate",
+        )}
+        title={value}
+      >
+        {value}
+      </dd>
     </div>
   )
 }
@@ -226,6 +293,7 @@ export function FindingDetailPage() {
   const [showHints] = useShowShortcutHints()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [expandedEvidence, setExpandedEvidence] = useState<Record<number, boolean>>({})
 
   // Query this specific finding
   const { data, isLoading, error } = useQuery({
@@ -366,7 +434,7 @@ export function FindingDetailPage() {
       <div className="space-y-4">
         <Button asChild variant="outline" size="sm">
           <Link to="/findings">
-            <ArrowLeft className="size-4 mr-1.5" /> Back to Findings
+            <ArrowLeft className="size-4" /> Back to Findings
           </Link>
         </Button>
         <Alert variant="destructive">
@@ -378,49 +446,47 @@ export function FindingDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Navigation & Stepper Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
-        <div className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="sm" className="-ml-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <Button asChild variant="ghost" size="sm" className="-ml-2 h-8">
             <Link to="/findings">
-              <ArrowLeft className="size-4 mr-1.5" />
+              <ArrowLeft className="size-4" />
               <span>Findings</span>
             </Link>
           </Button>
-          <Separator orientation="vertical" className="!h-4" />
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>Finding</span>
-            <span className="font-mono font-semibold text-foreground">#{data.id}</span>
-            {data.assessment_id && (
-              <>
-                <span>•</span>
-                <Link
-                  to={`/assessments/${data.assessment_id}`}
-                  className="hover:text-primary transition-colors hover:underline flex items-center gap-1"
-                >
-                  Assessment #{data.assessment_id}
-                  <ExternalLink className="size-3" />
-                </Link>
-              </>
-            )}
-            {target && (
-              <>
-                <span>•</span>
-                <Link
-                  to="/targets"
-                  className="flex items-center gap-1 text-foreground hover:text-primary transition-colors font-medium"
-                  title={target.base_url}
-                >
-                  <Server className="size-3 text-primary shrink-0" />
-                  <span>{target.name}</span>
-                  <span className="font-mono text-muted-foreground text-[11px] hidden sm:inline">
-                    ({target.base_url})
-                  </span>
-                </Link>
-              </>
-            )}
-          </div>
+          <span className="h-3.5 w-px bg-border" aria-hidden="true" />
+          <span className="font-mono font-semibold text-foreground">#{data.id}</span>
+          {data.assessment_id && (
+            <>
+              <span className="text-muted-foreground/50" aria-hidden="true">
+                /
+              </span>
+              <Link
+                to={`/assessments/${data.assessment_id}`}
+                className="flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Assessment #{data.assessment_id}
+                <ExternalLink className="size-3" />
+              </Link>
+            </>
+          )}
+          {target && (
+            <>
+              <span className="text-muted-foreground/50" aria-hidden="true">
+                /
+              </span>
+              <Link
+                to="/targets"
+                className="flex min-w-0 items-center gap-1 font-medium text-foreground transition-colors hover:text-primary"
+                title={target.base_url}
+              >
+                <Server className="size-3 shrink-0 text-primary" />
+                <span className="truncate">{target.name}</span>
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Previous / Next Stepper */}
@@ -433,10 +499,10 @@ export function FindingDetailPage() {
             title={prevFinding ? `Previous: ${prevFinding.title} (←)` : "First finding"}
             className="text-xs"
           >
-            <ChevronLeft className="size-4 mr-0.5" />
+            <ChevronLeft className="size-4" />
             <span>Previous</span>
             {showHints && (
-              <kbd className="hidden sm:inline-block ml-1 px-1 py-0.2 text-[9px] font-mono rounded bg-muted text-muted-foreground border">
+              <kbd className="ml-0.5 hidden rounded border bg-muted px-1 text-[9px] font-mono text-muted-foreground sm:inline-block">
                 ←
               </kbd>
             )}
@@ -452,11 +518,11 @@ export function FindingDetailPage() {
           >
             <span>Next</span>
             {showHints && (
-              <kbd className="hidden sm:inline-block ml-1 px-1 py-0.2 text-[9px] font-mono rounded bg-muted text-muted-foreground border">
+              <kbd className="ml-0.5 hidden rounded border bg-muted px-1 text-[9px] font-mono text-muted-foreground sm:inline-block">
                 →
               </kbd>
             )}
-            <ChevronRight className="size-4 ml-0.5" />
+            <ChevronRight className="size-4" />
           </Button>
         </div>
       </div>
@@ -465,143 +531,104 @@ export function FindingDetailPage() {
       {data.status === "ai_candidate" && (
         <Alert className="border-amber-500/30 bg-amber-500/5 text-foreground">
           <ShieldAlert className="size-4 text-amber-500" />
-          <AlertTitle className="text-amber-500 font-semibold text-xs">
-            Unconfirmed AI Candidate
-          </AlertTitle>
-          <AlertDescription className="text-xs text-muted-foreground leading-relaxed">
-            This finding was drafted automatically by security tooling and AI interpretation. It remains strictly an unconfirmed candidate until verified by an assessor.
+          <AlertTitle className="text-xs font-semibold text-amber-500">Unconfirmed AI Candidate</AlertTitle>
+          <AlertDescription className="text-xs leading-relaxed text-muted-foreground">
+            Drafted from tool output and AI interpretation. It stays an unconfirmed candidate until an
+            assessor verifies it.
           </AlertDescription>
         </Alert>
       )}
 
       {/* Main Two-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-12">
         {/* Left Column: Finding Overview & Decision (5 cols on lg) */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Header Card */}
-          <Card>
-            <CardHeader className="space-y-3 pb-4">
+        <div className="space-y-4 lg:col-span-5">
+          {/* Overview Card */}
+          <Card className="gap-0 overflow-hidden py-0">
+            <CardHeader className="gap-3 px-5 pb-4 pt-5">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge className={SEVERITY_CLASS[data.severity]}>{capitalize(data.severity)}</Badge>
                 <Badge variant={STATUS_VARIANT[data.status]} className={STATUS_CLASS[data.status]}>
                   {STATUS_LABEL[data.status]}
                 </Badge>
-                <span className="ml-auto font-mono text-xs text-muted-foreground">
-                  Score: <strong className="text-foreground">{displayScore(data.score, data.severity)}</strong>/10
+                <span
+                  className="ml-auto font-mono text-xs text-muted-foreground"
+                  title="Risk score"
+                  aria-label={`Risk score ${displayScore(data.score, data.severity)} out of 10`}
+                >
+                  {displayScore(data.score, data.severity)}
+                  <span className="text-muted-foreground/70">/10</span>
                 </span>
               </div>
-              <CardTitle className="text-xl font-bold tracking-tight text-foreground leading-snug">
+              <CardTitle className="text-pretty text-xl font-semibold leading-snug tracking-tight text-foreground">
                 {data.title}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4 text-xs">
-              <div className="space-y-1.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Description
-                </p>
-                <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                  {data.description || "No description provided."}
+
+            <CardContent className="space-y-4 px-5 pb-5">
+              <p className="text-pretty text-[13px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                {data.description || "No description provided."}
+              </p>
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-border/70 bg-muted/20 p-3.5">
+                <MetaItem
+                  label="Target"
+                  value={target?.name || (assessment ? `Target #${assessment.target_id}` : "-")}
+                  wrap
+                />
+                <MetaItem label="Category" value={data.category || "-"} wrap />
+                <MetaItem label="AI confidence" value={`${Math.round(data.ai_confidence * 100)}%`} />
+                <MetaItem
+                  label="Assessment"
+                  value={data.assessment_id ? `#${data.assessment_id}` : "-"}
+                  mono
+                />
+              </dl>
+
+              {data.verified_by && (
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+                  <ShieldCheck className="size-3.5 shrink-0 text-emerald-500" />
+                  <span>
+                    {data.status === "false_positive" ? "Reviewed by" : "Verified by"}{" "}
+                    <strong className="font-medium text-foreground">{data.verified_by}</strong>
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span>{formatDate(data.verified_at)}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5 border-t pt-3.5">
+                <h3 className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                  <Wrench className="size-3.5 text-primary" />
+                  Remediation
+                </h3>
+                <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                  {data.remediation || "No remediation guidance available."}
                 </p>
               </div>
-
-              <Separator />
-
-              {/* Metadata Grid */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Target
-                  </p>
-                  <p className="font-medium text-foreground truncate" title={target?.base_url}>
-                    {target?.name || (assessment ? `Target #${assessment.target_id}` : "-")}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Category
-                  </p>
-                  <p className="font-medium text-foreground truncate">{data.category || "-"}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    AI Confidence
-                  </p>
-                  <p className="font-medium text-foreground">{Math.round(data.ai_confidence * 100)}%</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Assessment ID
-                  </p>
-                  <p className="font-mono font-medium text-foreground">
-                    {data.assessment_id ? `#${data.assessment_id}` : "-"}
-                  </p>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Assessor Attribution */}
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Verification Status
-                </p>
-                <div className="flex items-center gap-1.5 text-muted-foreground">
-                  {data.verified_by ? (
-                    <>
-                      <ShieldCheck className="size-3.5 text-emerald-500" />
-                      <span>
-                        Verified by <strong className="text-foreground">{data.verified_by}</strong> on {formatDate(data.verified_at)}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <Shield className="size-3.5 text-muted-foreground/70" />
-                      <span>Awaiting assessor decision</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Remediation Card */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Remediation Guidance</CardTitle>
-              <CardDescription className="text-xs">Recommended fix for development team</CardDescription>
-            </CardHeader>
-            <CardContent className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
-              {data.remediation || "No remediation guidance available."}
             </CardContent>
           </Card>
 
           {/* Review Decision Workflow */}
-          <Card className="border-primary/20 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Lock className="size-3.5 text-primary" />
-                Assessor Verification Workflow
+          <Card className="gap-0 overflow-hidden py-0">
+            <CardHeader className="px-5 pb-3 pt-5">
+              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                <ShieldCheck className="size-4 text-primary" />
+                Assessor review
               </CardTitle>
-              <CardDescription className="text-xs">
-                Submit finding confirmation, reject false positive, or request additional proof.
-              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <FindingReview finding={data} />
+            <CardContent className="px-5 pb-5">
+              <FindingReview key={data.id} finding={data} />
             </CardContent>
           </Card>
         </div>
 
-        {/* Right Column: Evidence & Transcripts (7 cols on lg) */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                Evidence &amp; Transcripts
-              </h2>
-              <Badge variant="outline" className="font-mono text-xs">
-                {data.evidence.length}
-              </Badge>
+        {/* Right Column: Evidence & Analyst (7 cols on lg) */}
+        <div className="space-y-4 lg:col-span-7">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-sm font-semibold tracking-tight text-foreground">Evidence</h2>
+              <span className="font-mono text-xs text-muted-foreground">{data.evidence.length}</span>
             </div>
 
             {/* Evidence Upload for Assessors */}
@@ -621,22 +648,22 @@ export function FindingDetailPage() {
                   onClick={() => fileInputRef.current?.click()}
                   className="text-xs"
                 >
-                  <Upload className="size-3.5 mr-1.5" />
-                  {uploadMutation.isPending ? "Uploading…" : "Attach Evidence"}
+                  <Upload className="size-3.5" />
+                  {uploadMutation.isPending ? "Uploading" : "Attach evidence"}
                 </Button>
               </div>
             )}
           </div>
 
           {data.evidence.length === 0 ? (
-            <Card className="border-dashed">
-              <CardContent className="py-12 flex flex-col items-center justify-center text-center">
-                <div className="size-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground mb-3">
+            <Card className="border-dashed bg-transparent py-0 shadow-none">
+              <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+                <div className="mb-3 flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
                   <Terminal className="size-5" />
                 </div>
                 <p className="text-sm font-medium text-foreground">No evidence attached yet</p>
-                <p className="text-xs text-muted-foreground max-w-sm mt-1">
-                  Evidence is automatically collected during security scans (HTTP transcripts, port maps) or manually uploaded by assessors.
+                <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                  Scans attach HTTP transcripts and tool output automatically. Assessors can also upload files.
                 </p>
               </CardContent>
             </Card>
@@ -647,17 +674,25 @@ export function FindingDetailPage() {
                   key={item.id}
                   item={item}
                   canDelete={hasRole("admin", "assessor")}
-                  onDelete={(id) => deleteEvidenceMutation.mutate(id)}
+                  onDelete={(evidenceId) => deleteEvidenceMutation.mutate(evidenceId)}
                   isDeleting={deleteEvidenceMutation.isPending}
+                  expanded={Boolean(expandedEvidence[item.id])}
+                  onToggle={() =>
+                    setExpandedEvidence((prev) => ({ ...prev, [item.id]: !prev[item.id] }))
+                  }
                 />
               ))}
             </div>
           )}
 
           {/* Finding Q&A Analyst Assistant (T2.6 Stretch) */}
-          <div className="pt-2">
-            <FindingQAPanel finding={data} />
-          </div>
+          <FindingQAPanel
+            key={data.id}
+            finding={data}
+            onEvidenceCited={(evidenceId) =>
+              setExpandedEvidence((prev) => ({ ...prev, [evidenceId]: true }))
+            }
+          />
         </div>
       </div>
     </div>

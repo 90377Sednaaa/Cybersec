@@ -86,16 +86,7 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
   }
 
   return (
-    <div className="space-y-4 rounded-md border p-3.5 bg-card/60">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-foreground">Assessor Decision & Governance</p>
-        {(severityChanged || scoreChanged) && (
-          <Badge variant="outline" className="text-[10px] text-amber-500 border-amber-500/40 py-0">
-            Override active
-          </Badge>
-        )}
-      </div>
-
+    <div className="space-y-4">
       {/* Assessor Notes Input */}
       <div className="grid gap-1.5">
         <Label htmlFor={`notes-${finding.id}`} className="text-xs font-medium">Assessor notes</Label>
@@ -111,11 +102,15 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
       </div>
 
       {/* Severity and Score Adjustments */}
-      <div className="pt-2 border-t space-y-2.5">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="space-y-2.5 border-t pt-3">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <SlidersHorizontal className="size-3.5 text-primary" />
-          <span className="font-medium text-foreground">Assessor Adjustments</span>
-          <span className="text-[11px]">(override AI severity &amp; CVSS score)</span>
+          <span className="font-medium text-foreground">Adjust severity or score</span>
+          {(severityChanged || scoreChanged) && (
+            <Badge variant="outline" className="border-amber-500/40 py-0 text-[10px] text-amber-500">
+              Override active
+            </Badge>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
