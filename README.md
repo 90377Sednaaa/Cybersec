@@ -31,6 +31,63 @@ Aletheia walks an authorized web application through a complete assessment pipel
 
 > The canonical plan and decision record is **[docs/PLAN.md](docs/PLAN.md)** - read that before changing architecture.
 
+## Screenshots
+
+Captured from a live local run with seeded lab data. Dark is the default theme; light is supported too.
+
+<div align="center">
+<table>
+<tr>
+<td align="center" valign="top">
+  <b>Dashboard</b><br>
+  <img src="docs/screenshots/dashboard.png" alt="Aletheia dashboard" width="620"><br>
+  <sub>Live counts, severity breakdown and human-verification progress.</sub>
+</td>
+<td align="center" valign="top">
+  <b>Findings repository</b><br>
+  <img src="docs/screenshots/findings.png" alt="Filterable findings table" width="620"><br>
+  <sub>Filter by severity, status, category and target; AI candidates stay unconfirmed.</sub>
+</td>
+</tr>
+<tr>
+<td align="center" valign="top">
+  <b>Finding detail and assessor review</b><br>
+  <img src="docs/screenshots/finding-detail.png" alt="Finding detail with evidence and verification actions" width="620"><br>
+  <sub>Evidence, remediation and the human verification decision.</sub>
+</td>
+<td align="center" valign="top">
+  <b>Assessment run</b><br>
+  <img src="docs/screenshots/assessment-run.png" alt="Assessment run with job timeline and log" width="620"><br>
+  <sub>Per-tool job timeline, preserved execution log and the PDF report panel.</sub>
+</td>
+</tr>
+<tr>
+<td align="center" valign="top">
+  <b>New assessment wizard</b><br>
+  <img src="docs/screenshots/assessment-wizard.png" alt="New assessment dialog" width="620"><br>
+  <sub>Choose a target, scan intensity and the assessment categories.</sub>
+</td>
+<td align="center" valign="top">
+  <b>Assessment runs</b><br>
+  <img src="docs/screenshots/assessments.png" alt="Assessment runs list" width="620"><br>
+  <sub>Every run stays tied to a registered, authorized target.</sub>
+</td>
+</tr>
+<tr>
+<td align="center" valign="top">
+  <b>AI settings</b><br>
+  <img src="docs/screenshots/settings.png" alt="AI provider and per-task model settings" width="620"><br>
+  <sub>Provider configuration, per-task models and reasoning effort.</sub>
+</td>
+<td align="center" valign="top">
+  <b>Dashboard in light theme</b><br>
+  <img src="docs/screenshots/dashboard-light.png" alt="Dashboard in light theme" width="620"><br>
+  <sub>The same data and layout with the light theme applied.</sub>
+</td>
+</tr>
+</table>
+</div>
+
 ## Tech stack
 
 | Layer | Technologies |
