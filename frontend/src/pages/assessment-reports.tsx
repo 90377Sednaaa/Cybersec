@@ -135,7 +135,7 @@ export function AssessmentReports({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <FileText className="size-4 text-primary" />
-          <p className="text-base font-semibold tracking-tight">Security Assessment Report</p>
+          <h2 className="text-base font-semibold tracking-tight">Security Assessment Report</h2>
           <HelpHint label="Security report">
             Rendered live from verified findings. You can review the report directly, view in full screen, or download a compiled PDF.
           </HelpHint>
@@ -279,9 +279,9 @@ export function AssessmentReports({
       {/* Generated PDF history */}
       {reports.data && reports.data.length > 0 && (
         <div className="space-y-2 pt-2 border-t">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             PDF Exports ({reports.data.length})
-          </h4>
+          </h3>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {reports.data.map((report) => (
               <div key={report.id} className="flex items-center justify-between gap-2 rounded-md border p-2.5 bg-muted/20">
@@ -292,7 +292,7 @@ export function AssessmentReports({
                       {report.status}
                     </Badge>
                   </div>
-                  <p className="text-[11px] text-muted-foreground truncate pt-0.5">
+                  <p className="truncate pt-0.5 text-xs text-muted-foreground">
                     {formatDate(report.created_at)}
                   </p>
                 </div>

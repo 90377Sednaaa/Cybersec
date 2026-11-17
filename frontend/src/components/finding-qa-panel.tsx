@@ -86,9 +86,9 @@ function MessageTurn({
       </div>
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold text-foreground">Analyst</span>
+          <span className="text-xs font-semibold text-foreground">Analyst</span>
           {message.model && (
-            <span className="truncate font-mono text-[10px] text-muted-foreground">
+            <span className="truncate font-mono text-[11px] text-muted-foreground">
               {message.model}
             </span>
           )}
@@ -111,7 +111,7 @@ function MessageTurn({
               type="button"
               onClick={() => onToggleReasoning(index)}
               aria-expanded={reasoningOpen}
-              className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+              className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               <Brain className="size-3" />
               <span>Reasoning</span>
@@ -120,7 +120,7 @@ function MessageTurn({
               />
             </button>
             {reasoningOpen && (
-              <div className="max-h-52 overflow-y-auto whitespace-pre-wrap border-t border-border/40 px-2.5 py-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              <div className="max-h-52 overflow-y-auto whitespace-pre-wrap border-t border-border/40 px-2.5 py-2 font-mono text-xs leading-relaxed text-muted-foreground">
                 {message.reasoning}
               </div>
             )}
@@ -134,7 +134,7 @@ function MessageTurn({
         />
 
         {message.grounded_evidence_ids && message.grounded_evidence_ids.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-2 text-xs text-muted-foreground">
             <ShieldCheck className="size-3.5 shrink-0 text-emerald-500" />
             <span>Grounded in</span>
             {message.grounded_evidence_ids.map((evidenceId) => (
@@ -142,7 +142,7 @@ function MessageTurn({
                 key={evidenceId}
                 type="button"
                 onClick={() => onCitation(evidenceId)}
-                className="rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] text-foreground transition-colors hover:bg-muted"
+                className="rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-foreground transition-colors hover:bg-muted"
                 title={`Jump to Evidence #${evidenceId}`}
               >
                 Evidence #{evidenceId}
@@ -169,7 +169,7 @@ function EmptyThread({
   if (!expanded) {
     return (
       <div className="space-y-3 py-1">
-        <p className="text-xs leading-relaxed text-muted-foreground">
+        <p className="text-sm leading-relaxed text-muted-foreground">
           Ask about exploitability, the evidence behind this finding, or how to fix it.
         </p>
         {canAsk && (
@@ -180,7 +180,7 @@ function EmptyThread({
                 type="button"
                 disabled={pending}
                 onClick={() => onAsk(prompt)}
-                className="inline-flex items-center rounded-full border border-border/80 bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                className="inline-flex items-center rounded-full border border-border/80 bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
               >
                 {prompt}
               </button>
@@ -199,7 +199,7 @@ function EmptyThread({
       <h3 className="text-base font-semibold tracking-tight text-foreground">
         Investigate this finding
       </h3>
-      <p className="mt-1.5 max-w-md text-xs leading-relaxed text-muted-foreground">
+      <p className="mt-1.5 max-w-md text-sm leading-relaxed text-muted-foreground">
         Ask about exploitability, the evidence behind it, or how to fix it. Answers cite the
         evidence attached to this finding.
       </p>
@@ -287,7 +287,7 @@ function QAThread({
                 <div className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border/60 bg-muted/60">
                   <Sparkles className="size-3.5 animate-pulse text-primary" />
                 </div>
-                <div className="flex items-center gap-2 pt-1.5 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-2 pt-1.5 text-xs text-muted-foreground">
                   <span className="flex items-center gap-0.5" aria-hidden="true">
                     {[0, 1, 2].map((dot) => (
                       <span
@@ -303,7 +303,7 @@ function QAThread({
             )}
 
             {error && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-[11px]">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
                   <div className="min-w-0 flex-1 space-y-1.5">
@@ -383,7 +383,7 @@ function QAComposer({
       {!canAsk ? (
         <div
           className={cn(
-            "flex items-center justify-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-center text-[11px] text-muted-foreground",
+            "flex items-center justify-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-center text-xs text-muted-foreground",
             variant === "expanded" && "mx-auto w-full max-w-3xl",
           )}
         >
@@ -412,7 +412,7 @@ function QAComposer({
             )}
           />
           <div className="flex items-center justify-between gap-2 pt-0.5">
-            <span className="hidden pl-1 text-[10px] text-muted-foreground sm:inline">
+            <span className="hidden pl-1 text-xs text-muted-foreground sm:inline">
               Enter to send <span className="text-border">·</span> Shift+Enter for a new line
             </span>
             <Button
@@ -495,7 +495,7 @@ export function FindingQAPanel({
                 Grounded
               </Badge>
             </div>
-            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
               Answers cite this finding&apos;s evidence.
             </p>
           </div>
@@ -569,7 +569,7 @@ export function FindingQAPanel({
               >
                 Grounded
               </Badge>
-              <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+              <span className="ml-auto font-mono text-[11px] text-muted-foreground">
                 Finding #{finding.id}
               </span>
               {messages.length > 0 && (
@@ -604,15 +604,15 @@ export function FindingQAPanel({
               >
                 {STATUS_LABEL[finding.status]}
               </Badge>
-              <span className="text-[11px] text-muted-foreground">{finding.category}</span>
-              <span className="text-[11px] text-muted-foreground/60" aria-hidden="true">
+              <span className="text-xs text-muted-foreground">{finding.category}</span>
+              <span className="text-xs text-muted-foreground/60" aria-hidden="true">
                 ·
               </span>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {finding.evidence.length} evidence
               </span>
               <span
-                className="ml-auto font-mono text-[11px] text-muted-foreground"
+                className="ml-auto font-mono text-xs text-muted-foreground"
                 title="Risk score"
               >
                 {displayScore(finding.score, finding.severity)}/10

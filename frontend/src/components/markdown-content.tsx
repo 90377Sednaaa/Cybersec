@@ -35,7 +35,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
           {copied ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
         </Button>
       </div>
-      <pre className="p-3 overflow-x-auto font-mono text-[11px] leading-relaxed">
+      <pre className="p-3 overflow-x-auto font-mono text-xs leading-relaxed">
         <code>{code}</code>
       </pre>
     </div>
@@ -87,7 +87,7 @@ export function MarkdownContent({
             return (
               <h3
                 key={key}
-                className="mb-1.5 mt-4 flex items-center gap-1.5 text-[13px] font-semibold leading-snug text-foreground first:mt-0"
+                className="mb-1.5 mt-4 flex items-center gap-1.5 text-sm font-semibold leading-snug text-foreground first:mt-0"
               >
                 {inner}
               </h3>
@@ -134,7 +134,7 @@ export function MarkdownContent({
           return (
             <code
               key={key}
-              className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] text-foreground border border-border/60"
+              className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs text-foreground border border-border/60"
             >
               {token.text}
             </code>
@@ -166,7 +166,7 @@ export function MarkdownContent({
           return (
             <blockquote
               key={key}
-              className="border-l-2 border-primary/40 pl-3 my-2 text-muted-foreground italic text-xs"
+              className="border-l-2 border-primary/40 pl-3 my-2 text-muted-foreground italic text-sm"
             >
               {inner}
             </blockquote>
@@ -199,7 +199,7 @@ export function MarkdownContent({
   const tokens = marked.lexer(content)
 
   return (
-    <div className={`text-[13px] space-y-1.5 ${className}`}>
+    <div className={`text-sm space-y-1.5 ${className}`}>
       {renderTokens(tokens, "root")}
     </div>
   )

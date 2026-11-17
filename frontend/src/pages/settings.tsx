@@ -159,7 +159,7 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
               </HelpHint>
             </div>
             {detectedBadge && (
-              <span className="flex items-center gap-1 text-[11px] font-medium text-primary">
+              <span className="flex items-center gap-1 text-xs font-medium text-primary">
                 <Check className="size-3" />
                 Detected {detectedBadge}
               </span>
@@ -236,7 +236,7 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
               <button
                 type="button"
                 onClick={() => setShowAdvancedUrl(true)}
-                className="text-[11px] font-medium text-primary hover:underline"
+                className="text-xs font-medium text-primary hover:underline"
               >
                 Customize endpoint
               </button>
@@ -259,7 +259,7 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
                     setBaseUrl(selectedPreset?.baseUrl || "")
                     setShowAdvancedUrl(false)
                   }}
-                  className="text-[11px] text-muted-foreground hover:underline"
+                  className="text-xs text-muted-foreground hover:underline"
                 >
                   Reset to default
                 </button>
@@ -451,7 +451,7 @@ export function SettingsPage() {
                   <Sparkles className="size-5" />
                 </div>
                 <p className="text-sm font-medium">No AI providers yet</p>
-                <p className="max-w-sm text-xs text-muted-foreground">
+                <p className="max-w-sm text-sm text-muted-foreground">
                   {isAdmin
                     ? "Add a provider to enable AI interpretation of scan results."
                     : "Ask an admin to configure an AI provider."}
@@ -480,7 +480,7 @@ export function SettingsPage() {
                         {provider.enabled ? "Enabled" : "Disabled"}
                       </Badge>
                     </div>
-                    <p className="truncate font-mono text-[11px] text-muted-foreground">{provider.base_url}</p>
+                    <p className="truncate font-mono text-xs text-muted-foreground">{provider.base_url}</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 lg:justify-end">
@@ -488,7 +488,7 @@ export function SettingsPage() {
                     <KeyRound className="size-3" />
                     {provider.has_api_key ? "Key set" : "No key"}
                   </Badge>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {provider.acknowledged_external_at
                       ? `Acknowledged ${formatDate(provider.acknowledged_external_at)}`
                       : "External use not acknowledged"}

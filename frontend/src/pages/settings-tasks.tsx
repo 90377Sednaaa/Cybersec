@@ -61,7 +61,7 @@ export function TestConnectionButton({ providerId }: { providerId: number }) {
         {test.isPending ? "Testing..." : "Test connection"}
       </Button>
       {test.data?.ok && (
-        <p className="flex items-center gap-1 text-[11px] font-medium text-primary">
+        <p className="flex items-center gap-1 text-xs font-medium text-primary">
           <Check className="size-3 shrink-0" />
           <span>
             Connected: {test.data.model} ({test.data.latency_ms} ms)
@@ -69,13 +69,13 @@ export function TestConnectionButton({ providerId }: { providerId: number }) {
         </p>
       )}
       {test.data && !test.data.ok && (
-        <p className="max-w-56 text-[11px] text-destructive">
+        <p className="max-w-56 text-xs text-destructive">
           {test.data.error.includes("No task model")
             ? "Assign a model to a task below first."
             : test.data.error || "Connection failed"}
         </p>
       )}
-      {test.error && <p className="max-w-56 text-[11px] text-destructive">{test.error.message}</p>}
+      {test.error && <p className="max-w-56 text-xs text-destructive">{test.error.message}</p>}
     </div>
   )
 }
@@ -204,7 +204,7 @@ function TaskRow({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`provider-${config.task}`} className="text-[11px] text-muted-foreground">
+        <Label htmlFor={`provider-${config.task}`} className="text-xs text-muted-foreground">
           Provider
         </Label>
         <Select value={providerId} onValueChange={handleProviderChange} disabled={!isAdmin}>
@@ -224,19 +224,19 @@ function TaskRow({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-[11px] text-muted-foreground">Model</span>
+        <span className="text-xs text-muted-foreground">Model</span>
         <ModelPicker
           provider={selectedProvider}
           value={model}
           onChange={handleModelChange}
           disabled={!isAdmin || providerId === NONE}
         />
-        {!model && <p className="text-[11px] text-muted-foreground">No model selected</p>}
+        {!model && <p className="text-xs text-muted-foreground">No model selected</p>}
       </div>
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <Label htmlFor={`level-${config.task}`} className="text-[11px] text-muted-foreground">
+          <Label htmlFor={`level-${config.task}`} className="text-xs text-muted-foreground">
             {isEffortModel ? "Reasoning effort" : "Sampling level"}
           </Label>
           {isEffortModel && (
@@ -284,12 +284,12 @@ function TaskRow({
                   disabled={!isAdmin}
                   onChange={(event) => setTemperature(event.target.value)}
                 />
-                <span className="font-mono text-[10px] text-muted-foreground">0.0 to 2.0</span>
+                <span className="font-mono text-xs text-muted-foreground">0.0 to 2.0</span>
               </div>
             )}
           </>
         )}
-        <p className="text-[11px] leading-tight text-muted-foreground">{levelHint}</p>
+        <p className="text-xs leading-tight text-muted-foreground">{levelHint}</p>
       </div>
 
       {isAdmin && (
@@ -297,7 +297,7 @@ function TaskRow({
           <Button size="sm" disabled={!dirty || !temperatureValid || save.isPending} onClick={() => save.mutate()}>
             {save.isPending ? "Saving..." : "Save"}
           </Button>
-          {error && <p className="max-w-40 text-[11px] text-destructive">{error}</p>}
+          {error && <p className="max-w-40 text-xs text-destructive">{error}</p>}
         </div>
       )}
     </div>

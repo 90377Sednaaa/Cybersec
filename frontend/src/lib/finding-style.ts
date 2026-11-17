@@ -3,6 +3,15 @@ import type { FindingStatus, Severity } from "@/lib/types"
 export const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"]
 export const STATUSES: FindingStatus[] = ["ai_candidate", "needs_evidence", "verified", "false_positive"]
 
+// Ordinal weight for client-side sorting. Higher is more severe.
+export const SEVERITY_WEIGHT: Record<Severity, number> = {
+  critical: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+  info: 1,
+}
+
 // Crisp white text provides high contrast (>= 4.5:1 WCAG AA) against saturated
 // severity tokens in both light and dark themes, matching security platform standards.
 export const SEVERITY_CLASS: Record<Severity, string> = {
@@ -15,6 +24,15 @@ export const SEVERITY_CLASS: Record<Severity, string> = {
 
 export const STATUS_LABEL: Record<FindingStatus, string> = {
   ai_candidate: "AI candidate (unconfirmed)",
+  needs_evidence: "Needs evidence",
+  verified: "Verified",
+  false_positive: "False positive",
+}
+
+// Compact label for dense rows (findings table, run summary). The full label
+// still explains the unconfirmed state wherever there is room for it.
+export const STATUS_SHORT_LABEL: Record<FindingStatus, string> = {
+  ai_candidate: "AI candidate",
   needs_evidence: "Needs evidence",
   verified: "Verified",
   false_positive: "False positive",

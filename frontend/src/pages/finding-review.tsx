@@ -97,13 +97,13 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
           rows={3}
           placeholder="What did you check? How did you confirm or dismiss this finding?"
           onChange={(event) => setNotes(event.target.value)}
-          className="text-xs leading-relaxed"
+          className="text-sm leading-relaxed"
         />
       </div>
 
       {/* Severity and Score Adjustments */}
       <div className="space-y-2.5 border-t pt-3">
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-1.5 text-sm">
           <SlidersHorizontal className="size-3.5 text-primary" />
           <span className="font-medium text-foreground">Adjust severity or score</span>
           {(severityChanged || scoreChanged) && (
@@ -115,7 +115,7 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-1">
-            <Label htmlFor={`severity-${finding.id}`} className="text-[11px] text-muted-foreground">
+            <Label htmlFor={`severity-${finding.id}`} className="text-xs text-muted-foreground">
               Severity Level
             </Label>
             <Select
@@ -128,7 +128,7 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
                 }
               }}
             >
-              <SelectTrigger id={`severity-${finding.id}`} className="h-8 text-xs">
+              <SelectTrigger id={`severity-${finding.id}`} className="h-8 text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -142,7 +142,7 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
           </div>
 
           <div className="grid gap-1">
-            <Label htmlFor={`score-${finding.id}`} className="text-[11px] text-muted-foreground">
+            <Label htmlFor={`score-${finding.id}`} className="text-xs text-muted-foreground">
               Risk Score (0.0 – 10.0)
             </Label>
             <Input
@@ -153,14 +153,14 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
               step="0.1"
               value={score}
               onChange={(e) => setScore(e.target.value)}
-              className="h-8 text-xs font-mono"
+              className="h-8 font-mono text-sm"
             />
           </div>
         </div>
       </div>
 
       {finding.evidence.length === 0 && finding.status !== "verified" && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           No evidence is attached yet. Confirming a finding without evidence weakens the assessment report.
         </p>
       )}

@@ -177,14 +177,14 @@ export function AppShell() {
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <SidebarTrigger aria-label="Toggle sidebar" />
           <Separator orientation="vertical" className="mr-2 !h-4" />
-          <div className="flex items-center gap-2 text-xs">
-            <span className="font-semibold text-foreground tracking-tight">Aletheia</span>
-            <span className="text-muted-foreground/40 font-mono">/</span>
-            <span className="text-muted-foreground">Security Assessment &amp; Vulnerability Analysis</span>
+          <div className="flex min-w-0 items-center gap-2 text-xs">
+            <span className="shrink-0 font-semibold tracking-tight text-foreground">Aletheia</span>
+            <span className="shrink-0 font-mono text-muted-foreground/40">/</span>
+            <span className="truncate text-muted-foreground">Security Assessment &amp; Vulnerability Analysis</span>
           </div>
           <div className="ml-auto flex items-center gap-1">
             <Tooltip>

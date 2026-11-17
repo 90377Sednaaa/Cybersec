@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Crosshair, Radar, ShieldAlert, ShieldCheck } from "lucide-react"
+import { Crosshair, Radar, ShieldAlert, ShieldCheck, ArrowRight } from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -10,16 +10,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { api, apiWithMeta, ApiError } from "@/lib/api"
+import { useFindingCounts } from "@/hooks/use-finding-counts"
+import { api, apiWithMeta } from "@/lib/api"
 import { SEVERITIES, capitalize } from "@/lib/finding-style"
 import type { Assessment, AssessmentStatus, Finding, Severity, Target } from "@/lib/types"
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline"
-
-// Every finding is in exactly one review state, so summing the four
-// authoritative counts gives the true total without a fifth request.
-const REVIEW_STATES = ["verified", "needs_evidence", "ai_candidate", "false_positive"] as const
-type ReviewState = (typeof REVIEW_STATES)[number]
 
 const STATUS_VARIANT: Record<AssessmentStatus, BadgeVariant> = {
   draft: "outline",
@@ -43,9 +39,10 @@ interface StatCardProps {
   icon: typeof Crosshair
   hint: string
   loading: boolean
+  to: string
 }
 
-function StatCard({ title, value, icon: Icon, hint, loading }: StatCardProps) {
+function StatCard({ title, value, icon: Icon, hint, loading, to }: StatCardProps) {
   if (loading) {
     return (
       <Card className="transition-all duration-200">
@@ -61,18 +58,26 @@ function StatCard({ title, value, icon: Icon, hint, loading }: StatCardProps) {
     )
   }
   return (
-    <Card className="group relative overflow-hidden transition-all duration-200 hover:border-primary/40 hover:shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</CardTitle>
-        <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
-          <Icon className="size-4" />
-        </span>
-      </CardHeader>
-      <CardContent>
-        <p className="text-3xl font-bold tracking-tight tabular-nums text-foreground">{value}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-      </CardContent>
-    </Card>
+    <Link
+      to={to}
+      className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+    >
+      <Card className="relative h-full overflow-hidden transition-all duration-200 group-hover:border-primary/40 group-hover:shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</CardTitle>
+          <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+            <Icon className="size-4" />
+          </span>
+        </CardHeader>
+        <CardContent>
+          <p className="text-3xl font-bold tracking-tight tabular-nums text-foreground">{value}</p>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">{hint}</p>
+            <ArrowRight className="size-3.5 shrink-0 text-muted-foreground/60 transition-all group-hover:translate-x-0.5 group-hover:text-primary group-focus-visible:translate-x-0.5 group-focus-visible:text-primary" />
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   )
 }
 
@@ -91,33 +96,19 @@ export function DashboardPage() {
       query.state.data?.some((a) => a.status === "running") ? 3000 : false,
   })
 
-  // Same key as the unfiltered Findings page, so the cache is shared.
+  // Same key and shape as the unfiltered Findings page, so the cache is shared.
   // The list is still capped at the 200 newest findings; the severity chart and
   // the per-run chart are derived from it and say so. Counts that must be exact
-  // come from the counts query below instead.
+  // come from useFindingCounts instead.
   const findings = useQuery({
-    queryKey: ["findings", "all", "all", "all"],
-    queryFn: () => api<Finding[]>("/api/findings"),
+    queryKey: ["findings", "all", "all", "all", "all"],
+    queryFn: () => apiWithMeta<Finding[]>("/api/findings?limit=200"),
   })
+  const findingRows = findings.data?.data
 
-  // Authoritative per-state counts (proposal 06). One-row requests read the
-  // filtered X-Total-Count header, so "N of M reviewed" no longer divides by a
-  // truncated page size.
-  const counts = useQuery({
-    queryKey: ["findings", "counts"],
-    queryFn: async (): Promise<Record<ReviewState, number>> => {
-      const entries = await Promise.all(
-        REVIEW_STATES.map(async (state) => {
-          const { totalCount } = await apiWithMeta<Finding[]>(`/api/findings?limit=1&status=${state}`)
-          if (totalCount === null) {
-            throw new ApiError(0, "The server did not report finding totals.")
-          }
-          return [state, totalCount] as const
-        }),
-      )
-      return Object.fromEntries(entries) as Record<ReviewState, number>
-    },
-  })
+  // Authoritative per-state counts (proposal 06): one-row requests read the
+  // filtered X-Total-Count header, shared with the findings page chips.
+  const counts = useFindingCounts()
 
   const loadError = targets.error ?? assessments.error ?? findings.error ?? counts.error
 
@@ -126,11 +117,11 @@ export function DashboardPage() {
   const needsEvidenceCount = counts.data?.needs_evidence ?? 0
   const falsePositiveCount = counts.data?.false_positive ?? 0
   const verifiedCount = counts.data?.verified ?? 0
-  const openCount = candidateCount + needsEvidenceCount
-  const totalFindings = REVIEW_STATES.reduce((sum, state) => sum + (counts.data?.[state] ?? 0), 0)
+  const openCount = counts.data?.needsReview ?? 0
+  const totalFindings = counts.data?.total ?? 0
 
   const counted =
-    findings.data?.filter((f) => (scope === "verified" ? f.status === "verified" : f.status !== "false_positive")) ?? []
+    findingRows?.filter((f) => (scope === "verified" ? f.status === "verified" : f.status !== "false_positive")) ?? []
   const chartData = SEVERITIES.map((severity) => ({
     severity: capitalize(severity),
     count: counted.filter((f) => f.severity === severity).length,
@@ -159,7 +150,7 @@ export function DashboardPage() {
     .slice(-8)
     .map((assessment) => ({
       label: `#${assessment.id}`,
-      count: findings.data?.filter((f) => f.assessment_id === assessment.id).length ?? 0,
+      count: findingRows?.filter((f) => f.assessment_id === assessment.id).length ?? 0,
     }))
 
   return (
@@ -184,6 +175,7 @@ export function DashboardPage() {
           icon={Crosshair}
           hint="Authorized web applications"
           loading={targets.isLoading}
+          to="/targets"
         />
         <StatCard
           title="Assessments"
@@ -191,6 +183,7 @@ export function DashboardPage() {
           icon={Radar}
           hint={runningCount > 0 ? `${runningCount} running now` : "Runs of the scan pipeline"}
           loading={assessments.isLoading}
+          to="/assessments"
         />
         <StatCard
           title="Open findings"
@@ -198,6 +191,7 @@ export function DashboardPage() {
           icon={ShieldAlert}
           hint="Candidates awaiting review"
           loading={counts.isLoading}
+          to="/findings?status=needs_review"
         />
         <StatCard
           title="Verified findings"
@@ -205,6 +199,7 @@ export function DashboardPage() {
           icon={ShieldCheck}
           hint="Confirmed by an assessor"
           loading={counts.isLoading}
+          to="/findings?status=verified"
         />
       </div>
 
@@ -317,7 +312,7 @@ export function DashboardPage() {
                 </li>
               ))}
             </ul>
-            <p className="text-[11px] text-muted-foreground/80 leading-relaxed border-t pt-2.5">
+            <p className="border-t pt-2.5 text-xs leading-relaxed text-muted-foreground/80">
               Only verified findings count as confirmed. AI candidates stay marked until an assessor decides.
             </p>
           </CardContent>

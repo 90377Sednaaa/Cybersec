@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { useParams, Link, useNavigate } from "react-router-dom"
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom"
 import { toast } from "sonner"
 import {
   ArrowLeft,
@@ -27,11 +27,11 @@ import { cn } from "cn"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FindingReview } from "@/pages/finding-review"
 import { FindingQAPanel } from "@/components/finding-qa-panel"
-import { api, apiBlob, getToken } from "@/lib/api"
+import { api, apiBlob, apiWithMeta, getToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useShowShortcutHints } from "@/lib/shortcuts"
 import {
@@ -141,12 +141,12 @@ function EvidenceBlock({
           <p className="truncate text-xs font-medium text-foreground" title={label}>
             {label}
           </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             <span>{KIND_LABEL[item.kind]}</span>
             {item.tool && (
               <>
                 <span aria-hidden="true">·</span>
-                <span className="font-mono text-[10px]">{item.tool}</span>
+                <span className="font-mono">{item.tool}</span>
               </>
             )}
             <span aria-hidden="true" className="hidden sm:inline">
@@ -166,7 +166,7 @@ function EvidenceBlock({
                   variant="destructive"
                   size="sm"
                   disabled={isDeleting}
-                  className="h-6 px-2 text-[10px]"
+                  className="h-6 px-2 text-xs"
                   onClick={() => {
                     onDelete(item.id)
                     setConfirmDelete(false)
@@ -177,7 +177,7 @@ function EvidenceBlock({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 px-1.5 text-[10px]"
+                  className="h-6 px-1.5 text-xs"
                   onClick={() => setConfirmDelete(false)}
                 >
                   Cancel
@@ -221,7 +221,7 @@ function EvidenceBlock({
             <div className="relative">
               <pre
                 className={cn(
-                  "overflow-auto whitespace-pre-wrap break-all rounded-md border border-zinc-800 bg-zinc-950 p-3.5 font-mono text-[11px] leading-relaxed text-zinc-100 selection:bg-primary/30",
+                  "overflow-auto whitespace-pre-wrap break-all rounded-md border border-zinc-800 bg-zinc-950 p-3.5 font-mono text-xs leading-relaxed text-zinc-100 selection:bg-primary/30",
                   collapsible && !expanded
                     ? "max-h-48"
                     : collapsible
@@ -240,7 +240,7 @@ function EvidenceBlock({
                 type="button"
                 onClick={onToggle}
                 aria-expanded={expanded}
-                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border bg-background py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border bg-background py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 {expanded ? (
                   <ChevronUp className="size-3.5" />
@@ -270,7 +270,7 @@ function MetaItem({
 }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd
         className={cn(
           "mt-0.5 text-xs font-medium text-foreground",
@@ -289,6 +289,9 @@ export function FindingDetailPage() {
   const { id } = useParams<{ id: string }>()
   const findingId = id ? parseInt(id, 10) : null
   const navigate = useNavigate()
+  const location = useLocation()
+  const locationState = location.state as { from?: unknown } | null
+  const backTo = typeof locationState?.from === "string" ? locationState.from : "/findings"
   const { hasRole } = useAuth()
   const [showHints] = useShowShortcutHints()
   const queryClient = useQueryClient()
@@ -304,8 +307,8 @@ export function FindingDetailPage() {
 
   // Query all findings to build Previous / Next stepping buttons
   const findingsQuery = useQuery({
-    queryKey: ["findings", "all", "all", "all"],
-    queryFn: () => api<Finding[]>("/api/findings"),
+    queryKey: ["findings", "all", "all", "all", "all"],
+    queryFn: () => apiWithMeta<Finding[]>("/api/findings?limit=200"),
   })
 
   // Query assessments and targets for context attribution
@@ -374,7 +377,7 @@ export function FindingDetailPage() {
   }
 
   // Calculate Prev / Next IDs
-  const allFindings = findingsQuery.data ?? []
+  const allFindings = findingsQuery.data?.data ?? []
   const currentIndex = allFindings.findIndex((f) => f.id === findingId)
   const prevFinding = currentIndex > 0 ? allFindings[currentIndex - 1] : null
   const nextFinding = currentIndex !== -1 && currentIndex < allFindings.length - 1 ? allFindings[currentIndex + 1] : null
@@ -397,16 +400,16 @@ export function FindingDetailPage() {
 
       if (e.key === "ArrowLeft" && prevFinding) {
         e.preventDefault()
-        navigate(`/findings/${prevFinding.id}`)
+        navigate(`/findings/${prevFinding.id}`, { state: location.state })
       } else if (e.key === "ArrowRight" && nextFinding) {
         e.preventDefault()
-        navigate(`/findings/${nextFinding.id}`)
+        navigate(`/findings/${nextFinding.id}`, { state: location.state })
       }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [prevFinding, nextFinding, navigate])
+  }, [prevFinding, nextFinding, navigate, location.state])
 
   if (isLoading) {
     return (
@@ -433,7 +436,7 @@ export function FindingDetailPage() {
     return (
       <div className="space-y-4">
         <Button asChild variant="outline" size="sm">
-          <Link to="/findings">
+          <Link to={backTo}>
             <ArrowLeft className="size-4" /> Back to Findings
           </Link>
         </Button>
@@ -451,7 +454,7 @@ export function FindingDetailPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           <Button asChild variant="ghost" size="sm" className="-ml-2 h-8">
-            <Link to="/findings">
+            <Link to={backTo}>
               <ArrowLeft className="size-4" />
               <span>Findings</span>
             </Link>
@@ -495,14 +498,14 @@ export function FindingDetailPage() {
             variant="outline"
             size="sm"
             disabled={!prevFinding}
-            onClick={() => prevFinding && navigate(`/findings/${prevFinding.id}`)}
+            onClick={() => prevFinding && navigate(`/findings/${prevFinding.id}`, { state: location.state })}
             title={prevFinding ? `Previous: ${prevFinding.title} (←)` : "First finding"}
             className="text-xs"
           >
             <ChevronLeft className="size-4" />
             <span>Previous</span>
             {showHints && (
-              <kbd className="ml-0.5 hidden rounded border bg-muted px-1 text-[9px] font-mono text-muted-foreground sm:inline-block">
+              <kbd className="ml-0.5 hidden rounded border bg-muted px-1 font-mono text-[10px] text-muted-foreground sm:inline-block">
                 ←
               </kbd>
             )}
@@ -512,13 +515,13 @@ export function FindingDetailPage() {
             variant="outline"
             size="sm"
             disabled={!nextFinding}
-            onClick={() => nextFinding && navigate(`/findings/${nextFinding.id}`)}
+            onClick={() => nextFinding && navigate(`/findings/${nextFinding.id}`, { state: location.state })}
             title={nextFinding ? `Next: ${nextFinding.title} (→)` : "Last finding"}
             className="text-xs"
           >
             <span>Next</span>
             {showHints && (
-              <kbd className="ml-0.5 hidden rounded border bg-muted px-1 text-[9px] font-mono text-muted-foreground sm:inline-block">
+              <kbd className="ml-0.5 hidden rounded border bg-muted px-1 font-mono text-[10px] text-muted-foreground sm:inline-block">
                 →
               </kbd>
             )}
@@ -531,8 +534,8 @@ export function FindingDetailPage() {
       {data.status === "ai_candidate" && (
         <Alert className="border-amber-500/30 bg-amber-500/5 text-foreground">
           <ShieldAlert className="size-4 text-amber-500" />
-          <AlertTitle className="text-xs font-semibold text-amber-500">Unconfirmed AI Candidate</AlertTitle>
-          <AlertDescription className="text-xs leading-relaxed text-muted-foreground">
+          <AlertTitle className="text-sm font-semibold text-amber-500">Unconfirmed AI Candidate</AlertTitle>
+          <AlertDescription className="text-sm leading-relaxed text-muted-foreground">
             Drafted from tool output and AI interpretation. It stays an unconfirmed candidate until an
             assessor verifies it.
           </AlertDescription>
@@ -560,13 +563,13 @@ export function FindingDetailPage() {
                   <span className="text-muted-foreground/70">/10</span>
                 </span>
               </div>
-              <CardTitle className="text-pretty text-xl font-semibold leading-snug tracking-tight text-foreground">
+              <h1 className="text-pretty text-xl font-semibold leading-snug tracking-tight text-foreground">
                 {data.title}
-              </CardTitle>
+              </h1>
             </CardHeader>
 
             <CardContent className="space-y-4 px-5 pb-5">
-              <p className="text-pretty text-[13px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
+              <p className="text-pretty whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                 {data.description || "No description provided."}
               </p>
 
@@ -586,7 +589,7 @@ export function FindingDetailPage() {
               </dl>
 
               {data.verified_by && (
-                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
                   <ShieldCheck className="size-3.5 shrink-0 text-emerald-500" />
                   <span>
                     {data.status === "false_positive" ? "Reviewed by" : "Verified by"}{" "}
@@ -598,11 +601,11 @@ export function FindingDetailPage() {
               )}
 
               <div className="space-y-1.5 border-t pt-3.5">
-                <h3 className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
                   <Wrench className="size-3.5 text-primary" />
                   Remediation
-                </h3>
-                <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                </h2>
+                <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
                   {data.remediation || "No remediation guidance available."}
                 </p>
               </div>
@@ -612,10 +615,10 @@ export function FindingDetailPage() {
           {/* Review Decision Workflow */}
           <Card className="gap-0 overflow-hidden py-0">
             <CardHeader className="px-5 pb-3 pt-5">
-              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold">
                 <ShieldCheck className="size-4 text-primary" />
                 Assessor review
-              </CardTitle>
+              </h2>
             </CardHeader>
             <CardContent className="px-5 pb-5">
               <FindingReview key={data.id} finding={data} />

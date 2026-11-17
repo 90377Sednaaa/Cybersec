@@ -1,18 +1,28 @@
 import { useEffect, useRef, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft, Check, CheckCircle2, Copy } from "lucide-react"
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Copy } from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { api } from "@/lib/api"
+import { api, apiWithMeta } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import {
+  SEVERITIES,
+  SEVERITY_CLASS,
+  SEVERITY_WEIGHT,
+  STATUS_CLASS,
+  STATUS_SHORT_LABEL,
+  STATUS_VARIANT as FINDING_STATUS_VARIANT,
+  capitalize,
+  displayScore,
+} from "@/lib/finding-style"
 import { useScanEvents } from "@/lib/scan-events"
 import { AssessmentReports } from "@/pages/assessment-reports"
-import type { AssessmentDetail, AssessmentStatus, Job, JobStatus, Target } from "@/lib/types"
+import type { AssessmentDetail, AssessmentStatus, Finding, Job, JobStatus, Target } from "@/lib/types"
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline"
 
@@ -112,19 +122,19 @@ function JobTimeline({
                   }
                 />
                 {queued && (
-                  <span className="absolute inset-0 flex items-center px-2 text-[10px] text-muted-foreground">
+                  <span className="absolute inset-0 flex items-center px-2 text-xs text-muted-foreground">
                     queued
                   </span>
                 )}
               </div>
-              <span className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+              <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
                 {queued ? "-" : formatDuration((end ?? start) - start)}
               </span>
             </div>
           )
         })}
       </div>
-      <div className="flex justify-between pl-18 text-[10px] tabular-nums text-muted-foreground">
+      <div className="flex justify-between pl-18 text-xs tabular-nums text-muted-foreground">
         <span>{formatTime(origin)}</span>
         <span>{formatTime(finish)}</span>
       </div>
@@ -156,11 +166,11 @@ function JobRow({ job }: { job: Job }) {
           />
         </div>
       )}
-      <div className="flex justify-between text-[11px] text-muted-foreground">
+      <div className="flex justify-between text-xs text-muted-foreground">
         <span>{formatDate(job.started_at)}</span>
         <span>{formatDate(job.finished_at)}</span>
       </div>
-      {job.command && <p className="break-all font-mono text-[11px] text-muted-foreground">{job.command}</p>}
+      {job.command && <p className="break-all font-mono text-xs text-muted-foreground">{job.command}</p>}
     </div>
   )
 }
@@ -188,11 +198,20 @@ export function AssessmentRunPage() {
   })
   const targetName = targets.data?.find((target) => target.id === data?.target_id)?.name
 
+  // Findings are created when the run finishes, so this card closes the
+  // scan-to-triage loop without a manual trip through the findings filters.
+  const runFindings = useQuery({
+    queryKey: ["findings", "run", assessmentId],
+    queryFn: () => apiWithMeta<Finding[]>(`/api/findings?assessment_id=${assessmentId}&limit=200`),
+    enabled: validId,
+  })
+
   // Any state-change event refreshes the progress cards immediately.
   const { lines, connected } = useScanEvents(validId ? assessmentId : null, (event) => {
     if (event.type !== "log") {
       queryClient.invalidateQueries({ queryKey: ["assessment", assessmentId] })
       queryClient.invalidateQueries({ queryKey: ["assessments"] })
+      queryClient.invalidateQueries({ queryKey: ["findings"] })
     }
   })
 
@@ -241,6 +260,21 @@ export function AssessmentRunPage() {
     setCopiedLog(true)
     setTimeout(() => setCopiedLog(false), 2000)
   }
+
+  const runFindingRows = runFindings.data?.data ?? []
+  const runFindingTotal = runFindings.data?.totalCount ?? runFindingRows.length
+  const rankedFindings = [...runFindingRows].sort(
+    (a, b) => SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity] || b.score - a.score,
+  )
+  const topFindings = rankedFindings.slice(0, 5)
+  const nextCandidate = rankedFindings.find(
+    (finding) => finding.status === "ai_candidate" || finding.status === "needs_evidence",
+  )
+  const severityCounts = SEVERITIES.map((severity) => ({
+    severity,
+    count: runFindingRows.filter((finding) => finding.severity === severity).length,
+  })).filter((entry) => entry.count > 0)
+  const findingsHref = `/findings?assessment=${assessmentId}`
 
   if (!validId) {
     return (
@@ -374,7 +408,7 @@ export function AssessmentRunPage() {
                         className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
                       >
                         {copiedLog ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-                        <span className="ml-1 text-[11px]">{copiedLog ? "Copied" : "Copy"}</span>
+                        <span className="ml-1 text-xs">{copiedLog ? "Copied" : "Copy"}</span>
                       </Button>
                     )}
                     {isFinished ? (
@@ -397,7 +431,7 @@ export function AssessmentRunPage() {
               <CardContent>
                 <div
                   ref={logRef}
-                  className="h-[26rem] overflow-y-auto rounded-md border bg-muted/40 p-2 font-mono text-xs"
+                  className="h-[26rem] overflow-y-auto rounded-md border bg-muted/40 p-2 font-mono text-[13px] leading-relaxed"
                 >
                   {displayLines.length === 0 ? (
                     <p className="text-muted-foreground">
@@ -419,6 +453,107 @@ export function AssessmentRunPage() {
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+              <div className="min-w-0 space-y-1.5">
+                <CardTitle className="text-base">Findings from this run</CardTitle>
+                <CardDescription>
+                  {runFindings.isLoading
+                    ? "Loading findings…"
+                    : runFindingTotal === 0
+                      ? data.status === "running"
+                        ? "Findings appear here when the run finishes and interpretation completes."
+                        : "No findings were recorded for this run."
+                      : `${runFindingTotal} ${runFindingTotal === 1 ? "finding" : "findings"} recorded by this run.`}
+                </CardDescription>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {nextCandidate && (
+                  <Button asChild size="sm">
+                    <Link to={`/findings/${nextCandidate.id}`} state={{ from: findingsHref }}>
+                      Review next
+                      <ArrowRight className="size-3.5" />
+                    </Link>
+                  </Button>
+                )}
+                <Button asChild variant="outline" size="sm">
+                  <Link to={findingsHref}>View all</Link>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {runFindings.error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{runFindings.error.message}</AlertDescription>
+                </Alert>
+              )}
+
+              {severityCounts.length > 0 && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                  {severityCounts.map(({ severity, count }) => (
+                    <span key={severity} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: `var(--severity-${severity})` }}
+                        aria-hidden="true"
+                      />
+                      <span className="font-medium text-foreground">{capitalize(severity)}</span>
+                      <span className="font-mono tabular-nums">{count}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {topFindings.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {data.status === "running"
+                    ? "Waiting for interpretation to finish."
+                    : "No findings to review for this run."}
+                </p>
+              ) : (
+                <ul className="divide-y rounded-lg border">
+                  {topFindings.map((finding) => (
+                    <li key={finding.id}>
+                      <Link
+                        to={`/findings/${finding.id}`}
+                        state={{ from: findingsHref }}
+                        className="flex items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-muted/40"
+                      >
+                        <Badge className={SEVERITY_CLASS[finding.severity]}>
+                          {capitalize(finding.severity)}
+                        </Badge>
+                        <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={finding.title}>
+                          {finding.title}
+                        </span>
+                        <span className="hidden w-44 shrink-0 truncate text-xs text-muted-foreground lg:inline">
+                          {finding.category}
+                        </span>
+                        <Badge
+                          variant={FINDING_STATUS_VARIANT[finding.status]}
+                          className={STATUS_CLASS[finding.status]}
+                        >
+                          {STATUS_SHORT_LABEL[finding.status]}
+                        </Badge>
+                        <span className="w-8 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                          {displayScore(finding.score, finding.severity)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {runFindingTotal > topFindings.length && (
+                <p className="text-xs text-muted-foreground">
+                  Showing the {topFindings.length} most severe of {runFindingTotal}.{" "}
+                  <Link to={findingsHref} className="font-medium text-primary underline-offset-4 hover:underline">
+                    View all findings
+                  </Link>
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardContent>
