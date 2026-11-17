@@ -193,7 +193,7 @@ export function UserGuidePage() {
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Overview &amp; The Human-in-the-Loop Concept</h1>
               <p className="mt-2 text-base text-muted-foreground leading-relaxed">
-                <strong>Aletheia</strong> is an AI-assisted security assessment and vulnerability analysis platform designed to combine battle-tested discovery tools (Nmap, OWASP ZAP, custom HTTP prober, DNS) with modern LLM-driven interpretation, while keeping the <strong>human security assessor in charge</strong> of verified findings.
+                <strong>Aletheia</strong> is an AI-assisted security assessment and vulnerability analysis platform that combines discovery tools (Nmap, OWASP ZAP, a custom HTTP prober, and DNS) with LLM interpretation, while keeping the <strong>human security assessor in charge</strong> of verified findings.
               </p>
             </div>
 
@@ -215,7 +215,7 @@ export function UserGuidePage() {
                   { stage: "3. Tool Scanning", desc: "Port scans (Nmap), HTTP header & TLS probes, and spider crawler (ZAP)." },
                   { stage: "4. AI Interpretation", desc: "Normalizer + LLM extracts evidence, CVE correlations, and structured candidates." },
                   { stage: "5. Human Verification", desc: "Assessor verifies findings, discards false positives, and attaches notes." },
-                  { stage: "6. Executive Reporting", desc: "Generates HTML preview and client-ready Playwright PDF reports." },
+                  { stage: "6. Executive Reporting", desc: "Generates an HTML preview and a Playwright-rendered PDF report." },
                 ].map((item, idx) => (
                   <Card key={idx} className="bg-card/50 hover:bg-card transition-colors">
                     <CardHeader className="p-4 pb-2">
@@ -498,7 +498,7 @@ export function UserGuidePage() {
             <div>
               <h2 className="text-2xl font-bold tracking-tight">Reports &amp; Live HTML Preview</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Aletheia provides both an instant in-app HTML preview and official Playwright-rendered PDF reports.
+                Aletheia provides an in-app HTML preview and Playwright-rendered PDF reports.
               </p>
             </div>
 
@@ -507,7 +507,7 @@ export function UserGuidePage() {
                 <CardHeader className="p-4 pb-2">
                   <div className="flex items-center gap-2">
                     <Eye className="size-4 text-primary" />
-                    <CardTitle className="text-sm font-semibold">Instant In-App Preview</CardTitle>
+                    <CardTitle className="text-sm font-semibold">In-App Preview</CardTitle>
                   </div>
                   <CardDescription className="text-xs">No downloads or file viewers required</CardDescription>
                 </CardHeader>
@@ -516,7 +516,7 @@ export function UserGuidePage() {
                     Clicking <strong>Preview Report</strong> opens a sandboxed iframe displaying the self-contained Jinja2 HTML report directly within Aletheia.
                   </p>
                   <p>
-                    It displays the latest verified findings, risk matrices, and executive summaries instantly, making review frictionless before printing.
+                    It shows the latest verified findings, risk matrices, and executive summaries before printing.
                   </p>
                 </CardContent>
               </Card>
@@ -548,7 +548,7 @@ export function UserGuidePage() {
             <div>
               <h2 className="text-2xl font-bold tracking-tight">AI Pipeline &amp; Secret Redaction</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                How LLM providers integrate safely with zero credential leakage.
+                How LLM providers are configured, and how credentials and sensitive data are protected.
               </p>
             </div>
 
@@ -562,7 +562,7 @@ export function UserGuidePage() {
                   <li><strong>Summary:</strong> Synthesizes verified findings into executive-level risk narratives and remediation guidance.</li>
                 </ul>
                 <p>
-                  If no provider is configured, the platform fails soft: rule-based findings are still generated and the report renders with an &quot;AI summary pending&quot; placeholder.
+                  If no provider is configured, rule-based findings are still generated and the report shows an &quot;AI summary pending&quot; placeholder.
                 </p>
               </div>
 
@@ -598,7 +598,7 @@ export function UserGuidePage() {
             <div>
               <h2 className="text-2xl font-bold tracking-tight">Keyboard Shortcuts</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Power-user navigation chords for rapid assessor movement.
+                Keyboard shortcuts for moving between findings and pages.
               </p>
             </div>
 
@@ -629,7 +629,7 @@ export function UserGuidePage() {
             <div>
               <h2 className="text-2xl font-bold tracking-tight">Troubleshooting &amp; FAQ</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Common questions and resolutions when running or presenting Aletheia.
+                Common questions and fixes for running Aletheia.
               </p>
             </div>
 
@@ -637,7 +637,7 @@ export function UserGuidePage() {
               {[
                 {
                   q: "ZAP daemon is reported as offline during an assessment",
-                  a: "ZAP is only scheduled for full_intrusive scans. For passive_safe scans, ZAP is ignored. If you are demoing intrusive scans, launch ZAP via: zap.bat -cmd -daemon -port 8080 -config api.key=<key> or pass -StartZap to setup-dev.ps1.",
+                  a: "ZAP is only scheduled for full_intrusive scans. For passive_safe scans, ZAP is ignored. For intrusive scans, start ZAP with: zap.bat -cmd -daemon -port 8080 -config api.key=<key> or pass -StartZap to setup-dev.ps1.",
                 },
                 {
                   q: "Report generation fails with 'BrowserType.launch: Executable doesn't exist'",

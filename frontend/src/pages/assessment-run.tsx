@@ -332,7 +332,7 @@ export function AssessmentRunPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {data.jobs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No jobs planned for this run.</p>
+                  <p className="text-sm text-muted-foreground">No jobs for this run.</p>
                 ) : (
                   <>
                     <JobTimeline

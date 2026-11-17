@@ -38,11 +38,11 @@ const TASK_INFO: Record<string, { label: string; hint: string }> = {
   },
   prioritization: {
     label: "Risk prioritization",
-    hint: "Orders findings by risk (stretch feature).",
+    hint: "Reserved for risk-based ordering of findings.",
   },
   qa: {
     label: "Finding Q&A",
-    hint: "Answers analyst questions about a finding (stretch feature).",
+    hint: "Answers analyst questions about a finding.",
   },
 }
 

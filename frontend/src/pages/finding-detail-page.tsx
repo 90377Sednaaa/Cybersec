@@ -685,7 +685,6 @@ export function FindingDetailPage() {
             </div>
           )}
 
-          {/* Finding Q&A Analyst Assistant (T2.6 Stretch) */}
           <FindingQAPanel
             key={data.id}
             finding={data}
