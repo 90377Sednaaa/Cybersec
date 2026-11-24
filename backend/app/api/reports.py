@@ -8,6 +8,7 @@ Deleting a report removes the row and its PDF, and is refused while the
 background job still owns the row.
 """
 
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -17,10 +18,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_role
-from app.database import get_db
-from app.models import Assessment, Report, ReportStatus, Role, User
+from app.database import SessionLocal, get_db
+from app.models import Assessment, LLMTask, Report, ReportStatus, Role, User
 from app.models.user import utcnow
-from app.reporting import REPORTS_DIR, ensure_ai_summary, render_report_html, run_report_job
+from app.reporting import (
+    REPORTS_DIR,
+    ensure_ai_summary,
+    latest_ai_summary_bundle,
+    render_report_html,
+    run_report_job,
+)
 from app.schemas.findings import ReportOut
 
 router = APIRouter(tags=["reports"])
@@ -159,28 +166,71 @@ def list_reports(
 @router.get("/assessments/{assessment_id}/report/preview")
 def preview_report(
     assessment_id: int,
-    user: User = Depends(get_current_user),
+    _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Render the report template as HTML for in-app preview.
 
-    Read-only and authenticated. The frontend cannot put a Bearer token on an
-    iframe src, so it fetches this as text and injects it through srcDoc with a
-    sandbox. The template is self-contained (inline CSS/SVG, no scripts), so it
-    renders in embedded browsers that have no built-in PDF viewer.
-
-    This is a live view over the current findings, not a stored PDF: it can be
-    read before any report is generated, and it may be newer than a saved PDF.
+    Fast and strictly read-only: renders immediately using the latest cached AI
+    summary without blocking the preview iframe on an outbound LLM request.
+    Assessors can generate or refresh the AI summary on demand via
+    `POST /api/assessments/{id}/summary`, and PDF exports still auto-refresh
+    stale summaries in the background worker.
     """
     assessment = db.get(Assessment, assessment_id)
     if assessment is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
-    # A summary may need generating on first view. Viewers stay strictly
-    # read-only: they see the cached summary (or the placeholder), never cause
-    # an outbound LLM call or an AIOutput write.
-    if user.role in (Role.admin, Role.assessor):
-        ensure_ai_summary(db, assessment)
     return HTMLResponse(render_report_html(db, assessment))
+
+
+@router.post("/assessments/{assessment_id}/summary")
+async def generate_report_summary(
+    assessment_id: int,
+    _: User = Depends(require_role(Role.admin, Role.assessor)),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Generate or refresh the AI executive summary from VERIFIED findings only."""
+    from app.ai import client as ai_client
+    from app.ai.summarize import verified_findings_for
+
+    assessment = db.get(Assessment, assessment_id)
+    if assessment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
+    if not verified_findings_for(db, assessment_id):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Verify at least one finding before generating an AI executive summary.",
+        )
+    try:
+        ai_client.resolve_task_config(db, LLMTask.summary)
+    except ai_client.NoProviderConfigured as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "No AI provider or model is configured for Report summaries. Configure one in AI Settings.",
+        ) from exc
+
+    def _run_summary() -> dict | None:
+        with SessionLocal() as sum_db:
+            sum_assessment = sum_db.get(Assessment, assessment_id)
+            if sum_assessment is None:
+                return None
+            generated = ensure_ai_summary(sum_db, sum_assessment, force=True)
+            if not generated:
+                return None
+            return latest_ai_summary_bundle(sum_db, assessment_id)
+
+    bundle = await asyncio.to_thread(_run_summary)
+    if bundle is None:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "AI provider failed to produce a valid summary. Check AI Settings or try again.",
+        )
+    return {
+        "assessment_id": assessment_id,
+        "executive_summary": bundle["executive_summary"],
+        "target_overview": bundle["target_overview"],
+        "model": bundle["model"],
+    }
 
 
 @router.get("/reports/{report_id}")

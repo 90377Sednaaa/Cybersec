@@ -315,12 +315,135 @@ def _candidate_evidence(jobs: list[Job]) -> str:
     return "\n".join(parts)[:4000]
 
 
+def _digest_job(job: Job) -> str:
+    """Turn a completed job's raw JSON into a compact, high-signal digest so
+    chatty scans (e.g. 50+ ZAP alerts or large Nmap runs) do not lose high-risk
+    signals to blind character truncation."""
+    raw_text = job.raw_output or ""
+    try:
+        raw = json.loads(raw_text)
+    except (TypeError, ValueError):
+        return raw_text[:PER_JOB_CONTEXT_CHARS]
+    if not isinstance(raw, dict):
+        return raw_text[:PER_JOB_CONTEXT_CHARS]
+
+    tool = (job.tool or "").lower()
+    if tool == "dns":
+        lines = [f"Hostname: {raw.get('hostname', '')}"]
+        addrs = raw.get("addresses") or {}
+        if isinstance(addrs, dict):
+            if addrs.get("ipv4"):
+                lines.append(f"IPv4: {', '.join(addrs['ipv4'])}")
+            if addrs.get("ipv6"):
+                lines.append(f"IPv6: {', '.join(addrs['ipv6'])}")
+        for rtype in ("mx", "ns", "txt"):
+            vals = raw.get(rtype) or []
+            if vals:
+                lines.append(f"{rtype.upper()}: {', '.join(str(v) for v in vals[:10])}")
+        subs = raw.get("subdomains") or {}
+        if isinstance(subs, dict) and subs:
+            lines.append(f"Subdomains ({len(subs)}): " + ", ".join(f"{k}={v}" for k, v in list(subs.items())[:15]))
+        return "\n".join(lines)[:PER_JOB_CONTEXT_CHARS]
+
+    if tool == "nmap":
+        lines: list[str] = []
+        if raw.get("summary"):
+            lines.append(f"Summary: {raw['summary']}")
+        for host in raw.get("hosts") or []:
+            if not isinstance(host, dict):
+                continue
+            lines.append(f"Host: {host.get('address', '')} ({host.get('hostname', '')})")
+            for p in host.get("open_ports") or []:
+                if not isinstance(p, dict):
+                    continue
+                detail = " ".join(
+                    str(x)
+                    for x in (p.get("service"), p.get("product"), p.get("version"), p.get("extrainfo"))
+                    if x
+                )
+                cpes = p.get("cpe") or []
+                cpe_suffix = f" [cpe: {', '.join(cpes[:2])}]" if cpes else ""
+                lines.append(f"  - {p.get('port')}/{p.get('protocol', 'tcp')} open {detail}{cpe_suffix}".rstrip())
+        return ("\n".join(lines) if lines else raw_text)[:PER_JOB_CONTEXT_CHARS]
+
+    if tool == "prober":
+        lines = [
+            f"URL: {raw.get('url', '')} (HTTP {raw.get('status_code', '?')})",
+            f"Headers: {json.dumps(raw.get('headers', {}))}",
+        ]
+        cookies = raw.get("cookies") or []
+        if cookies:
+            lines.append(f"Cookies ({len(cookies)}): " + " | ".join(str(c)[:140] for c in cookies[:10]))
+        tls = raw.get("tls") or {}
+        if tls:
+            lines.append(f"TLS: {json.dumps(tls)}")
+        probed = raw.get("probed_paths") or []
+        if probed:
+            lines.append(
+                f"Exposed paths ({len(probed)}): "
+                + ", ".join(f"{p.get('path')} (HTTP {p.get('status')})" for p in probed[:20] if isinstance(p, dict))
+            )
+        return "\n".join(lines)[:PER_JOB_CONTEXT_CHARS]
+
+    if tool == "zap":
+        alerts = raw.get("alerts") or []
+        if not isinstance(alerts, list):
+            return raw_text[:PER_JOB_CONTEXT_CHARS]
+        # Group by (title, risk) so repeated URL instances don't starve other alerts.
+        risk_rank = {"critical": 4, "high": 3, "medium": 2, "low": 1, "informational": 0}
+        grouped: dict[tuple[str, str], dict] = {}
+        for a in alerts:
+            if not isinstance(a, dict):
+                continue
+            title = str(a.get("title") or "").strip()
+            risk = str(a.get("risk") or "low").strip().lower()
+            if not title:
+                continue
+            key = (title, risk)
+            if key not in grouped:
+                grouped[key] = {
+                    "title": title,
+                    "risk": risk,
+                    "confidence": a.get("confidence") or "",
+                    "cwe": a.get("cwe") or "",
+                    "method": a.get("method") or "",
+                    "param": a.get("param") or "",
+                    "sample_url": a.get("url") or "",
+                    "evidence": str(a.get("evidence") or "")[:200],
+                    "count": 1,
+                }
+            else:
+                grouped[key]["count"] += 1
+        ordered = sorted(
+            grouped.values(),
+            key=lambda g: (-risk_rank.get(g["risk"], 0), -g["count"], g["title"]),
+        )
+        lines = [f"Mode: {raw.get('mode', 'unknown')} | Unique alerts: {len(ordered)} (total instances: {len(alerts)})"]
+        for g in ordered[:35]:
+            meta = ", ".join(
+                p
+                for p in (
+                    f"risk={g['risk']}",
+                    f"instances={g['count']}",
+                    f"cwe={g['cwe']}" if g["cwe"] else "",
+                    f"param={g['param']}" if g["param"] else "",
+                    f"url={g['sample_url']}" if g["sample_url"] else "",
+                )
+                if p
+            )
+            ev = f" | evidence={g['evidence']}" if g["evidence"] else ""
+            lines.append(f"- {g['title']} ({meta}){ev}")
+        return "\n".join(lines)[:PER_JOB_CONTEXT_CHARS]
+
+    return raw_text[:PER_JOB_CONTEXT_CHARS]
+
+
 def build_context(jobs: list[Job]) -> str:
-    """One redaction-sized context block from every completed job's raw output."""
+    """One redaction-sized structured context block from every completed job."""
     sections = []
     for job in jobs:
         if job.status == JobStatus.completed and job.raw_output:
-            sections.append(f"### tool: {job.tool}\n{job.raw_output[:PER_JOB_CONTEXT_CHARS]}")
+            sections.append(f"### tool: {job.tool}\n{_digest_job(job)}")
     return "\n\n".join(sections)
 
 

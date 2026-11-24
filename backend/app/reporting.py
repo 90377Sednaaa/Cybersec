@@ -84,8 +84,9 @@ def _latest_summary_row(db: Session, assessment_id: int) -> AIOutput | None:
     )
 
 
-def latest_ai_summary(db: Session, assessment_id: int) -> str | None:
-    """Read the stored executive summary. Read-only: never calls a provider."""
+def latest_ai_summary_bundle(db: Session, assessment_id: int) -> dict | None:
+    """Read the full stored AI summary payload (executive_summary, target_overview,
+    finding_explanations). Read-only: never calls a provider."""
     row = _latest_summary_row(db, assessment_id)
     if row is None:
         return None
@@ -93,17 +94,48 @@ def latest_ai_summary(db: Session, assessment_id: int) -> str | None:
         payload = json.loads(row.content)
     except (TypeError, ValueError):
         return None
-    text = payload.get("executive_summary") if isinstance(payload, dict) else None
-    return text.strip() if isinstance(text, str) and text.strip() else None
+    if not isinstance(payload, dict):
+        return None
+    exec_text = payload.get("executive_summary")
+    if not isinstance(exec_text, str) or not exec_text.strip():
+        return None
+    target_overview = payload.get("target_overview")
+    explanations_raw = payload.get("finding_explanations")
+    explanations: dict[str, dict[str, str]] = {}
+    if isinstance(explanations_raw, list):
+        for entry in explanations_raw:
+            if not isinstance(entry, dict):
+                continue
+            title = str(entry.get("title") or "").strip()
+            if not title:
+                continue
+            explanations[title.lower()] = {
+                "explanation": str(entry.get("explanation") or "").strip(),
+                "remediation": str(entry.get("remediation") or "").strip(),
+            }
+    return {
+        "executive_summary": exec_text.strip(),
+        "target_overview": target_overview.strip() if isinstance(target_overview, str) and target_overview.strip() else None,
+        "finding_explanations": explanations,
+        "model": row.model or "",
+    }
 
 
-def ensure_ai_summary(db: Session, assessment: Assessment) -> None:
-    """Generate a summary when the cached one is missing or older than a verification.
+def latest_ai_summary(db: Session, assessment_id: int) -> str | None:
+    """Read the stored executive summary. Read-only: never calls a provider."""
+    bundle = latest_ai_summary_bundle(db, assessment_id)
+    return bundle["executive_summary"] if bundle else None
+
+
+def ensure_ai_summary(db: Session, assessment: Assessment, *, force: bool = False) -> bool:
+    """Generate a summary when the cached one is missing, older than a verification,
+    or `force=True`.
 
     M2's `summarize_assessment` stores its output in `ai_outputs` and uses only
     VERIFIED findings. AI is optional: a missing provider, a rejected model or
     malformed output must never break a report, so every failure degrades to the
     template's "AI executive summary pending" placeholder.
+    Returns True when a new summary was generated.
     """
     # Imported lazily: app.ai.* pulls in the provider client, and reporting.py
     # is imported while the app factory is still assembling routers.
@@ -111,31 +143,55 @@ def ensure_ai_summary(db: Session, assessment: Assessment) -> None:
 
     verified = verified_findings_for(db, assessment.id)
     if not verified:
-        return
+        return False
 
-    cached = _latest_summary_row(db, assessment.id)
-    if cached is not None:
-        stamps = [f.verified_at for f in verified if f.verified_at is not None]
-        latest = max(stamps) if stamps else None
-        if latest is not None and latest.tzinfo is not None:
-            # SQLite drops tzinfo on round-trip; AIOutput.created_at is naive.
-            latest = latest.replace(tzinfo=None)
-        if latest is None or cached.created_at >= latest:
-            return
+    if not force:
+        cached = _latest_summary_row(db, assessment.id)
+        if cached is not None:
+            stamps = [f.verified_at for f in verified if f.verified_at is not None]
+            latest = max(stamps) if stamps else None
+            if latest is not None and latest.tzinfo is not None:
+                # SQLite drops tzinfo on round-trip; AIOutput.created_at is naive.
+                latest = latest.replace(tzinfo=None)
+            if latest is None or cached.created_at >= latest:
+                return False
 
     try:
         from app.scanner.orchestrator import target_deny_list
 
         target = db.get(Target, assessment.target_id)
-        summarize_assessment(db, assessment, verified, deny_list=target_deny_list(target))
+        result = summarize_assessment(db, assessment, verified, deny_list=target_deny_list(target))
+        return result is not None
     except Exception as exc:  # noqa: BLE001 - AI is optional, the report must render
         logger.warning("AI summary unavailable for assessment %s: %s", assessment.id, exc)
         db.rollback()
+        return False
+
+
+STATUS_LABELS: dict[str, str] = {
+    "verified": "Verified",
+    "ai_candidate": "AI Candidate (Unconfirmed)",
+    "needs_evidence": "Needs Evidence",
+    "false_positive": "False Positive",
+}
+
+INTENSITY_LABELS: dict[str, str] = {
+    "passive_safe": "Passive / Safe",
+    "full_intrusive": "Full / Intrusive",
+}
+
+EVIDENCE_KIND_LABELS: dict[str, str] = {
+    "http_transcript": "HTTP Transcript",
+    "tool_output": "Tool Output",
+    "upload": "Uploaded Attachment",
+}
 
 
 def build_report_context(db: Session, assessment: Assessment) -> dict:
     """Collect everything the template needs (no ORM objects cross the boundary)."""
     target = db.get(Target, assessment.target_id)
+    summary_bundle = latest_ai_summary_bundle(db, assessment.id)
+    ai_explanations = summary_bundle["finding_explanations"] if summary_bundle else {}
 
     # Deliberately uncapped: the PDF is the complete record for this assessment,
     # so its totals must match the API's authoritative X-Total-Count (proposal
@@ -160,41 +216,51 @@ def build_report_context(db: Session, assessment: Assessment) -> dict:
         evidence = [
             {
                 "kind": e.kind.value,
+                "kind_label": EVIDENCE_KIND_LABELS.get(e.kind.value, e.kind.value),
                 "label": e.label,
                 "tool": e.tool,
-                "excerpt": e.content[:400],
+                "excerpt": e.content[:1000],
                 "is_upload": e.kind == EvidenceKind.upload,
             }
             for e in f.evidence
         ]
+        ai_detail = (
+            ai_explanations.get(f.title.strip().lower())
+            if f.status == FindingStatus.verified
+            else None
+        )
         return {
             "id": f.id,
             "title": f.title,
             "category": f.category,
             "status": f.status.value,
+            "status_label": STATUS_LABELS.get(f.status.value, f.status.value),
             "severity": f.severity.value,
             # explicit assessor score, else the representative band value
             "score": f.score if f.score > 0 else score_for(f.severity),
             "description": f.description,
             "remediation": f.remediation,
+            "ai_explanation": ai_detail["explanation"] if ai_detail and ai_detail.get("explanation") else None,
+            "ai_remediation": ai_detail["remediation"] if ai_detail and ai_detail.get("remediation") else None,
             "assessor_notes": f.assessor_notes,
             "verified_by": verifier_emails.get(f.verified_by_id) if f.verified_by_id else None,
             "evidence": evidence,
         }
 
     by_severity: dict[Severity, list[dict]] = {tier: [] for tier in SEVERITY_ORDER}
-    recommendations: list[str] = []
     for f in findings:
         by_severity[f.severity].append(finding_row(f))
-        if f.remediation and f.remediation not in recommendations:
-            recommendations.append(f.remediation)
 
     verified_count = sum(1 for f in findings if f.status == FindingStatus.verified)
+    false_positive_count = sum(1 for f in findings if f.status == FindingStatus.false_positive)
+    pending_review_count = sum(
+        1 for f in findings if f.status in (FindingStatus.ai_candidate, FindingStatus.needs_evidence)
+    )
 
-    # Calculate overall security posture
+    # Calculate overall security posture across active (non-false-positive) findings.
     max_severity = Severity.info
     for tier in SEVERITY_ORDER:
-        if by_severity[tier]:
+        if any(row["status"] != "false_positive" for row in by_severity[tier]):
             max_severity = tier
             break
 
@@ -227,20 +293,30 @@ def build_report_context(db: Session, assessment: Assessment) -> dict:
     }
     overall_posture = posture_meta.get(max_severity, posture_meta[Severity.info])
 
-    # Prioritized remediation roadmap
+    # Prioritized remediation roadmap (false positives are explicitly excluded so
+    # clients are never asked to remediate dismissed items).
     roadmap = {
         "immediate": [],
         "short_term": [],
         "long_term": [],
     }
     for f in findings:
+        if f.status == FindingStatus.false_positive:
+            continue
+        ai_detail = (
+            ai_explanations.get(f.title.strip().lower())
+            if f.status == FindingStatus.verified
+            else None
+        )
+        remediation_text = (ai_detail.get("remediation") if ai_detail else "") or f.remediation
         item = {
             "id": f.id,
             "title": f.title,
             "severity": f.severity.value,
             "category": f.category,
-            "remediation": f.remediation,
+            "remediation": remediation_text,
             "status": f.status.value,
+            "status_label": STATUS_LABELS.get(f.status.value, f.status.value),
         }
         if f.severity in (Severity.critical, Severity.high):
             roadmap["immediate"].append(item)
@@ -258,6 +334,7 @@ def build_report_context(db: Session, assessment: Assessment) -> dict:
         "assessment": {
             "id": assessment.id,
             "intensity": assessment.intensity.value,
+            "intensity_label": INTENSITY_LABELS.get(assessment.intensity.value, assessment.intensity.value),
             "categories": assessment.categories,
             "status": assessment.status.value,
             "started_at": assessment.started_at,
@@ -268,6 +345,11 @@ def build_report_context(db: Session, assessment: Assessment) -> dict:
             "base_url": target.base_url if target else "",
             "authorization_ref": target.authorization_ref if target else "",
             "allowed_intensity": target.allowed_intensity.value if target else "",
+            "allowed_intensity_label": INTENSITY_LABELS.get(
+                target.allowed_intensity.value, target.allowed_intensity.value
+            )
+            if target
+            else "",
             "in_scope_assets": target.in_scope_assets if target else [],
             "out_of_scope_assets": target.out_of_scope_assets if target else [],
         },
@@ -285,9 +367,12 @@ def build_report_context(db: Session, assessment: Assessment) -> dict:
         },
         "total_findings": len(findings),
         "verified_count": verified_count,
+        "pending_review_count": pending_review_count,
+        "false_positive_count": false_positive_count,
         "unverified_count": len(findings) - verified_count,
-        "recommendations": recommendations,
-        "ai_summary": latest_ai_summary(db, assessment.id),
+        "ai_summary": summary_bundle["executive_summary"] if summary_bundle else None,
+        "ai_target_overview": summary_bundle["target_overview"] if summary_bundle else None,
+        "ai_summary_model": summary_bundle["model"] if summary_bundle else None,
     }
 
 def render_report_html(db: Session, assessment: Assessment) -> str:

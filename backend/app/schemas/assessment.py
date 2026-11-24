@@ -45,6 +45,20 @@ class InterpretResult(BaseModel):
     notes: str
 
 
+class PriorityEntryOut(BaseModel):
+    finding_id: int
+    rank: int
+    urgency: str
+    rationale: str
+
+
+class PrioritizationOut(BaseModel):
+    assessment_id: int
+    model: str = ""
+    created_at: datetime | None = None
+    rankings: list[PriorityEntryOut] = Field(default_factory=list)
+
+
 class JobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

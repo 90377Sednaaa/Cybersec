@@ -6,14 +6,19 @@
 <style>
   :root {
     --severity-critical: #b91c1c;
-    --severity-high: #ea580c;
-    --severity-medium: #ca8a04;
-    --severity-low: #2563eb;
-    --severity-info: #64748b;
-    --ink: #1e293b;
-    --muted: #64748b;
-    --line: #e2e8f0;
-    --accent: #2563eb;
+    --severity-high: #c2410c;
+    --severity-medium: #a16207;
+    --severity-low: #0e7490;
+    --severity-info: #475569;
+    --state-verified: #047857;
+    --state-candidate: #b45309;
+    --ink: #0f172a;
+    --muted: #475569;
+    --line: #cbd5e1;
+    --accent: #1d4ed8;
+  }
+  @page {
+    margin: 18mm 16mm;
   }
   * { box-sizing: border-box; }
   body {
@@ -74,7 +79,7 @@
     font-size: 24pt;
     margin: 0 0 6pt;
     color: #0f172a;
-    letter-spacing: -0.5pt;
+    letter-spacing: -0.02em;
   }
   .cover p.subtitle {
     color: var(--muted);
@@ -119,8 +124,56 @@
   .posture-card.posture-critical { border-left: 5px solid var(--severity-critical); background: #fef2f2; }
   .posture-card.posture-high { border-left: 5px solid var(--severity-high); background: #fff7ed; }
   .posture-card.posture-medium { border-left: 5px solid var(--severity-medium); background: #fefce8; }
-  .posture-card.posture-low { border-left: 5px solid var(--severity-low); background: #eff6ff; }
+  .posture-card.posture-low { border-left: 5px solid var(--severity-low); background: #ecfeff; }
   .posture-card.posture-info { border-left: 5px solid var(--severity-info); background: #f8fafc; }
+
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8pt;
+    margin: 10pt 0 14pt;
+    page-break-inside: avoid;
+  }
+  .kpi-box {
+    border: 1px solid var(--line);
+    border-radius: 6pt;
+    padding: 8pt 10pt;
+    background: #f8fafc;
+  }
+  .kpi-label {
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.6pt;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .kpi-value {
+    font-size: 16pt;
+    font-weight: 700;
+    color: var(--ink);
+    margin-top: 2pt;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-value.verified { color: var(--state-verified); }
+  .kpi-value.pending { color: var(--state-candidate); }
+
+  .ai-callout {
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 4pt;
+    padding: 8pt 10pt;
+    margin: 6pt 0;
+    font-size: 9.5pt;
+  }
+  .ai-callout-label {
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6pt;
+    color: var(--accent);
+    margin-bottom: 3pt;
+  }
 
   .posture-header {
     display: flex;
@@ -243,7 +296,7 @@
       <tr><td class="k">Target</td><td class="v">{{ target.name }}</td></tr>
       <tr><td class="k">Base URL</td><td class="v">{{ target.base_url }}</td></tr>
       <tr><td class="k">Assessment</td><td class="v">#{{ assessment.id }} ({{ assessment.status }})</td></tr>
-      <tr><td class="k">Intensity</td><td class="v">{{ assessment.intensity }}</td></tr>
+      <tr><td class="k">Intensity</td><td class="v">{{ assessment.intensity_label }}</td></tr>
       <tr><td class="k">Authorization</td><td class="v">{{ target.authorization_ref if target.authorization_ref else 'registered target' }}</td></tr>
       <tr><td class="k">Generated</td><td class="v">{{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }}</td></tr>
     </table>
@@ -261,25 +314,47 @@
 </div>
 {% endif %}
 
+<div class="kpi-strip">
+  <div class="kpi-box">
+    <div class="kpi-label">Total Findings</div>
+    <div class="kpi-value">{{ total_findings }}</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Human Verified</div>
+    <div class="kpi-value verified">{{ verified_count }}</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Pending Review</div>
+    <div class="kpi-value pending">{{ pending_review_count }}</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">False Positives</div>
+    <div class="kpi-value">{{ false_positive_count }}</div>
+  </div>
+</div>
+
 {% if ai_summary %}
 <p>{{ ai_summary }}</p>
+{% if ai_target_overview %}
+<p class="muted"><strong>Target overview:</strong> {{ ai_target_overview }}</p>
+{% endif %}
 {% else %}
 <div class="placeholder">
   AI executive summary pending: the summary is generated from <strong>verified</strong> findings
   by the AI pipeline (M2). This report contains {{ total_findings }} candidate finding(s),
   of which {{ verified_count }} are human-verified and {{ unverified_count }} are still unverified
-  (ai_candidate / needs_evidence / false_positive). Unverified findings are labeled and must not
+  (AI Candidate / Needs Evidence / False Positive). Unverified findings are labeled and must not
   be treated as confirmed vulnerabilities.
 </div>
 {% endif %}
 
 <h2>2. Findings overview</h2>
-<svg class="chart" width="560" height="{{ 60 + 24 * severity_order | length }}" role="img" aria-label="Findings by severity">
+<svg class="chart" width="560" height="{{ 16 + 26 * severity_order | length }}" role="img" aria-label="Findings by severity">
   {% set max_count = counts.values() | max if counts.values() else 0 %}
   {% for tier in severity_order %}
     {% set c = counts[tier] %}
     {% set w = (330 * c / max_count) | round | int if max_count > 0 else 0 %}
-    <g transform="translate(0, {{ 24 * loop.index0 }})">
+    <g transform="translate(0, {{ 26 * loop.index0 }})">
       <text class="axis" x="0" y="14">{{ tier | capitalize }}</text>
       <rect x="90" y="3" width="330" height="16" rx="3" fill="#f1f5f9"></rect>
       {% if w > 0 %}<rect x="90" y="3" width="{{ w }}" height="16" rx="3" fill="var(--severity-{{ tier }})"></rect>{% endif %}
@@ -320,7 +395,7 @@
 <table class="grid">
   <tr><th>Field</th><th>Value</th></tr>
   <tr><td>Target</td><td>{{ target.name }} ({{ target.base_url }})</td></tr>
-  <tr><td>Allowed intensity</td><td>{{ target.allowed_intensity }} (assessment ran at: {{ assessment.intensity }})</td></tr>
+  <tr><td>Allowed intensity</td><td>{{ target.allowed_intensity_label }} (assessment ran at: {{ assessment.intensity_label }})</td></tr>
   <tr><td>Authorization</td><td>{{ target.authorization_ref if target.authorization_ref else 'registered target record #' ~ assessment.id }}</td></tr>
   <tr><td>In-scope assets</td><td>{{ target.in_scope_assets | join(', ') if target.in_scope_assets else '-' }}</td></tr>
   <tr><td>Out-of-scope assets</td><td>{{ target.out_of_scope_assets | join(', ') if target.out_of_scope_assets else '-' }}</td></tr>
@@ -340,14 +415,20 @@
   <div class="finding">
     <header>
       <h3>#{{ f.id }} {{ f.title }}</h3>
-      <span><span class="pill status">score {{ '%.1f' | format(f.score) }}</span> <span class="pill status">{{ f.status }}</span></span>
+      <span><span class="pill status">Score {{ '%.1f' | format(f.score) }}</span> <span class="pill status">{{ f.status_label }}</span></span>
     </header>
-    <div class="meta">Category: {{ f.category }} · Severity: {{ f.severity }}{% if f.verified_by %} · Verified by {{ f.verified_by }}{% endif %}</div>
+    <div class="meta">Category: {{ f.category }} · Severity: {{ f.severity | capitalize }}{% if f.verified_by %} · Verified by {{ f.verified_by }}{% endif %}</div>
     {% if f.description %}<p>{{ f.description }}</p>{% endif %}
+    {% if f.ai_explanation %}
+    <div class="ai-callout">
+      <div class="ai-callout-label">AI Risk Analysis (Verified Finding)</div>
+      <p>{{ f.ai_explanation }}</p>
+    </div>
+    {% endif %}
     {% if f.assessor_notes %}<p><strong>Assessor notes:</strong> {{ f.assessor_notes }}</p>{% endif %}
-    {% if f.remediation %}<p><strong>Remediation:</strong> {{ f.remediation }}</p>{% endif %}
+    {% if f.ai_remediation or f.remediation %}<p><strong>Remediation:</strong> {{ f.ai_remediation if f.ai_remediation else f.remediation }}</p>{% endif %}
     {% for e in f.evidence %}
-      <div class="evlabel">{{ e.kind }} · {{ e.label }}{% if e.tool %} · tool: {{ e.tool }}{% endif %}</div>
+      <div class="evlabel">{{ e.kind_label }} · {{ e.label }}{% if e.tool %} · tool: {{ e.tool }}{% endif %}</div>
       {% if e.excerpt %}<div class="evidence">{{ e.excerpt }}</div>{% endif %}
     {% endfor %}
   </div>
@@ -364,9 +445,9 @@
     <tr>
       <td>{{ f.id }}</td>
       <td>{{ f.title }}<br><span class="muted">{{ f.category }}</span></td>
-      <td><span class="pill severity-{{ tier }}">{{ tier }}</span></td>
+      <td><span class="pill severity-{{ tier }}">{{ tier | capitalize }}</span></td>
       <td>{{ '%.1f' | format(f.score) }}</td>
-      <td>{{ f.status }}</td>
+      <td>{{ f.status_label }}</td>
     </tr>
     {% endfor %}
   {% endfor %}
@@ -394,7 +475,7 @@
         <div class="roadmap-title">
           <span class="pill {{ item.severity }}">{{ item.severity | capitalize }}</span>
           <strong>#{{ item.id }} {{ item.title }}</strong>
-          <span class="muted">({{ item.status }})</span>
+          <span class="muted">({{ item.status_label }})</span>
         </div>
         <div class="roadmap-action">{{ item.remediation if item.remediation else 'Investigate root cause and apply patch or mitigating firewall rule immediately.' }}</div>
       </li>
@@ -415,7 +496,7 @@
         <div class="roadmap-title">
           <span class="pill {{ item.severity }}">{{ item.severity | capitalize }}</span>
           <strong>#{{ item.id }} {{ item.title }}</strong>
-          <span class="muted">({{ item.status }})</span>
+          <span class="muted">({{ item.status_label }})</span>
         </div>
         <div class="roadmap-action">{{ item.remediation if item.remediation else 'Apply configuration change or security parameter update in the next deployment cycle.' }}</div>
       </li>
@@ -436,7 +517,7 @@
         <div class="roadmap-title">
           <span class="pill {{ item.severity }}">{{ item.severity | capitalize }}</span>
           <strong>#{{ item.id }} {{ item.title }}</strong>
-          <span class="muted">({{ item.status }})</span>
+          <span class="muted">({{ item.status_label }})</span>
         </div>
         <div class="roadmap-action">{{ item.remediation if item.remediation else 'Address during routine code refactoring or defense-in-depth baseline hardening.' }}</div>
       </li>

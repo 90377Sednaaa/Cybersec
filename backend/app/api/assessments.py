@@ -19,7 +19,15 @@ from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models import Assessment, AssessmentStatus, Job, JobStatus, Role, ScanIntensity, Target, User
 from app.models.user import utcnow
-from app.schemas.assessment import AssessmentCreate, AssessmentDetail, AssessmentOut, InterpretResult, JobOut, ScanEvent
+from app.schemas.assessment import (
+    AssessmentCreate,
+    AssessmentDetail,
+    AssessmentOut,
+    InterpretResult,
+    JobOut,
+    PrioritizationOut,
+    ScanEvent,
+)
 from app.scanner.orchestrator import EVENT_QUEUE_SIZE, INTRUSIVE_TOOLS, pipelines, plan_tools, request_cancel, start_pipeline
 from app.scanner.registry import registered_tools
 
@@ -304,6 +312,86 @@ async def rerun_interpretation(
 
     created, notes = await asyncio.to_thread(_run_ai)
     return InterpretResult(assessment_id=assessment_id, created=created, notes=notes)
+
+
+@router.get("/{assessment_id}/prioritization", response_model=PrioritizationOut)
+def get_prioritization(
+    assessment_id: int,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PrioritizationOut:
+    """Return the latest stored AI risk prioritization for an assessment (read-only)."""
+    from app.ai.prioritize import latest_prioritization
+
+    if db.get(Assessment, assessment_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
+    cached = latest_prioritization(db, assessment_id)
+    if cached is None:
+        return PrioritizationOut(assessment_id=assessment_id, rankings=[])
+    return PrioritizationOut(**cached)
+
+
+@router.post("/{assessment_id}/prioritize", response_model=PrioritizationOut)
+async def run_prioritization(
+    assessment_id: int,
+    _: User = Depends(require_role(Role.admin, Role.assessor)),
+    db: Session = Depends(get_db),
+) -> PrioritizationOut:
+    """Rank active findings by exploitability & chaining risk using the `prioritization` model."""
+    from app.ai import client as ai_client
+    from app.ai.prioritize import prioritize_assessment
+    from app.database import SessionLocal
+    from app.models import Finding, FindingStatus, LLMTask
+    from app.scanner.orchestrator import target_deny_list
+
+    assessment = db.get(Assessment, assessment_id)
+    if assessment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
+
+    active_count = len(
+        list(
+            db.scalars(
+                select(Finding.id).where(
+                    Finding.assessment_id == assessment_id,
+                    Finding.status != FindingStatus.false_positive,
+                )
+            )
+        )
+    )
+    if active_count == 0:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "No active findings are available to prioritize for this assessment.",
+        )
+
+    try:
+        ai_client.resolve_task_config(db, LLMTask.prioritization)
+    except ai_client.NoProviderConfigured as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "No AI provider or model is configured for Risk prioritization. Configure one in AI Settings.",
+        ) from exc
+
+    deny_list = target_deny_list(assessment.target)
+
+    def _run_prio() -> dict:
+        with SessionLocal() as prio_db:
+            prio_assessment = prio_db.get(Assessment, assessment_id)
+            assert prio_assessment is not None
+            findings = list(
+                prio_db.scalars(
+                    select(Finding)
+                    .where(Finding.assessment_id == assessment_id)
+                    .order_by(Finding.id)
+                )
+            )
+            return prioritize_assessment(prio_db, prio_assessment, findings, deny_list=deny_list)
+
+    try:
+        result = await asyncio.to_thread(_run_prio)
+    except ai_client.LLMRequestError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"AI provider error: {exc}") from exc
+    return PrioritizationOut(**result)
 
 
 @router.get("", response_model=list[AssessmentOut])

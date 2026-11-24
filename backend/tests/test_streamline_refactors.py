@@ -565,3 +565,277 @@ def test_qa_stamps_finding_id_on_audit_row(monkeypatch):
         row = db.query(AIOutput).filter(AIOutput.task == LLMTask.qa, AIOutput.finding_id == finding.id).first()
         assert row is not None
         assert row.finding_id == finding.id
+
+
+# --- Polish & AI Orchestration tests ---------------------------------------
+
+
+def test_build_context_digests_large_zap_and_nmap_payloads():
+    from app.ai.interpret import build_context
+
+    zap_alerts = [
+        {
+            "title": f"Low Noise Alert {i % 3}",
+            "risk": "low",
+            "url": f"http://localhost:3000/page/{i}",
+            "evidence": "x" * 200,
+        }
+        for i in range(60)
+    ] + [
+        {
+            "title": "SQL Injection in Login",
+            "risk": "high",
+            "url": "http://localhost:3000/rest/user/login",
+            "param": "email",
+            "cwe": "89",
+            "evidence": "SQLITE_ERROR",
+        }
+    ]
+    job = SimpleNamespace(
+        tool="zap",
+        status=JobStatus.completed,
+        raw_output=json.dumps({"mode": "full_intrusive", "alerts": zap_alerts}),
+    )
+    digest = build_context([job])
+    # High-risk alert must appear first despite 60 preceding low-risk alerts
+    assert "SQL Injection in Login" in digest
+    assert "instances=20" in digest
+    assert "cwe=89" in digest
+
+
+def test_report_renders_ai_target_overview_explanations_and_excludes_fp_roadmap(client, auth):
+    from app.reporting import build_report_context, render_report_html
+
+    target = client.post(
+        "/api/targets",
+        json={
+            "name": "ReportPolishApp",
+            "base_url": "http://127.0.0.1:3001",
+            "authorization_ref": "AUTH-RPT-1",
+            "allowed_intensity": "passive_safe",
+        },
+        headers=auth,
+    ).json()
+
+    with SessionLocal() as db:
+        assessment = Assessment(
+            target_id=target["id"],
+            intensity=ScanIntensity.passive_safe,
+            categories=["Security configuration & HTTPS"],
+            status=AssessmentStatus.completed,
+        )
+        db.add(assessment)
+        db.flush()
+        f_verified = Finding(
+            assessment_id=assessment.id,
+            category="Security configuration & HTTPS",
+            title="Missing CSP Header",
+            description="No CSP present.",
+            severity=Severity.high,
+            status=FindingStatus.verified,
+            remediation="Add CSP.",
+        )
+        f_fp = Finding(
+            assessment_id=assessment.id,
+            category="Exposed files & directories",
+            title="Dismissed False Positive",
+            description="Not real.",
+            severity=Severity.critical,
+            status=FindingStatus.false_positive,
+            remediation="Do not remediate.",
+        )
+        db.add_all([f_verified, f_fp])
+        db.flush()
+        db.add(
+            AIOutput(
+                task=LLMTask.summary,
+                assessment_id=assessment.id,
+                model="summary-model",
+                content=json.dumps(
+                    {
+                        "executive_summary": "One verified high-risk header gap.",
+                        "target_overview": "Internal demo application on port 3001.",
+                        "finding_explanations": [
+                            {
+                                "title": "Missing CSP Header",
+                                "explanation": "Without CSP, injected scripts execute unrestricted.",
+                                "remediation": "Deploy strict nonce-based CSP.",
+                            }
+                        ],
+                    }
+                ),
+            )
+        )
+        db.commit()
+
+        ctx = build_report_context(db, assessment)
+        assert ctx["overall_posture"]["tier"] == "high"  # false_positive critical does not distort posture
+        assert ctx["false_positive_count"] == 1
+        roadmap_titles = [item["title"] for bucket in ctx["roadmap"].values() for item in bucket]
+        assert "Dismissed False Positive" not in roadmap_titles
+        assert "Missing CSP Header" in roadmap_titles
+
+        html = render_report_html(db, assessment)
+        assert "Internal demo application on port 3001." in html
+        assert "Without CSP, injected scripts execute unrestricted." in html
+        assert "Deploy strict nonce-based CSP." in html
+        assert "Passive / Safe" in html
+
+
+def test_prioritization_endpoints_and_audit(client, auth, monkeypatch):
+    with SessionLocal() as db:
+        db.execute(delete(LLMTaskConfig))
+        db.execute(delete(LLMProvider))
+        provider = LLMProvider(name="PrioMock", base_url="https://mock.test/v1", api_key_encrypted="", enabled=True)
+        db.add(provider)
+        db.flush()
+        db.add(LLMTaskConfig(task=LLMTask.prioritization, provider_id=provider.id, model="prio-model"))
+        target = Target(
+            name="PrioSecretTarget",
+            base_url="http://127.0.0.1:7777",
+            authorization_ref="AUTH-PRIO-99",
+            allowed_intensity=ScanIntensity.passive_safe,
+        )
+        db.add(target)
+        db.flush()
+        assessment = Assessment(
+            target_id=target.id,
+            intensity=ScanIntensity.passive_safe,
+            categories=["Session management"],
+            status=AssessmentStatus.completed,
+        )
+        db.add(assessment)
+        db.flush()
+        f1 = Finding(
+            assessment_id=assessment.id,
+            category="Session management",
+            title="Cookie missing HttpOnly on PrioSecretTarget",
+            description="desc1",
+            severity=Severity.low,
+            status=FindingStatus.ai_candidate,
+        )
+        f2 = Finding(
+            assessment_id=assessment.id,
+            category="Input validation & injection",
+            title="Reflected XSS in search",
+            description="desc2",
+            severity=Severity.high,
+            status=FindingStatus.ai_candidate,
+        )
+        db.add_all([f1, f2])
+        db.commit()
+        aid, f1_id, f2_id = assessment.id, f1.id, f2.id
+
+    captured: list[dict] = []
+
+    def fake_send(_url, _headers, body, _timeout, _transport):
+        captured.append(body)
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "rankings": [
+                                    {
+                                        "finding_id": f2_id,
+                                        "rank": 1,
+                                        "urgency": "immediate",
+                                        "rationale": "Direct script execution enables session theft.",
+                                    },
+                                    {
+                                        "finding_id": f1_id,
+                                        "rank": 2,
+                                        "urgency": "high",
+                                        "rationale": "Amplifies XSS by allowing document.cookie access.",
+                                    },
+                                ]
+                            }
+                        )
+                    },
+                    "finish_reason": "stop",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(ai_client, "_send_with_retry", fake_send)
+
+    post_resp = client.post(f"/api/assessments/{aid}/prioritize", headers=auth)
+    assert post_resp.status_code == 200, post_resp.text
+    data = post_resp.json()
+    assert [r["finding_id"] for r in data["rankings"]] == [f2_id, f1_id]
+    assert data["rankings"][0]["urgency"] == "immediate"
+    assert "PrioSecretTarget" not in json.dumps(captured)
+
+    # Cached GET returns same ranking without calling LLM again
+    get_resp = client.get(f"/api/assessments/{aid}/prioritization", headers=auth)
+    assert get_resp.status_code == 200
+    assert len(get_resp.json()["rankings"]) == 2
+    assert len(captured) == 1
+
+    # Findings remain ai_candidate (never auto-confirmed)
+    with SessionLocal() as db:
+        assert db.get(Finding, f2_id).status == FindingStatus.ai_candidate
+
+
+def test_on_demand_summary_endpoint(client, auth, monkeypatch):
+    with SessionLocal() as db:
+        db.execute(delete(LLMTaskConfig))
+        db.execute(delete(LLMProvider))
+        provider = LLMProvider(name="SumMock", base_url="https://mock.test/v1", api_key_encrypted="", enabled=True)
+        db.add(provider)
+        db.flush()
+        db.add(LLMTaskConfig(task=LLMTask.summary, provider_id=provider.id, model="sum-model"))
+        target = Target(
+            name="SumEndpointApp",
+            base_url="http://127.0.0.1:7788",
+            authorization_ref="AUTH-SUM-1",
+            allowed_intensity=ScanIntensity.passive_safe,
+        )
+        db.add(target)
+        db.flush()
+        assessment = Assessment(
+            target_id=target.id,
+            intensity=ScanIntensity.passive_safe,
+            categories=["Security configuration & HTTPS"],
+            status=AssessmentStatus.completed,
+        )
+        db.add(assessment)
+        db.flush()
+        db.add(
+            Finding(
+                assessment_id=assessment.id,
+                category="Security configuration & HTTPS",
+                title="Verified Header Gap",
+                description="Verified.",
+                severity=Severity.medium,
+                status=FindingStatus.verified,
+            )
+        )
+        db.commit()
+        aid = assessment.id
+
+    monkeypatch.setattr(
+        ai_client,
+        "_send_with_retry",
+        lambda *_a, **_kw: {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "executive_summary": "Fresh executive summary.",
+                                "target_overview": "Target overview text.",
+                                "finding_explanations": [],
+                            }
+                        )
+                    },
+                    "finish_reason": "stop",
+                }
+            ]
+        },
+    )
+
+    resp = client.post(f"/api/assessments/{aid}/summary", headers=auth)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["executive_summary"] == "Fresh executive summary."
