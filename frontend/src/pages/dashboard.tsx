@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Crosshair, Radar, ShieldAlert, ShieldCheck, ArrowRight } from "lucide-react"
 
@@ -82,7 +82,8 @@ function StatCard({ title, value, icon: Icon, hint, loading, to }: StatCardProps
 }
 
 export function DashboardPage() {
-  const [scope, setScope] = useState<"verified" | "all">("verified")
+  const navigate = useNavigate()
+  const [scope, setScope] = useState<"verified" | "all">("all")
 
   const targets = useQuery({
     queryKey: ["targets"],
@@ -123,10 +124,19 @@ export function DashboardPage() {
   const counted =
     findingRows?.filter((f) => (scope === "verified" ? f.status === "verified" : f.status !== "false_positive")) ?? []
   const chartData = SEVERITIES.map((severity) => ({
+    key: severity,
     severity: capitalize(severity),
     count: counted.filter((f) => f.severity === severity).length,
     fill: SEVERITY_FILL[severity],
   }))
+
+  function findingsHrefForSeverity(severity: Severity): string {
+    const params = new URLSearchParams({ severity })
+    if (scope === "verified") {
+      params.set("status", "verified")
+    }
+    return `/findings?${params.toString()}`
+  }
 
   const targetNames = new Map(targets.data?.map((t) => [t.id, t.name]))
   const recent = [...(assessments.data ?? [])].sort((a, b) => b.id - a.id).slice(0, 5)
@@ -212,20 +222,30 @@ export function DashboardPage() {
               {scope === "verified"
                 ? "Confirmed findings only. AI candidates are not included until an assessor verifies them."
                 : "Includes unconfirmed AI candidates. False positives are excluded."}{" "}
-              Counts cover the 200 most recent findings.
+              Counts cover the 200 most recent findings. Click a severity to view findings.
             </CardDescription>
           </div>
           <Tabs value={scope} onValueChange={(value) => setScope(value as "verified" | "all")}>
             <TabsList>
-              <TabsTrigger value="verified">Verified</TabsTrigger>
               <TabsTrigger value="all">Incl. candidates</TabsTrigger>
+              <TabsTrigger value="verified">Verified</TabsTrigger>
             </TabsList>
           </Tabs>
         </CardHeader>
         <CardContent>
-          <div className="relative h-64">
+          <div className="relative h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+              <BarChart
+                data={chartData}
+                margin={{ top: 8, right: 8, left: -20, bottom: 0 }}
+                style={{ cursor: "pointer" }}
+                onClick={(state) => {
+                  const match = chartData.find((entry) => entry.severity === state?.activeLabel)
+                  if (match) {
+                    navigate(findingsHrefForSeverity(match.key))
+                  }
+                }}
+              >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="severity" tickLine={false} axisLine={false} fontSize={12} />
                 <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
@@ -243,15 +263,16 @@ export function DashboardPage() {
                           <p className="mt-1 font-mono text-muted-foreground tabular-nums">
                             {item.value} {item.value === 1 ? "finding" : "findings"}
                           </p>
+                          <p className="mt-0.5 text-muted-foreground/80">Click to view findings</p>
                         </div>
                       )
                     }
                     return null
                   }}
                 />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                <Bar dataKey="count" radius={[6, 6, 0, 0]} className="cursor-pointer">
                   {chartData.map((entry) => (
-                    <Cell key={entry.severity} fill={entry.fill} />
+                    <Cell key={entry.severity} fill={entry.fill} className="cursor-pointer" />
                   ))}
                 </Bar>
               </BarChart>
@@ -261,6 +282,27 @@ export function DashboardPage() {
                 {scope === "verified" ? "No verified findings yet." : "No findings yet."}
               </p>
             )}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {chartData.map((entry) => (
+              <Link
+                key={entry.key}
+                to={findingsHrefForSeverity(entry.key)}
+                className="group flex min-w-fit flex-1 items-center justify-between gap-2 rounded-lg border bg-muted/30 px-2.5 py-1.5 text-xs transition-colors hover:border-primary/40 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <span className="flex items-center gap-1.5 font-medium text-muted-foreground group-hover:text-foreground">
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: entry.fill }}
+                    aria-hidden="true"
+                  />
+                  {entry.severity}
+                </span>
+                <span className="font-mono font-semibold tabular-nums text-foreground">
+                  {entry.count}
+                </span>
+              </Link>
+            ))}
           </div>
         </CardContent>
         </Card>
