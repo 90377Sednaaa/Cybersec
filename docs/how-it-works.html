@@ -134,9 +134,20 @@
     letter-spacing:-.025em;
   }
   .cover .lede{
-    margin:0 0 54px;max-width:620px;
+    margin:0 0 18px;max-width:620px;
     font-size:1.15rem;line-height:1.6;color:var(--ink-2);
   }
+  .name-note{
+    display:flex;align-items:baseline;gap:14px;
+    margin:0 0 44px;max-width:620px;
+    font-family:var(--serif);font-size:14.5px;line-height:1.6;color:var(--muted);
+  }
+  .name-note .greek{
+    flex:none;font-size:19px;line-height:1;color:var(--ink-2);
+    letter-spacing:.02em;
+  }
+  .name-note span:last-child{min-width:0}
+  .name-note em{color:var(--ink-2)}
   .cover-meta{
     display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;
     margin:0;border-top:1px solid var(--rule-strong);padding-top:16px;
@@ -383,7 +394,8 @@
     .masthead-inner{padding:0 16px;gap:10px}
     .masthead-sub{display:none}
     .cover h1{letter-spacing:-.02em}
-    .cover .lede{font-size:1.05rem;margin-bottom:40px}
+    .cover .lede{font-size:1.05rem;margin-bottom:14px}
+    .name-note{font-size:13.5px;gap:11px;margin-bottom:32px}
     .cover-meta{grid-template-columns:1fr}
     .cover-top{flex-direction:column;gap:4px}
     .cover-index{gap:8px 14px}
@@ -418,7 +430,8 @@
     .cover-inner{max-width:none;padding:0 0 22px}
     .cover-top{margin-bottom:26px}
     .cover h1{font-size:38pt;line-height:1.02}
-    .cover .lede{font-size:12pt;margin-bottom:26px}
+    .cover .lede{font-size:12pt;margin-bottom:12px}
+    .name-note{font-size:10pt;margin-bottom:18px}
     .cover-meta{grid-template-columns:repeat(4,1fr);gap:16px}
     .shell{display:block;max-width:none;padding:0}
     main{padding:0}
@@ -476,6 +489,10 @@
           <strong>verified</strong>: the four tools, the rules that turn their output into candidates, the
           reasoning that decides how bad something is, and the report that leaves the building. Written for
           assessors, supervisors, and anyone who has to explain the system without reading Python.
+        </p>
+        <p class="name-note">
+          <span class="greek" lang="grc">ἀλήθεια</span>
+          <span><em>Aletheia</em> is Ancient Greek for "unconcealedness", "disclosure", or "truth".</span>
         </p>
       </div>
     </div>
