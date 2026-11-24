@@ -4,262 +4,298 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How Aletheia Works · Technical Explainer</title>
-<meta name="description" content="A plain-language explanation of Aletheia's scan pipeline, its four tools, and the logic behind finding severity.">
+<meta name="description" content="A plain-language explanation of Aletheia's scan pipeline, its four tools, evidence, finding severity, and reporting.">
 <style>
   :root{
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
     --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, "Liberation Mono", monospace;
-    --bg:#fbfbfa;
-    --surface:#ffffff;
-    --surface-2:#f5f6f8;
-    --text:#141a23;
-    --muted:#5a6472;
-    --faint:#8791a0;
-    --line:#e4e7ec;
-    --line-strong:#cdd3dd;
-    --accent:#3b5bdb;
-    --accent-ink:#2b45b0;
-    --accent-soft:#eef1fd;
-    --critical:#c92a2a;
-    --high:#d9480f;
-    --medium:#a97a00;
-    --low:#1c7ed6;
+
+    --paper:#f6f4ee;
+    --surface:#fbfaf6;
+    --surface-2:#eeeae1;
+    --ink:#171a1f;
+    --ink-2:#3a404a;
+    --muted:#626a76;
+    --faint:#7f8792;
+    --rule:#dcd6c9;
+    --rule-strong:#bdb6a7;
+    --accent:#2f4bc8;
+    --accent-soft:#e7eafa;
+    --critical:#b3261e;
+    --high:#bc4a0c;
+    --medium:#8a6100;
+    --low:#1d5fa8;
     --info:#6b7280;
-    --ok:#2f9e44;
-    --warn:#8a5a00;
-    --warn-soft:#fdf6e3;
-    --code-bg:#f4f5f7;
-    --hero:#0d1422;
-    --shadow:0 1px 2px rgba(16,24,40,.05), 0 8px 24px rgba(16,24,40,.06);
+    --ok:#2f6b3a;
+    --warn:#8a6100;
+    --warn-soft:#f4ecd8;
+    --warn-border:#ddc9a0;
+    --code:#f0ede5;
   }
   html[data-theme="dark"]{
-    --bg:#0f1218;
-    --surface:#151a22;
-    --surface-2:#1b212b;
-    --text:#e9edf4;
-    --muted:#a3adbb;
-    --faint:#7b8697;
-    --line:#262e3a;
-    --line-strong:#3a4555;
-    --accent:#7f97ff;
-    --accent-ink:#a9b9ff;
-    --accent-soft:#1b2440;
-    --critical:#ff6b6b;
-    --high:#ff922b;
-    --medium:#f2c14e;
-    --low:#4dabf7;
-    --info:#98a2b3;
-    --ok:#51cf66;
-    --warn:#f2c14e;
-    --warn-soft:#2a2416;
-    --code-bg:#11161e;
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.35);
+    color-scheme:dark;
+    --paper:#111417;
+    --surface:#161a1f;
+    --surface-2:#1b2027;
+    --ink:#e9e5db;
+    --ink-2:#c8c3b8;
+    --muted:#9aa1ab;
+    --faint:#858d99;
+    --rule:#2a3038;
+    --rule-strong:#414a56;
+    --accent:#93a8ff;
+    --accent-soft:#1a2340;
+    --critical:#ff7b72;
+    --high:#ff9b63;
+    --medium:#e3b341;
+    --low:#79b8ff;
+    --info:#9aa1ab;
+    --ok:#7bc98a;
+    --warn:#e3b341;
+    --warn-soft:#241f12;
+    --warn-border:#4a3d1f;
+    --code:#191e24;
   }
+  html{color-scheme:light}
 
-  *{box-sizing:border-box}
+  *{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:var(--rule-strong) transparent}
   html{scroll-behavior:smooth}
   body{
     margin:0;
-    background:var(--bg);
-    color:var(--text);
+    background:var(--paper);
+    color:var(--ink);
     font-family:var(--sans);
     font-size:17px;
     line-height:1.72;
     -webkit-font-smoothing:antialiased;
     text-rendering:optimizeLegibility;
+    caret-color:var(--accent);
   }
-  ::selection{background:var(--accent);color:#fff}
+  ::selection{background:var(--accent);color:var(--paper)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  a{color:var(--accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+  a:hover{text-decoration-thickness:2px}
 
-  /* ---------- reading progress ---------- */
+  .skip{
+    position:absolute;left:-9999px;top:0;z-index:200;
+    background:var(--ink);color:var(--paper);
+    padding:10px 14px;font-size:13px;text-decoration:none;
+  }
+  .skip:focus{left:12px;top:12px}
+
+  /* ---------- masthead ---------- */
+  .masthead{
+    position:sticky;top:0;z-index:80;
+    background:var(--paper);border-bottom:1px solid var(--rule);
+  }
+  .masthead-inner{
+    max-width:1180px;margin:0 auto;padding:0 32px;height:56px;
+    display:flex;align-items:center;gap:14px;
+  }
+  .wordmark{
+    display:inline-flex;align-items:center;gap:9px;
+    font:600 16px/1 var(--serif);letter-spacing:.01em;
+    color:var(--ink);text-decoration:none;
+  }
+  .wordmark::before{content:"";width:9px;height:9px;background:var(--accent);flex:none}
+  .masthead-sub{
+    font-size:12px;color:var(--faint);
+    padding-left:14px;border-left:1px solid var(--rule);
+  }
+  .masthead-actions{margin-left:auto;display:flex;gap:8px}
+  .ghost-btn{
+    font:500 12px/1 var(--sans);color:var(--ink-2);
+    background:transparent;border:1px solid var(--rule);border-radius:2px;
+    padding:8px 11px;cursor:pointer;white-space:nowrap;
+  }
+  .ghost-btn:hover{border-color:var(--rule-strong);color:var(--ink)}
+  .ghost-btn:active{background:var(--surface-2)}
   #progress{
-    position:fixed;top:0;left:0;height:2px;width:0;
-    background:var(--accent);z-index:100;transition:width .1s linear;
+    position:absolute;left:0;bottom:-1px;height:1px;width:0;
+    background:var(--accent);
   }
-
-  /* ---------- theme toggle ---------- */
-  .theme-toggle{
-    position:fixed;top:18px;right:18px;z-index:90;
-    font:600 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;
-    color:#cfd8ea;background:rgba(255,255,255,.07);
-    border:1px solid rgba(255,255,255,.18);border-radius:999px;
-    padding:9px 14px;cursor:pointer;backdrop-filter:blur(8px);
-  }
-  .theme-toggle:hover{background:rgba(255,255,255,.14);color:#fff}
-  .theme-toggle:focus-visible{outline:2px solid #9db1ff;outline-offset:2px}
 
   /* ---------- cover ---------- */
-  .hero{
-    position:relative;overflow:hidden;background:var(--hero);color:#fff;
-    padding:76px 32px 0;border-bottom:1px solid rgba(255,255,255,.08);
+  .cover{border-bottom:1px solid var(--rule)}
+  .cover-inner{max-width:1180px;margin:0 auto;padding:72px 32px 40px}
+  .cover-top{
+    display:flex;justify-content:space-between;align-items:baseline;gap:20px;
+    border-bottom:1px solid var(--rule-strong);padding-bottom:11px;margin-bottom:52px;
+    font:500 10px/1.5 var(--sans);letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);
   }
-  .hero::before{
-    content:"";position:absolute;inset:0;pointer-events:none;
-    background:
-      radial-gradient(900px 460px at 12% -10%, rgba(59,91,219,.42), transparent 62%),
-      radial-gradient(720px 400px at 88% 12%, rgba(56,189,248,.14), transparent 62%);
+  .cover-title-wrap{display:grid;grid-template-columns:1px minmax(0,1fr);gap:32px}
+  .cover-rule{background:var(--accent);opacity:.5}
+  .cover h1{
+    margin:0 0 24px;max-width:900px;
+    font-family:var(--serif);font-weight:600;
+    font-size:clamp(2.9rem, 7vw, 5.4rem);line-height:.98;
+    letter-spacing:-.025em;
   }
-  .hero::after{
-    content:"";position:absolute;inset:0;pointer-events:none;
-    background-image:
-      linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
-    background-size:48px 48px;
-    -webkit-mask-image:linear-gradient(to bottom, rgba(0,0,0,.75), transparent 78%);
-    mask-image:linear-gradient(to bottom, rgba(0,0,0,.75), transparent 78%);
+  .cover .lede{
+    margin:0 0 54px;max-width:620px;
+    font-size:1.15rem;line-height:1.6;color:var(--ink-2);
   }
-  .hero-inner{position:relative;z-index:1;max-width:1120px;margin:0 auto}
-  .kicker{
-    display:inline-flex;align-items:center;gap:10px;
-    font:600 10.5px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
-    color:#9db1ff;margin-bottom:26px;
+  .cover-meta{
+    display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;
+    margin:0;border-top:1px solid var(--rule-strong);padding-top:16px;
+    font-variant-numeric:tabular-nums;
   }
-  .kicker::before{content:"";width:22px;height:1px;background:#9db1ff;opacity:.8}
-  h1{
-    margin:0 0 22px;max-width:920px;
-    font-size:clamp(2.7rem, 6vw, 4.5rem);line-height:1.02;
-    letter-spacing:-.04em;font-weight:700;
-  }
-  .lede{
-    margin:0 0 34px;max-width:780px;
-    font-size:clamp(1.02rem, 1.6vw, 1.18rem);line-height:1.65;color:#c5cfdf;
-  }
-  .hero-meta{
-    display:grid;grid-template-columns:repeat(4, minmax(0,1fr));
-    gap:22px;max-width:980px;padding-bottom:34px;
-  }
-  .hero-meta div{border-top:1px solid rgba(255,255,255,.14);padding-top:11px}
+  .cover-meta div{min-width:0}
+  .cover-meta dt{margin:0}
+  .cover-meta dd{margin:0}
   .meta-label{
-    display:block;font:600 9.5px/1 var(--mono);letter-spacing:.14em;
-    text-transform:uppercase;color:#7f8ca3;margin-bottom:7px;
+    display:block;margin-bottom:7px;
+    font:600 10px/1 var(--sans);letter-spacing:.13em;text-transform:uppercase;
+    color:var(--muted);
   }
-  .meta-value{font-size:13px;line-height:1.45;color:#dbe3f0}
-  .hero code,.meta-value code{
-    background:rgba(255,255,255,.10);
-    border-color:rgba(255,255,255,.18);
-    color:#e6ecf7;
+  .meta-value{font-size:13px;line-height:1.5;color:var(--ink-2)}
+  .cover code,.meta-value code{
+    background:transparent;border:0;padding:0;color:var(--ink-2);
+    font-size:.92em;
   }
-  .glance{
-    display:grid;grid-template-columns:repeat(4, minmax(0,1fr));
-    border-top:1px solid rgba(255,255,255,.12);
+  .cover-index{
+    display:flex;flex-wrap:wrap;align-items:baseline;gap:5px 12px;
+    margin-top:30px;font-size:12.5px;color:var(--muted);
   }
-  .glance div{padding:22px 22px 26px 0;border-right:1px solid rgba(255,255,255,.09)}
-  .glance div:last-child{border-right:0}
-  .glance b{
-    display:block;font-size:1.7rem;line-height:1;letter-spacing:-.03em;
-    font-weight:650;margin-bottom:7px;
+  .index-label{
+    font:600 9.5px/1 var(--sans);letter-spacing:.13em;text-transform:uppercase;
+    color:var(--muted);margin-right:4px;
   }
-  .glance span{font-size:12px;line-height:1.4;color:#93a0b6}
+  .cover-index a{
+    color:var(--ink-2);text-decoration:none;
+    border-bottom:1px solid var(--rule-strong);padding-bottom:1px;
+  }
+  .cover-index a:hover{color:var(--accent);border-color:var(--accent)}
+  .cover-index .sep{color:var(--rule-strong)}
 
   /* ---------- layout ---------- */
   .shell{
-    max-width:1200px;margin:0 auto;padding:0 32px;
-    display:grid;grid-template-columns:248px minmax(0,1fr);
+    max-width:1180px;margin:0 auto;padding:0 32px;
+    display:grid;grid-template-columns:220px minmax(0,780px);
     gap:64px;align-items:start;
   }
-  .toc{position:sticky;top:0;max-height:100vh;overflow:auto;padding:44px 0 40px}
-  .toc-title{
-    font:600 10px/1 var(--mono);letter-spacing:.15em;text-transform:uppercase;
-    color:var(--faint);margin-bottom:15px;
+  .toc{
+    position:sticky;top:56px;max-height:calc(100vh - 56px);
+    overflow:auto;padding:38px 0 40px;font-size:13px;
   }
-  .toc ol{list-style:none;margin:0;padding:0;border-left:1px solid var(--line)}
+  .toc-title{
+    font:600 9.5px/1 var(--sans);letter-spacing:.15em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:14px;
+  }
+  .toc ol{list-style:none;margin:0;padding:0;border-left:1px solid var(--rule)}
   .toc a{
     display:flex;gap:9px;padding:6px 0 6px 13px;margin-left:-1px;
-    border-left:2px solid transparent;color:var(--muted);
-    text-decoration:none;font-size:13px;line-height:1.35;
+    border-left:1px solid transparent;
+    color:var(--muted);text-decoration:none;line-height:1.35;
   }
-  .toc a:hover{color:var(--text)}
+  .toc a:hover{color:var(--ink)}
   .toc a.active{color:var(--accent);border-left-color:var(--accent);font-weight:600}
-  .toc .n{font-family:var(--mono);font-size:10px;color:var(--faint);min-width:17px;padding-top:2px}
-  main{padding:46px 0 100px;min-width:0}
-  .content{max-width:840px}
+  .toc .n{
+    font:500 10px/1 var(--mono);color:var(--faint);
+    min-width:17px;padding-top:2px;
+  }
+  main{padding:46px 0 96px;min-width:0}
+  .content{max-width:780px}
 
   /* ---------- sections ---------- */
   section{
-    padding-top:28px;margin-top:58px;border-top:1px solid var(--line);
-    scroll-margin-top:18px;
+    padding-top:34px;margin-top:62px;
+    border-top:1px solid var(--rule-strong);
+    scroll-margin-top:72px;
   }
   section:first-of-type{border-top:0;margin-top:0;padding-top:0}
-  .sec-kicker{
-    display:flex;align-items:center;gap:11px;margin-bottom:13px;
-    font:600 10px/1 var(--mono);letter-spacing:.15em;text-transform:uppercase;
-    color:var(--accent);
-  }
-  .sec-kicker::after{content:"";height:1px;flex:1;background:var(--line)}
+  h1,h2,h3{text-wrap:balance}
+  p{text-wrap:pretty}
   h2{
-    margin:0 0 16px;font-size:clamp(1.55rem, 3vw, 2rem);
-    line-height:1.18;letter-spacing:-.028em;font-weight:700;
+    margin:0 0 18px;
+    font-family:var(--serif);font-weight:600;
+    font-size:clamp(1.75rem, 3.2vw, 2.45rem);line-height:1.12;
+    letter-spacing:-.02em;
   }
   h3{
-    margin:36px 0 10px;font-size:1.13rem;line-height:1.4;
-    letter-spacing:-.012em;font-weight:650;
+    margin:36px 0 10px;
+    font-size:1.08rem;line-height:1.4;font-weight:650;
+    letter-spacing:-.005em;
   }
-  h4{margin:24px 0 6px;font-size:.98rem;font-weight:650}
-  p{margin:0 0 16px;max-width:74ch}
-  .lead{font-size:1.09rem;line-height:1.7;color:var(--muted)}
-  ul,ol{margin:0 0 18px;padding-left:22px;max-width:74ch}
+  h4{margin:24px 0 6px;font-size:.95rem;font-weight:650}
+  p{margin:0 0 16px;max-width:70ch}
+  .lead{font-size:1.11rem;line-height:1.68;color:var(--ink-2);max-width:66ch}
+  ul,ol{margin:0 0 18px;padding-left:21px;max-width:70ch}
   li{margin:0 0 7px}
   li::marker{color:var(--faint)}
   strong{font-weight:650}
-  a{color:var(--accent-ink);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}
-  html[data-theme="dark"] a{color:var(--accent)}
 
   /* ---------- callouts ---------- */
   .callout{
-    margin:24px 0;padding:16px 18px 17px;
-    background:var(--surface);border:1px solid var(--line);
-    border-left:3px solid var(--accent);border-radius:0 9px 9px 0;
-    box-shadow:var(--shadow);
+    margin:26px 0;padding:18px 20px;
+    background:var(--surface-2);border:1px solid var(--rule);border-radius:2px;
   }
   .callout .tag{
-    display:block;margin-bottom:6px;
-    font:600 9.5px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;
+    display:flex;align-items:center;gap:8px;margin-bottom:8px;
+    font:600 9.5px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;
     color:var(--accent);
   }
+  .callout .tag::before{content:"";width:6px;height:6px;background:currentColor;flex:none}
   .callout p:last-child{margin-bottom:0}
-  .callout.code{border-left-color:var(--line-strong);background:var(--code-bg);box-shadow:none}
+  .callout.code{background:var(--code);border-color:var(--rule)}
   .callout.code .tag{color:var(--muted)}
-  .callout.warn{border-left-color:var(--medium);background:var(--warn-soft)}
+  .callout.warn{background:var(--warn-soft);border-color:var(--warn-border)}
   .callout.warn .tag{color:var(--warn)}
 
   /* ---------- tables ---------- */
   .table-wrap{
-    margin:24px 0;border:1px solid var(--line);border-radius:10px;
-    background:var(--surface);overflow-x:auto;box-shadow:var(--shadow);
+    margin:26px 0;overflow-x:auto;
+    border-top:1px solid var(--rule-strong);
+    border-bottom:1px solid var(--rule-strong);
   }
-  table{width:100%;border-collapse:collapse;font-size:14.5px;line-height:1.55}
+  table{
+    width:100%;border-collapse:collapse;
+    font-size:14.5px;line-height:1.55;
+    font-variant-numeric:tabular-nums;
+  }
   caption{
-    caption-side:top;text-align:left;padding:14px 16px 10px;
-    font:600 9.5px/1.4 var(--mono);letter-spacing:.1em;text-transform:uppercase;
-    color:var(--faint);
+    caption-side:top;text-align:left;padding:11px 0 10px;
+    font:500 12px/1.45 var(--sans);color:var(--muted);
   }
   th{
-    text-align:left;padding:10px 16px;vertical-align:bottom;
-    font:600 10px/1.35 var(--mono);letter-spacing:.08em;text-transform:uppercase;
-    color:var(--muted);background:var(--surface-2);
-    border-bottom:1px solid var(--line);
+    text-align:left;padding:9px 16px 9px 0;vertical-align:bottom;
+    font:600 10px/1.35 var(--sans);letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted);border-bottom:1px solid var(--rule-strong);
   }
-  td{padding:11px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+  td{padding:11px 16px 11px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+  th:last-child,td:last-child{padding-right:0}
   tr:last-child td{border-bottom:0}
+  tbody tr:hover td{background:var(--surface-2)}
   td.nw{white-space:nowrap}
+
   code{
-    font-family:var(--mono);font-size:.85em;background:var(--code-bg);
-    border:1px solid var(--line);padding:1px 5px;border-radius:4px;
+    font-family:var(--mono);font-size:.85em;
+    background:var(--code);border:1px solid var(--rule);
+    padding:1px 5px;border-radius:2px;
   }
   pre{
     margin:22px 0;padding:16px 18px;overflow-x:auto;
-    background:var(--code-bg);border:1px solid var(--line);border-radius:9px;
-    font:12.5px/1.7 var(--mono);color:var(--text);
+    background:var(--code);border:1px solid var(--rule);border-radius:2px;
+    font:12.5px/1.7 var(--mono);color:var(--ink);
   }
   pre code{background:none;border:0;padding:0;font-size:inherit}
 
-  /* ---------- severity chips ---------- */
+  .badge{
+    display:inline-block;margin-left:6px;vertical-align:1px;
+    font:600 9px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted);border:1px solid var(--rule-strong);
+    padding:3px 5px;border-radius:2px;white-space:nowrap;
+  }
+
+  /* ---------- severity ---------- */
   .sev{
     display:inline-flex;align-items:center;gap:6px;
-    font:600 10.5px/1 var(--mono);letter-spacing:.07em;text-transform:uppercase;
-    padding:5px 8px;border-radius:5px;border:1px solid currentColor;
+    font:600 10.5px/1 var(--sans);letter-spacing:.07em;text-transform:uppercase;
     white-space:nowrap;
   }
-  .sev::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .sev::before{content:"";width:7px;height:7px;background:currentColor;flex:none}
   .sev-critical{color:var(--critical)}
   .sev-high{color:var(--high)}
   .sev-medium{color:var(--medium)}
@@ -268,150 +304,216 @@
 
   /* ---------- figures ---------- */
   figure{
-    margin:28px 0;padding:20px 20px 16px;background:var(--surface);
-    border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+    margin:30px 0;padding:22px 0 14px;
+    border-top:1px solid var(--rule-strong);
+    border-bottom:1px solid var(--rule);
   }
   .fig-scroll{overflow-x:auto;overflow-y:hidden}
   figure svg{width:100%;height:auto;display:block}
   figcaption{
-    margin-top:14px;padding-top:12px;border-top:1px solid var(--line);
+    margin-top:16px;padding-top:12px;border-top:1px solid var(--rule);
     font-size:12.5px;line-height:1.55;color:var(--muted);
   }
-  figcaption b{color:var(--text);font-weight:650}
+  figcaption b{color:var(--ink);font-weight:650}
 
-  .d-box{fill:var(--surface);stroke:var(--line-strong);stroke-width:1.2}
-  .d-box-soft{fill:var(--surface-2);stroke:var(--line);stroke-width:1.2}
+  .d-box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.2}
+  .d-box-soft{fill:var(--surface-2);stroke:var(--rule);stroke-width:1.2}
   .d-box-accent{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.4}
   .d-box-warn{fill:var(--warn-soft);stroke:var(--medium);stroke-width:1.2}
-  .d-title{fill:var(--text);font-size:16.5px;font-weight:650;font-family:var(--sans)}
-  .d-title-sm{fill:var(--text);font-size:14.5px;font-weight:650;font-family:var(--sans)}
+  .d-title{fill:var(--ink);font-size:16.5px;font-weight:650;font-family:var(--sans)}
+  .d-title-sm{fill:var(--ink);font-size:14.5px;font-weight:650;font-family:var(--sans)}
   .d-sub{fill:var(--muted);font-size:13px;font-family:var(--sans)}
-  .d-tiny{fill:var(--faint);font-size:10px;font-family:var(--mono);letter-spacing:.08em}
+  .d-tiny{fill:var(--muted);font-size:10px;font-family:var(--mono);letter-spacing:.08em}
   .d-arrow{stroke:#8b93a1;stroke-width:1.4;fill:none}
   .d-arrow-accent{stroke:var(--accent);stroke-width:1.5;fill:none}
   .d-arrow-dash{stroke:var(--medium);stroke-width:1.4;fill:none;stroke-dasharray:4 4}
   .d-label{fill:var(--muted);font-size:12px;font-family:var(--mono)}
   .d-label-accent{fill:var(--accent);font-size:12px;font-family:var(--mono)}
-  .d-chip-ok{fill:var(--ok)}
-  .d-chip-warn{fill:var(--medium)}
 
   /* ---------- glossary ---------- */
-  .glossary{border-top:1px solid var(--line);margin-top:22px}
+  .glossary{border-top:1px solid var(--rule);margin-top:22px}
   .glossary div{
     display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;
-    padding:12px 0;border-bottom:1px solid var(--line);
+    padding:12px 0;border-bottom:1px solid var(--rule);
   }
   .glossary dt{font-weight:650;font-size:15px}
   .glossary dd{margin:0;color:var(--muted);font-size:15px;line-height:1.6}
 
   /* ---------- footer ---------- */
-  footer{
-    border-top:1px solid var(--line);background:var(--surface-2);
-    padding:34px 32px 44px;
-  }
+  footer{border-top:1px solid var(--rule-strong);background:var(--paper)}
   .footer-inner{
-    max-width:1120px;margin:0 auto;display:flex;gap:28px;
-    justify-content:space-between;align-items:flex-start;flex-wrap:wrap;
+    max-width:1180px;margin:0 auto;padding:30px 32px 44px;
+    display:flex;gap:28px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;
   }
   footer p{margin:0;font-size:12.5px;line-height:1.6;color:var(--muted);max-width:620px}
-  footer .mark{font:600 10px/1.6 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  footer .mark{
+    font:500 9.5px/1.7 var(--sans);letter-spacing:.13em;text-transform:uppercase;
+    color:var(--faint);
+  }
+
+  /* ---------- one authored motion moment ---------- */
+  @media (prefers-reduced-motion: no-preference){
+    .cover-title-wrap,.cover .lede,.cover-meta,.cover-index{
+      animation:rise .6s cubic-bezier(.16,1,.3,1) both;
+    }
+    .cover .lede{animation-delay:.06s}
+    .cover-meta{animation-delay:.12s}
+    .cover-index{animation-delay:.18s}
+    @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  }
 
   /* ---------- responsive ---------- */
-  @media (max-width:980px){
+  @media (max-width:1000px){
     .shell{grid-template-columns:1fr;gap:0;padding:0 22px}
     .toc{
-      position:static;max-height:none;padding:24px 0 18px;
-      border-bottom:1px solid var(--line);
+      position:static;max-height:none;padding:22px 0 18px;
+      border-bottom:1px solid var(--rule);
     }
     .toc ol{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;border-left:0}
     .toc a{border-left:0;padding-left:0}
     .toc a.active{border-left:0}
     main{padding-top:30px}
-    .hero{padding:64px 22px 0}
-    .hero-meta{grid-template-columns:1fr 1fr;gap:18px}
-    .glance{grid-template-columns:1fr 1fr}
-    .glance div{border-bottom:1px solid rgba(255,255,255,.09)}
-    .glance div:nth-child(2n){border-right:0}
+    .cover-inner{padding:52px 22px 32px}
+    .cover-top{margin-bottom:38px}
+    .cover-meta{grid-template-columns:1fr 1fr;gap:20px}
   }
   @media (max-width:620px){
     body{font-size:16px}
+    .masthead-inner{padding:0 16px;gap:10px}
+    .masthead-sub{display:none}
+    .cover-title-wrap{grid-template-columns:1fr}
+    .cover-rule{display:none}
+    .cover h1{letter-spacing:-.02em}
+    .cover .lede{font-size:1.05rem;margin-bottom:40px}
+    .cover-meta{grid-template-columns:1fr}
+    .cover-top{flex-direction:column;gap:4px}
+    .cover-index{gap:8px 14px}
+    .cover-index .sep{display:none}
+    .ghost-btn{min-height:36px;padding:0 10px}
+    .toc ol{grid-template-columns:1fr}
     .fig-scroll svg{min-width:700px}
     figure:first-of-type figcaption::after{
       content:" Scroll the diagram sideways to see all of it.";
       color:var(--faint);
     }
     table{font-size:13.5px}
-    th,td{padding:9px 12px}
-    .toc ol{grid-template-columns:1fr}
-    .glance{grid-template-columns:1fr}
-    .glance div{border-right:0}
+    th,td{padding:9px 12px 9px 0}
+    td{min-width:150px}
+    td.nw{min-width:0}
     .glossary div{grid-template-columns:1fr;gap:3px}
-    .hero-meta{grid-template-columns:1fr}
-    .theme-toggle{top:12px;right:12px}
+  }
+  @media (max-width:420px){
+    .masthead-inner{gap:8px}
+    .wordmark{font-size:15px}
+    .ghost-btn{padding:0 8px;font-size:10.5px}
   }
 
   /* ---------- print ---------- */
   @media print{
-    .toc,.theme-toggle,#progress{display:none!important}
-    body{background:#fff;color:#000;font-size:10.5pt}
-    .hero{background:#fff;color:#000;padding:0 0 22px;border-bottom:2px solid #000}
-    .hero::before,.hero::after{display:none}
-    .hero h1,.lede,.meta-label,.meta-value,.glance b,.glance span,.kicker{color:#000}
-    .glance div,.hero-meta div{border-color:#bbb}
+    .masthead,.toc,.cover-index,#progress,.skip{display:none!important}
+    html,body{background:#fff;color:#000}
+    body{font-size:10.5pt;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    p{margin-bottom:11px}
+    li{margin-bottom:4px}
+    .cover{border-bottom:1px solid #999;break-after:page}
+    .cover-inner{max-width:none;padding:0 0 22px}
+    .cover-rule{opacity:1}
+    .cover-top{margin-bottom:26px}
+    .cover h1{font-size:38pt;line-height:1.02}
+    .cover .lede{font-size:12pt;margin-bottom:26px}
+    .cover-meta{grid-template-columns:repeat(4,1fr);gap:16px}
     .shell{display:block;max-width:none;padding:0}
     main{padding:0}
-    section{margin-top:26px;padding-top:14px}
-    h2{page-break-after:avoid}
-    figure,.table-wrap,.callout,pre{page-break-inside:avoid}
+    .content{max-width:158mm}
+    p{orphans:2;widows:2}
+    section{margin-top:24px;padding-top:14px}
+    h2{break-after:avoid;font-size:20pt}
+    h3{break-after:avoid}
+    figure,.table-wrap,.callout,pre{break-inside:avoid}
     a{color:#000;text-decoration:none}
-    .callout,figure,.table-wrap{box-shadow:none}
+    .callout{background:#f4f4f4;border-color:#bbb}
+    .callout.warn{background:#faf4e4}
+    *{animation:none!important}
   }
 </style>
+<script>
+(function(){
+  try {
+    var t = localStorage.getItem('aletheia-doc-theme');
+    if (t !== 'dark' && t !== 'light') {
+      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
 
-<div id="progress" aria-hidden="true"></div>
-<button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch colour theme">Dark mode</button>
+<a class="skip" href="#main">Skip to content</a>
 
-<header class="hero">
-  <div class="hero-inner">
-    <div class="kicker">Aletheia · Technical explainer</div>
-    <h1>How Aletheia Works</h1>
-    <p class="lede">
-      What actually happens between pressing <strong>Start assessment</strong> and calling a finding
-      <strong>verified</strong>: the four tools, the rules that turn their output into candidates, and the
-      reasoning that decides how bad something is. Written for assessors, supervisors, and anyone who has to
-      explain the system without reading Python.
-    </p>
-    <div class="hero-meta">
-      <div>
-        <span class="meta-label">Audience</span>
-        <span class="meta-value">Assessors, supervisors, new team members, non-specialists</span>
-      </div>
-      <div>
-        <span class="meta-label">Scope</span>
-        <span class="meta-value">Scan pipeline, tool logic, findings, severity and scoring</span>
-      </div>
-      <div>
-        <span class="meta-label">Source of truth</span>
-        <span class="meta-value"><code>docs/risk-methodology.md</code> and <code>backend/app/risk.py</code></span>
-      </div>
-      <div>
-        <span class="meta-label">Updated</span>
-        <span class="meta-value">24 November 2026 · matches <code>main</code></span>
-      </div>
-    </div>
-    <div class="glance" aria-label="At a glance">
-      <div><b>4</b><span>integrated tools: DNS, Nmap, prober, ZAP</span></div>
-      <div><b>5</b><span>severity tiers, from info to critical</span></div>
-      <div><b>3</b><span>enforcement gates before traffic leaves the machine</span></div>
-      <div><b>1</b><span>human signature required per confirmed finding</span></div>
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="wordmark" href="#top">Aletheia</a>
+    <span class="masthead-sub">Technical explainer</span>
+    <div class="masthead-actions">
+      <button class="ghost-btn" id="printBtn" type="button">Print / Save PDF</button>
+      <button class="ghost-btn" id="themeToggle" type="button" title="Switch colour theme">Dark mode</button>
     </div>
   </div>
+  <div id="progress" aria-hidden="true"></div>
 </header>
 
+<section class="cover" id="top">
+  <div class="cover-inner">
+    <div class="cover-top">
+      <span>Security assessment platform</span>
+      <span>Documentation · v1.1 · 24 November 2026</span>
+    </div>
+    <div class="cover-title-wrap">
+      <div class="cover-rule" aria-hidden="true"></div>
+      <div>
+        <h1>How Aletheia Works</h1>
+        <p class="lede">
+          What actually happens between pressing <strong>Start assessment</strong> and calling a finding
+          <strong>verified</strong>: the four tools, the rules that turn their output into candidates, the
+          reasoning that decides how bad something is, and the report that leaves the building. Written for
+          assessors, supervisors, and anyone who has to explain the system without reading Python.
+        </p>
+      </div>
+    </div>
+    <dl class="cover-meta">
+      <div>
+        <dt class="meta-label">Audience</dt>
+        <dd class="meta-value">Assessors, supervisors, new team members, non-specialists</dd>
+      </div>
+      <div>
+        <dt class="meta-label">Scope</dt>
+        <dd class="meta-value">Scan pipeline, tool logic, findings, evidence, severity, reporting</dd>
+      </div>
+      <div>
+        <dt class="meta-label">Source of truth</dt>
+        <dd class="meta-value"><code>docs/risk-methodology.md</code> and <code>backend/app/risk.py</code></dd>
+      </div>
+      <div>
+        <dt class="meta-label">Reading time</dt>
+        <dd class="meta-value">About 45 minutes, or 5 for the short version</dd>
+      </div>
+    </dl>
+    <nav class="cover-index" aria-label="Start here">
+      <span class="index-label">Inside</span>
+      <a href="#pipeline">The pipeline</a><span class="sep">/</span>
+      <a href="#dns">The four tools</a><span class="sep">/</span>
+      <a href="#severity">Severity</a><span class="sep">/</span>
+      <a href="#evidence">Evidence</a><span class="sep">/</span>
+      <a href="#report">The report</a><span class="sep">/</span>
+      <a href="#safety">Safety</a>
+    </nav>
+  </div>
+</section>
+
 <div class="shell">
-  <aside class="toc" aria-label="Contents">
+  <nav class="toc" aria-label="Contents">
     <div class="toc-title">Contents</div>
     <ol>
       <li><a href="#one-minute"><span class="n">01</span><span>The one-minute version</span></a></li>
@@ -422,22 +524,23 @@
       <li><a href="#prober"><span class="n">06</span><span>The prober: reading the paperwork</span></a></li>
       <li><a href="#zap"><span class="n">07</span><span>ZAP: the automated attacker</span></a></li>
       <li><a href="#findings"><span class="n">08</span><span>From output to finding</span></a></li>
-      <li><a href="#severity"><span class="n">09</span><span>How severity works</span></a></li>
-      <li><a href="#safety"><span class="n">10</span><span>The safety rails</span></a></li>
-      <li><a href="#example"><span class="n">11</span><span>A full run, end to end</span></a></li>
-      <li><a href="#limits"><span class="n">12</span><span>Limits and honest notes</span></a></li>
-      <li><a href="#glossary"><span class="n">13</span><span>Glossary</span></a></li>
-      <li><a href="#code-map"><span class="n">14</span><span>Where this lives in the code</span></a></li>
-      <li><a href="#reading"><span class="n">15</span><span>Further reading</span></a></li>
+      <li><a href="#evidence"><span class="n">09</span><span>Evidence and the verification record</span></a></li>
+      <li><a href="#severity"><span class="n">10</span><span>How severity works</span></a></li>
+      <li><a href="#report"><span class="n">11</span><span>The report and the AI narrative</span></a></li>
+      <li><a href="#safety"><span class="n">12</span><span>The safety rails</span></a></li>
+      <li><a href="#example"><span class="n">13</span><span>A full run, end to end</span></a></li>
+      <li><a href="#limits"><span class="n">14</span><span>Limits and honest notes</span></a></li>
+      <li><a href="#glossary"><span class="n">15</span><span>Glossary</span></a></li>
+      <li><a href="#code-map"><span class="n">16</span><span>Where this lives in the code</span></a></li>
+      <li><a href="#reading"><span class="n">17</span><span>Further reading</span></a></li>
     </ol>
-  </aside>
+  </nav>
 
-  <main>
+  <main id="main">
     <div class="content">
 
       <!-- ============================================================ 01 -->
       <section id="one-minute">
-        <div class="sec-kicker">01 · The short version</div>
         <h2>The one-minute version</h2>
         <p class="lead">
           Aletheia is a health check for a web application you are authorized to test. It looks around,
@@ -452,6 +555,10 @@
           <li><strong>Interpret.</strong> A rule engine and an AI model answer: <em>which observations are worth calling findings, and what might they mean together?</em></li>
           <li><strong>Decide.</strong> A human assessor answers: <em>is this real, how bad is it here, and what should be done?</em></li>
         </ol>
+        <p>
+          A final step turns the confirmed set into a document: the PDF report. It is the artifact a client,
+          supervisor, or auditor actually reads.
+        </p>
 
         <figure>
           <div class="fig-scroll">
@@ -526,7 +633,6 @@
 
       <!-- ============================================================ 02 -->
       <section id="mental-model">
-        <div class="sec-kicker">02 · Vocabulary</div>
         <h2>The mental model</h2>
         <p class="lead">
           Seven words carry most of the system. Once these are clear, the rest of the document is detail.
@@ -566,6 +672,10 @@
               <tr>
                 <td><strong>Assessor</strong></td>
                 <td>The logged-in human with permission to verify, dismiss, or request more evidence. Their identity and timestamp are recorded.</td>
+              </tr>
+              <tr>
+                <td><strong>Report</strong></td>
+                <td>The PDF record of one assessment: posture, findings, evidence excerpts, remediation roadmap, and the AI summary.</td>
               </tr>
             </tbody>
           </table>
@@ -643,7 +753,6 @@
 
       <!-- ============================================================ 03 -->
       <section id="pipeline">
-        <div class="sec-kicker">03 · Orchestration</div>
         <h2>The pipeline, step by step</h2>
         <p class="lead">
           A run is a fixed sequence of steps, executed in-process, with live progress streamed to the browser.
@@ -660,10 +769,11 @@
               <tr><td class="nw">1</td><td><strong>DNS</strong></td><td>Where does this name point?</td><td>IPv4/IPv6 addresses, mail/name/text records, optional subdomain hits.</td></tr>
               <tr><td class="nw">2</td><td><strong>Nmap</strong></td><td>Which network ports are open, and what is listening?</td><td>Hosts, open ports, service names, product and version guesses.</td></tr>
               <tr><td class="nw">3</td><td><strong>Prober</strong></td><td>What does the web response reveal about configuration?</td><td>Headers, cookies, TLS facts, exposed paths, deterministic candidate findings.</td></tr>
-              <tr><td class="nw">4</td><td><strong>ZAP</strong> <span class="sev sev-medium" style="margin-left:4px">full only</span></td><td>What can an automated attacker find in the application?</td><td>Spider map plus alerts with risk, confidence, evidence and CWE.</td></tr>
+              <tr><td class="nw">4</td><td><strong>ZAP</strong> <span class="badge">full only</span></td><td>What can an automated attacker find in the application?</td><td>Spider map plus alerts with risk, confidence, evidence and CWE.</td></tr>
               <tr><td class="nw">5</td><td><strong>Normalizer</strong></td><td>Which tool statements are unambiguous enough to become findings?</td><td>Candidate findings from the prober and ZAP, deduplicated by title.</td></tr>
               <tr><td class="nw">6</td><td><strong>AI interpreter</strong></td><td>What do the raw outputs mean together?</td><td>Up to 10 additional candidates, schema-constrained, confidence-scored.</td></tr>
               <tr><td class="nw">7</td><td><strong>Assessor</strong></td><td>What is actually true and how bad is it here?</td><td>Verified, dismissed, or evidence-requested findings, with an audit trail.</td></tr>
+              <tr><td class="nw">8</td><td><strong>Report</strong></td><td>How does this become a document?</td><td>An A4 PDF with posture, findings, evidence excerpts, a roadmap, and the AI summary.</td></tr>
             </tbody>
           </table>
         </div>
@@ -749,11 +859,86 @@
             <code>_run_job()</code> isolates failures.
           </p>
         </div>
+
+        <h3>Two ways to start a run</h3>
+        <p>
+          Most assessments are live: Aletheia runs the tools itself. The platform can also ingest a scan that was
+          produced elsewhere.
+        </p>
+        <ul>
+          <li>
+            <strong>Live run.</strong> The orchestrator executes DNS, Nmap, the prober, and, at full intensity,
+            ZAP, then normalizes and interprets the results.
+          </li>
+          <li>
+            <strong>Import.</strong> An assessor uploads an Nmap XML or ZAP JSON report. Aletheia stores it as a
+            completed job on the target, runs the same normalizer and AI interpreter, and attaches the candidates
+            to a new or existing assessment.
+          </li>
+        </ul>
+        <p>
+          The import path is useful when a client supplies scan output from their own tooling, or when a scan ran
+          on a network the platform cannot reach. It produces the same kind of candidates as a live run; it just
+          skips execution. Because no traffic is sent to the target, the intensity gate does not apply: the
+          upload is data, not an action.
+        </p>
+
+        <h3>One live run per target</h3>
+        <p>
+          Starting a second assessment against a target that is already running returns HTTP 409. Two pipelines
+          against the same host would scan it twice, contend for ports, and normalize the same results into
+          duplicates. Cancel the running assessment or wait for it to finish.
+        </p>
+
+        <h3>What the five categories mean</h3>
+        <p>
+          Every assessment selects at least one category. The category is the language the report uses, and it
+          also shows which tool is expected to supply the evidence.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <caption>Table 3. The five categories and their main sources</caption>
+            <thead>
+              <tr><th style="width:24%">Category</th><th style="width:40%">What it covers</th><th>Where the evidence comes from</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Input validation &amp; injection</td>
+                <td>Untrusted input reaching an interpreter: SQL, script, template, or command.</td>
+                <td>ZAP active scan at full intensity; AI interpretation over the raw output.</td>
+              </tr>
+              <tr>
+                <td>Security configuration &amp; HTTPS</td>
+                <td>Missing browser defences, weak transport, certificate problems.</td>
+                <td>Prober header and TLS checks; ZAP passive alerts.</td>
+              </tr>
+              <tr>
+                <td>Exposed files &amp; directories</td>
+                <td>Files and paths that should not be reachable.</td>
+                <td>Prober path list at full intensity; ZAP spider and alerts.</td>
+              </tr>
+              <tr>
+                <td>Information disclosure</td>
+                <td>Version banners, stack traces, debug output, verbose errors.</td>
+                <td>Prober <code>Server</code> and <code>X-Powered-By</code>; ZAP alerts; AI.</td>
+              </tr>
+              <tr>
+                <td>Session management</td>
+                <td>Cookie flags, session handling, CSRF posture.</td>
+                <td>Prober cookie checks; ZAP session and CSRF alerts.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          The category does not filter the scan; it is the vocabulary the report uses. A finding can still arrive
+          from a tool outside the expected column, which is why the assessor reads the evidence rather than
+          trusting the label.
+        </p>
       </section>
 
       <!-- ============================================================ 04 -->
       <section id="dns">
-        <div class="sec-kicker">04 · Reconnaissance</div>
         <h2>DNS: finding the address before knocking</h2>
         <p class="lead">
           DNS is the internet's phone book. Before a tool can talk to <code>shop.example.com</code>, something
@@ -763,7 +948,7 @@
         <h3>What it collects</h3>
         <div class="table-wrap">
           <table>
-            <caption>Table 3. DNS record types used</caption>
+            <caption>Table 4. DNS record types used</caption>
             <thead><tr><th style="width:16%">Record</th><th style="width:34%">Plain meaning</th><th>Why an assessor cares</th></tr></thead>
             <tbody>
               <tr><td><strong>A / AAAA</strong></td><td>The address of the server: IPv4 and IPv6.</td><td>Confirms where the application actually lives, including <code>localhost</code> during a lab run.</td></tr>
@@ -808,7 +993,6 @@
 
       <!-- ============================================================ 05 -->
       <section id="nmap">
-        <div class="sec-kicker">05 · Port scanning</div>
         <h2>Nmap: which doors are open</h2>
         <p class="lead">
           A server is a building with 65,535 numbered doors per protocol. Most are locked or bricked up. Nmap
@@ -826,7 +1010,7 @@
         <h3>The two profiles</h3>
         <div class="table-wrap">
           <table>
-            <caption>Table 4. Nmap arguments per intensity</caption>
+            <caption>Table 5. Nmap arguments per intensity</caption>
             <thead><tr><th style="width:20%">Intensity</th><th style="width:38%">Arguments</th><th>What that means</th></tr></thead>
             <tbody>
               <tr>
@@ -911,7 +1095,6 @@
 
       <!-- ============================================================ 06 -->
       <section id="prober">
-        <div class="sec-kicker">06 · HTTP inspection</div>
         <h2>The prober: reading the front door's paperwork</h2>
         <p class="lead">
           The prober is Aletheia's own engine, with no external tool behind it. It sends one ordinary web request,
@@ -972,7 +1155,7 @@ Set-Cookie: session=abc123; Path=/
         <h3>The header checklist</h3>
         <div class="table-wrap">
           <table>
-            <caption>Table 5. Security headers the prober checks</caption>
+            <caption>Table 6. Security headers the prober checks</caption>
             <thead>
               <tr><th style="width:26%">Header</th><th style="width:38%">What it does, in plain language</th><th style="width:15%">If missing</th><th>Why that severity</th></tr>
             </thead>
@@ -1058,7 +1241,7 @@ Set-Cookie: session=abc123; Path=/
         </p>
         <div class="table-wrap">
           <table>
-            <caption>Table 6. Certificate checks</caption>
+            <caption>Table 7. Certificate checks</caption>
             <thead><tr><th style="width:32%">Condition</th><th style="width:15%">Severity</th><th>Why</th></tr></thead>
             <tbody>
               <tr><td>Expired</td><td><span class="sev sev-high">high</span></td><td>Browsers refuse the connection or show a full-page warning. The site is effectively broken for careful users.</td></tr>
@@ -1080,7 +1263,7 @@ Set-Cookie: session=abc123; Path=/
         </p>
         <div class="table-wrap">
           <table>
-            <caption>Table 7. The probe list</caption>
+            <caption>Table 8. The probe list</caption>
             <thead><tr><th style="width:24%">Path</th><th style="width:15%">Severity</th><th>What exposure would mean</th></tr></thead>
             <tbody>
               <tr><td><code>/.env</code></td><td><span class="sev sev-high">high</span></td><td>Environment files commonly hold database passwords and API keys.</td></tr>
@@ -1135,7 +1318,6 @@ Set-Cookie: session=abc123; Path=/
 
       <!-- ============================================================ 07 -->
       <section id="zap">
-        <div class="sec-kicker">07 · Application scanning</div>
         <h2>ZAP: the automated attacker, when allowed</h2>
         <p class="lead">
           OWASP ZAP is a full web application scanner. Aletheia drives it through its REST API in daemon mode.
@@ -1144,7 +1326,7 @@ Set-Cookie: session=abc123; Path=/
 
         <div class="table-wrap">
           <table>
-            <caption>Table 8. Spider versus active scan</caption>
+            <caption>Table 9. Spider versus active scan</caption>
             <thead><tr><th style="width:16%">Mode</th><th style="width:30%">What ZAP does</th><th style="width:20%">Risk to the target</th><th>When Aletheia runs it</th></tr></thead>
             <tbody>
               <tr>
@@ -1185,7 +1367,7 @@ Set-Cookie: session=abc123; Path=/
         <h3>Anatomy of a ZAP alert</h3>
         <div class="table-wrap">
           <table>
-            <caption>Table 9. What Aletheia keeps from an alert</caption>
+            <caption>Table 10. What Aletheia keeps from an alert</caption>
             <thead><tr><th style="width:22%">Field</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>name</code></td><td>The alert title, for example "Content Security Policy (CSP) Header Not Set".</td></tr>
@@ -1216,7 +1398,7 @@ Set-Cookie: session=abc123; Path=/
         </p>
         <div class="table-wrap">
           <table>
-            <caption>Table 10. Keyword mapping</caption>
+            <caption>Table 11. Keyword mapping</caption>
             <thead><tr><th style="width:38%">If the title contains</th><th>Category</th></tr></thead>
             <tbody>
               <tr><td><code>cookie</code>, <code>session</code>, <code>csrf</code></td><td>Session management</td></tr>
@@ -1264,7 +1446,6 @@ Set-Cookie: session=abc123; Path=/
 
       <!-- ============================================================ 08 -->
       <section id="findings">
-        <div class="sec-kicker">08 · Normalization</div>
         <h2>From raw output to a finding</h2>
         <p class="lead">
           Two layers turn tool output into candidates, and they are deliberately different. Rules handle facts.
@@ -1294,7 +1475,7 @@ Set-Cookie: session=abc123; Path=/
         </p>
         <div class="table-wrap">
           <table>
-            <caption>Table 11. Guard rails on the AI layer</caption>
+            <caption>Table 12. Guard rails on the AI layer</caption>
             <thead><tr><th style="width:32%">Constraint</th><th>Effect</th></tr></thead>
             <tbody>
               <tr><td>JSON-schema-constrained output</td><td>Each candidate must have a title, description, category, severity, confidence, and optional remediation.</td></tr>
@@ -1335,8 +1516,98 @@ Set-Cookie: session=abc123; Path=/
       </section>
 
       <!-- ============================================================ 09 -->
+      <section id="evidence">
+        <h2>Evidence and the verification record</h2>
+        <p class="lead">
+          A finding without proof is an opinion. Evidence is what lets a second person reach the same conclusion,
+          and what makes the report defensible months later.
+        </p>
+
+        <h3>Three kinds of evidence</h3>
+        <div class="table-wrap">
+          <table>
+            <caption>Table 13. Evidence types</caption>
+            <thead>
+              <tr><th style="width:18%">Kind</th><th style="width:38%">What it is</th><th>How it is attached</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>tool_output</code></td>
+                <td>A slice of the tool's raw output, capped at 4,000 characters.</td>
+                <td>Automatically, when the normalizer creates a candidate.</td>
+              </tr>
+              <tr>
+                <td><code>http_transcript</code></td>
+                <td>A readable rendering of the request, status, response headers, and cookies the prober exchanged.</td>
+                <td>Automatically, once per finding and job.</td>
+              </tr>
+              <tr>
+                <td><code>upload</code></td>
+                <td>A screenshot, log, PDF, CSV, JSON, XML, or archive added by the assessor.</td>
+                <td>Manually, during review.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>What the transcript looks like</h3>
+        <pre><code>GET http://localhost:3000/
+HTTP status: 200
+
+Response headers:
+  content-type: text/html; charset=utf-8
+  server: nginx/1.24.0
+
+Set-Cookie:
+  session=abc123; Path=/</code></pre>
+        <p>
+          It is deliberately a rendering, not a byte-for-byte capture: enough for a human to see why the rule
+          fired, small enough to store and read. The report shows the first 400 characters of each item; the full
+          transcript stays in the app, one click away.
+        </p>
+
+        <h3>Uploads are treated as hostile</h3>
+        <ul>
+          <li><strong>5 MB hard cap.</strong> The server reads one byte past the limit, so a lying <code>Content-Length</code> does not help.</li>
+          <li><strong>Extension allow-list.</strong> Images, PDF, text, logs, CSV, JSON, XML, and ZIP. Anything else is rejected with 415.</li>
+          <li><strong>Random stored name.</strong> The file is written under a UUID; the original filename survives only as the evidence label, never as a path.</li>
+          <li><strong>Safe download.</strong> Files are served as attachments with <code>nosniff</code>, and the path is resolved inside the evidence directory, so a tampered row cannot read outside it.</li>
+          <li><strong>Role split.</strong> Any signed-in user can read evidence; only an assessor or admin can upload or delete it.</li>
+        </ul>
+
+        <h3>The record of a decision</h3>
+        <p>
+          Verifying a finding is not just a colour change. The row stores who did it and when, alongside the
+          assessor's note. Reopening the finding clears that attribution, so a later verification re-stamps the
+          person who actually made the final call. The evidence stays attached through every transition.
+        </p>
+        <p>
+          If two assessors decide on the same finding at the same moment, the second write is rejected with HTTP
+          409 instead of silently overwriting the first. The first decision wins, and the second assessor is told
+          to reload and decide again.
+        </p>
+
+        <div class="callout">
+          <span class="tag">Why this matters</span>
+          <p>
+            The report is a summary; the evidence is the record. A reader of the PDF sees enough to judge the
+            claim, and an assessor defending the finding in a review can open the full transcript, the tool
+            output, or the uploaded screenshot. Without that trail, severity is just an assertion.
+          </p>
+        </div>
+
+        <div class="callout code">
+          <span class="tag">In the code</span>
+          <p>
+            <code>backend/app/evidence_capture.py</code> builds the HTTP transcript;
+            <code>backend/app/api/evidence.py</code> enforces the upload and download rules;
+            <code>backend/app/models/evidence.py</code> defines the three kinds.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================================ 10 -->
       <section id="severity">
-        <div class="sec-kicker">09 · Risk</div>
         <h2>How severity works</h2>
         <p class="lead">
           Severity is the most misunderstood number in security. It is not a property of a tool output. It is a
@@ -1386,7 +1657,7 @@ Set-Cookie: session=abc123; Path=/
         <h3>9.1 The five tiers</h3>
         <div class="table-wrap">
           <table>
-            <caption>Table 12. Severity tiers in practice</caption>
+            <caption>Table 14. Severity tiers in practice</caption>
             <thead>
               <tr><th style="width:13%">Tier</th><th style="width:29%">In one sentence</th><th style="width:29%">A realistic example</th><th>What an assessor does</th></tr>
             </thead>
@@ -1451,7 +1722,7 @@ Set-Cookie: session=abc123; Path=/
         </p>
         <div class="table-wrap">
           <table>
-            <caption>Table 13. The two axes</caption>
+            <caption>Table 15. The two axes</caption>
             <thead><tr><th style="width:16%">Axis</th><th style="width:36%">The question</th><th>What pushes it up</th></tr></thead>
             <tbody>
               <tr>
@@ -1473,7 +1744,7 @@ Set-Cookie: session=abc123; Path=/
 
         <div class="table-wrap">
           <table>
-            <caption>Table 14. The rating matrix</caption>
+            <caption>Table 16. The rating matrix</caption>
             <thead>
               <tr><th style="width:26%">Likelihood \ Impact</th><th>Low impact</th><th>Medium impact</th><th>High impact</th></tr>
             </thead>
@@ -1495,7 +1766,7 @@ Set-Cookie: session=abc123; Path=/
         <h3>Worked ratings</h3>
         <div class="table-wrap">
           <table>
-            <caption>Table 15. How the matrix produces the tool defaults</caption>
+            <caption>Table 17. How the matrix produces the tool defaults</caption>
             <thead>
               <tr><th style="width:30%">Finding</th><th style="width:12%">Likelihood</th><th style="width:10%">Impact</th><th style="width:14%">Result</th><th>Reasoning</th></tr>
             </thead>
@@ -1546,7 +1817,7 @@ Set-Cookie: session=abc123; Path=/
         </p>
         <div class="table-wrap">
           <table>
-            <caption>Table 16. Score bands and representative values</caption>
+            <caption>Table 18. Score bands and representative values</caption>
             <thead><tr><th style="width:30%">Score range</th><th style="width:24%">Tier</th><th>Representative value</th></tr></thead>
             <tbody>
               <tr><td>0.0 – 0.9</td><td><span class="sev sev-info">info</span></td><td><code>0.0</code></td></tr>
@@ -1617,9 +1888,104 @@ Set-Cookie: session=abc123; Path=/
         </div>
       </section>
 
-      <!-- ============================================================ 10 -->
+      <!-- ============================================================ 11 -->
+      <section id="report">
+        <h2>The report and the AI narrative</h2>
+        <p class="lead">
+          The scan produces candidates; the report is the artifact that leaves the building. It is also where the
+          AI's second and third jobs appear, under much tighter constraints than interpretation.
+        </p>
+
+        <h3>One provider, three task models</h3>
+        <p>
+          The AI layer is provider-agnostic: any OpenAI-compatible endpoint works, including a local Ollama
+          instance for offline demos. Interpretation, summary, and Q&amp;A can each point at a different model, so
+          a fast model can draft candidates while a stronger reasoning model writes the report narrative. Provider
+          keys are encrypted at rest and never returned by any API response.
+        </p>
+
+        <h3>Three AI tasks, three different guard rails</h3>
+        <div class="table-wrap">
+          <table>
+            <caption>Table 19. The AI tasks</caption>
+            <thead>
+              <tr><th style="width:16%">Task</th><th style="width:28%">Input</th><th style="width:26%">Output</th><th>Guard rail</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Interpretation</strong></td>
+                <td>Raw tool output from completed jobs, redacted, up to 6,000 characters per job.</td>
+                <td>Up to 10 candidate findings.</td>
+                <td>Schema-constrained; confidence at least 0.3; failure never fails the scan.</td>
+              </tr>
+              <tr>
+                <td><strong>Summary</strong></td>
+                <td>Verified findings only, up to 30.</td>
+                <td>Executive summary (200 words), target overview (80 words), per-finding explanation.</td>
+                <td>Unverified findings are filtered out before the prompt; cached and regenerated after a new verification.</td>
+              </tr>
+              <tr>
+                <td><strong>Q&amp;A</strong></td>
+                <td>One finding, its attached evidence, and the last 6 turns of the conversation.</td>
+                <td>Markdown answer with <code>[Evidence #id]</code> citations.</td>
+                <td>Grounded in attached evidence; instructed to name missing data; every answer is audited.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>From HTML to PDF</h3>
+        <ol>
+          <li>Gather the assessment, target, jobs, findings, evidence, counts, and the latest AI summary.</li>
+          <li>Render the Jinja2 template to self-contained HTML: inline CSS and SVG, no scripts.</li>
+          <li>Print with headless Chromium at A4, with 18 mm top and bottom margins and 16 mm sides.</li>
+          <li>Store the PDF and mark the report ready. A failure lands on the report row with an actionable message.</li>
+        </ol>
+        <p>
+          The same template powers an in-app preview. The preview is a live view over the current findings; a
+          saved PDF is a snapshot and may be older. Duplicate clicks on generate return the existing pending
+          report instead of starting a second render.
+        </p>
+
+        <h3>What the report contains</h3>
+        <ul>
+          <li><strong>Executive summary</strong> with an overall posture driven by the highest severity present.</li>
+          <li><strong>Findings overview</strong>: counts by tier, with verified and unverified separated.</li>
+          <li><strong>Methodology and framework references</strong>, so the rating logic travels with the result.</li>
+          <li><strong>Scope</strong>: target, authorization reference, and the in-scope and out-of-scope lists.</li>
+          <li><strong>Findings by severity</strong>: score, status, evidence excerpt, remediation, and assessor note.</li>
+          <li><strong>Risk table</strong> and a <strong>prioritized roadmap</strong>: immediate for critical and high, short term for medium, long term for low and info.</li>
+        </ul>
+
+        <div class="callout warn">
+          <span class="tag">The summary only sees verified findings</span>
+          <p>
+            This is a hard filter, not a prompt instruction. Unverified candidates never enter the summarizer, so
+            the narrative cannot read an unconfirmed claim as fact. If no provider is configured, the template
+            shows a clean placeholder and the report still renders.
+          </p>
+        </div>
+
+        <h3>Asking the analyst</h3>
+        <p>
+          The per-finding Q&amp;A panel is not a general chatbot. It receives that finding's metadata and attached
+          evidence, answers with inline citations, and records the exchange. If the evidence does not support an
+          answer, the model is instructed to say what is missing rather than fill the gap. Binary uploads are
+          described to the model, not analysed as images.
+        </p>
+
+        <div class="callout code">
+          <span class="tag">In the code</span>
+          <p>
+            <code>backend/app/ai/summarize.py</code> builds the verified-only summary;
+            <code>backend/app/ai/qa.py</code> answers finding questions and parses citations;
+            <code>backend/app/reporting.py</code> and <code>app/templates/report.html</code> produce the PDF.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================================ 12 -->
       <section id="safety">
-        <div class="sec-kicker">10 · Guard rails</div>
         <h2>The safety rails</h2>
         <p class="lead">
           A scanning platform is a dual-use tool. The difference between an assessment and an attack is
@@ -1628,7 +1994,7 @@ Set-Cookie: session=abc123; Path=/
 
         <div class="table-wrap">
           <table>
-            <caption>Table 17. Enforcement points</caption>
+            <caption>Table 20. Enforcement points</caption>
             <thead><tr><th style="width:24%">Gate</th><th style="width:38%">What it stops</th><th>Where it is enforced</th></tr></thead>
             <tbody>
               <tr>
@@ -1660,6 +2026,75 @@ Set-Cookie: session=abc123; Path=/
           </table>
         </div>
 
+        <h3>What a target record carries</h3>
+        <p>
+          The target is not just a URL. Five fields decide what the tools may do and what the report may say.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <caption>Table 21. Target fields that control the run</caption>
+            <thead>
+              <tr><th style="width:24%">Field</th><th>Why it exists</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Name and base URL</strong></td>
+                <td>What the report calls the target, and where DNS, Nmap, the prober, and ZAP point.</td>
+              </tr>
+              <tr>
+                <td><strong>Authorization reference</strong></td>
+                <td>The owner's written permission. Required before a private, loopback, or link-local address may be contacted.</td>
+              </tr>
+              <tr>
+                <td><strong>Allowed intensity</strong></td>
+                <td>The ceiling for every run: <code>passive_safe</code> or <code>full_intrusive</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>In-scope assets</strong></td>
+                <td>The hosts the authorization covers. A private address must appear here to pass the host guard.</td>
+              </tr>
+              <tr>
+                <td><strong>Out-of-scope assets</strong></td>
+                <td>Paths the prober must not request, and terms redacted from AI prompts.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Who can do what</h3>
+        <div class="table-wrap">
+          <table>
+            <caption>Table 22. Roles and permissions</caption>
+            <thead>
+              <tr><th style="width:16%">Role</th><th style="width:38%">Can read</th><th>Can change</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Viewer</strong></td>
+                <td>Everything: targets, assessments, findings, evidence, reports.</td>
+                <td>Nothing. Mutating requests are rejected at the API boundary.</td>
+              </tr>
+              <tr>
+                <td><strong>Assessor</strong></td>
+                <td>Everything.</td>
+                <td>Start assessments, register and update targets, verify or dismiss findings, upload evidence, generate reports, ask the analyst.</td>
+              </tr>
+              <tr>
+                <td><strong>Admin</strong></td>
+                <td>Everything.</td>
+                <td>Everything an assessor can do, plus user accounts, target deletion, and LLM provider settings.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Roles are enforced in the API, not hidden in the interface. A viewer who crafts a request still gets a
+          403. The verification rule is separate from the role: being an admin does not make a finding verified,
+          but an admin acting in the assessor role can verify one, and the audit trail records which person did.
+          There is no public signup: an admin seeds the first account and creates the rest, so every action is
+          attributable to a named user.
+        </p>
+
         <h3>The host guard, in detail</h3>
         <p>
           Checking the URL string is not enough. A hostname is not an address: <code>localhost</code>,
@@ -1669,7 +2104,7 @@ Set-Cookie: session=abc123; Path=/
         </p>
         <div class="table-wrap">
           <table>
-            <caption>Table 18. Host policy</caption>
+            <caption>Table 23. Host policy</caption>
             <thead><tr><th style="width:30%">Address class</th><th style="width:22%">Allowed?</th><th>Condition</th></tr></thead>
             <tbody>
               <tr><td>Public</td><td>Yes</td><td>Normal registered target.</td></tr>
@@ -1710,9 +2145,8 @@ Set-Cookie: session=abc123; Path=/
         </div>
       </section>
 
-      <!-- ============================================================ 11 -->
+      <!-- ============================================================ 13 -->
       <section id="example">
-        <div class="sec-kicker">11 · Worked example</div>
         <h2>A full run, end to end</h2>
         <p class="lead">
           This is what the pipeline looks like on a local OWASP Juice Shop instance registered as
@@ -1722,7 +2156,7 @@ Set-Cookie: session=abc123; Path=/
 
         <div class="table-wrap">
           <table>
-            <caption>Table 19. One assessment, job by job</caption>
+            <caption>Table 24. One assessment, job by job</caption>
             <thead><tr><th style="width:15%">Step</th><th style="width:40%">What happens</th><th>What it becomes</th></tr></thead>
             <tbody>
               <tr>
@@ -1778,9 +2212,8 @@ Set-Cookie: session=abc123; Path=/
         </p>
       </section>
 
-      <!-- ============================================================ 12 -->
+      <!-- ============================================================ 14 -->
       <section id="limits">
-        <div class="sec-kicker">12 · Boundaries</div>
         <h2>Limits and honest notes</h2>
         <p class="lead">
           A document that only describes strengths is marketing. These are the real boundaries of the current
@@ -1794,6 +2227,8 @@ Set-Cookie: session=abc123; Path=/
           <li><strong>The prober checks the base URL and a fixed path list, not every page.</strong> It does not log in, crawl, or exercise multi-step flows.</li>
           <li><strong>TLS facts are collected only for HTTPS on port 443.</strong> An HTTPS service on a non-standard port gets no certificate findings.</li>
           <li><strong>ZAP sees what its spider can reach.</strong> Authenticated areas and complex JavaScript flows may be under-mapped.</li>
+          <li><strong>Imported scans are only as complete as the file.</strong> The platform cannot know what an external Nmap or ZAP run skipped.</li>
+          <li><strong>The AI summary covers at most 30 verified findings.</strong> Longer assessments get a summary of the first 30; the report still lists every finding.</li>
         </ul>
 
         <h3>Accuracy</h3>
@@ -1803,19 +2238,21 @@ Set-Cookie: session=abc123; Path=/
           <li><strong>Deduplication is by exact title.</strong> Two tools can report the same weakness under different names.</li>
           <li><strong>AI output can be wrong.</strong> Confidence is an estimate, not a guarantee. That is the reason every AI finding starts as a candidate.</li>
           <li><strong>Severity defaults are approximations.</strong> They are consistent, not context-aware. The assessor's value is the one that counts.</li>
+          <li><strong>The host guard has a known DNS gap.</strong> A host that fails to resolve at check time is allowed through, because it cannot be contacted either. A deliberately rebinding DNS server could answer publicly for the check and privately for the connection.</li>
+          <li><strong>The AI summary and Q&amp;A remain advisory.</strong> The summary reads only verified findings and the Q&amp;A cites evidence, but both can still be wrong; neither changes a finding's status.</li>
         </ul>
 
         <h3>Environment</h3>
         <ul>
           <li><strong>The pipeline is single-process.</strong> A server restart kills a running scan; the database row stays <code>running</code> and the run can be relaunched.</li>
           <li><strong>Tool availability is assumed but not required.</strong> A missing Nmap or ZAP fails only that job, with an actionable message.</li>
+          <li><strong>PDF generation needs Playwright and Chromium.</strong> A missing browser marks the report failed with a message; it does not crash the API.</li>
           <li><strong>This is an assessment aid, not a replacement for a manual penetration test.</strong> It finds what its tools and rules can see, and it says so.</li>
         </ul>
       </section>
 
-      <!-- ============================================================ 13 -->
+      <!-- ============================================================ 15 -->
       <section id="glossary">
-        <div class="sec-kicker">13 · Reference</div>
         <h2>Glossary</h2>
         <p class="lead">The terms a non-specialist is most likely to meet while reading a report.</p>
 
@@ -1835,6 +2272,9 @@ Set-Cookie: session=abc123; Path=/
           <div><dt>MIME sniffing</dt><dd>A browser guessing a file's type from its content instead of trusting the declared type. It can turn an innocent upload into executable script.</dd></div>
           <div><dt>CWE</dt><dd>Common Weakness Enumeration: a public catalogue of weakness types, used to compare findings across tools.</dd></div>
           <div><dt>OWASP</dt><dd>The Open Worldwide Application Security Project, publisher of the Risk Rating Methodology and the Top 10.</dd></div>
+          <div><dt>Idempotent</dt><dd>An operation that can be repeated without changing the result beyond the first time. Attaching the same transcript twice is a no-op.</dd></div>
+          <div><dt>Audit trail</dt><dd>The who, what, and when record of a decision. In Aletheia it is the verifier's identity, the timestamp, and the assessor's note.</dd></div>
+          <div><dt>Posture</dt><dd>The overall risk label of an assessment, derived from its highest severity tier rather than an average.</dd></div>
           <div><dt>Candidate</dt><dd>A finding produced by a tool or AI that has not yet been verified by an assessor. It is visible, but not confirmed.</dd></div>
           <div><dt>False positive</dt><dd>A finding that looked real to a tool but is not a real weakness in context. It is dismissed, not deleted.</dd></div>
           <div><dt>Evidence</dt><dd>The proof attached to a finding: a tool output, an HTTP transcript, a screenshot, or an uploaded file.</dd></div>
@@ -1842,9 +2282,8 @@ Set-Cookie: session=abc123; Path=/
         </dl>
       </section>
 
-      <!-- ============================================================ 14 -->
+      <!-- ============================================================ 16 -->
       <section id="code-map">
-        <div class="sec-kicker">14 · For developers</div>
         <h2>Where this lives in the code</h2>
         <p class="lead">
           If you need to change a behaviour described here, this is the shortest path to the right file.
@@ -1852,7 +2291,7 @@ Set-Cookie: session=abc123; Path=/
 
         <div class="table-wrap">
           <table>
-            <caption>Table 20. Concept to code</caption>
+            <caption>Table 25. Concept to code</caption>
             <thead><tr><th style="width:28%">Concept</th><th style="width:40%">File</th><th>Look at</th></tr></thead>
             <tbody>
               <tr><td>Pipeline order and failure isolation</td><td><code>backend/app/scanner/orchestrator.py</code></td><td><code>BASE_TOOLS</code>, <code>INTRUSIVE_TOOLS</code>, <code>run_pipeline()</code>, <code>_run_job()</code></td></tr>
@@ -1863,6 +2302,12 @@ Set-Cookie: session=abc123; Path=/
               <tr><td>ZAP integration</td><td><code>backend/app/scanner/zap_runner.py</code></td><td><code>run()</code>, <code>_wait_phase()</code>, <code>zap_category()</code></td></tr>
               <tr><td>Raw output to candidates</td><td><code>backend/app/scanner/normalize.py</code></td><td><code>normalize_job()</code>, <code>create_candidate()</code></td></tr>
               <tr><td>AI interpretation</td><td><code>backend/app/ai/interpret.py</code></td><td><code>interpret_assessment()</code>, <code>CANDIDATE_SCHEMA</code></td></tr>
+              <tr><td>Scan import</td><td><code>backend/app/scanner/importer.py</code>, <code>api/assessments.py</code></td><td><code>parse_imported_scan()</code>, the <code>/assessments/import</code> route</td></tr>
+              <tr><td>Evidence capture and upload</td><td><code>backend/app/evidence_capture.py</code>, <code>api/evidence.py</code></td><td><code>capture_http_transcript()</code>, upload and download guards</td></tr>
+              <tr><td>AI summary</td><td><code>backend/app/ai/summarize.py</code></td><td><code>summarize_assessment()</code>, the verified-only filter</td></tr>
+              <tr><td>Finding Q&amp;A</td><td><code>backend/app/ai/qa.py</code></td><td><code>answer_finding_question()</code>, citation parsing</td></tr>
+              <tr><td>PDF report</td><td><code>backend/app/reporting.py</code>, <code>app/templates/report.html</code></td><td><code>build_report_context()</code>, <code>generate_pdf_bytes()</code></td></tr>
+              <tr><td>LLM plumbing</td><td><code>backend/app/ai/client.py</code>, <code>ai/redaction.py</code></td><td>Provider resolution, per-task models, redaction gate</td></tr>
               <tr><td>Severity matrix and score</td><td><code>backend/app/risk.py</code></td><td><code>RISK_MATRIX</code>, <code>SCORE_BANDS</code>, <code>REPRESENTATIVE_SCORES</code></td></tr>
               <tr><td>Methodology document</td><td><code>docs/risk-methodology.md</code></td><td>Matrix, bands, and the doc/code consistency test</td></tr>
               <tr><td>Host safety</td><td><code>backend/app/scanner/hostguard.py</code></td><td><code>check_host()</code>, <code>request_guard()</code></td></tr>
@@ -1875,23 +2320,25 @@ Set-Cookie: session=abc123; Path=/
         <p>
           Tests that protect the behaviour described here: <code>test_risk_model.py</code> (matrix and doc
           consistency), <code>test_nmap_parse.py</code> (XML fixture), <code>test_prober_integration.py</code>
-          (canned HTTP responses), <code>test_hostguard.py</code> (address policy), and
-          <code>test_orchestrator_state.py</code> (pipeline transitions).
+          (canned HTTP responses), <code>test_hostguard.py</code> (address policy),
+          <code>test_orchestrator_state.py</code> (pipeline transitions), <code>test_import_scan.py</code>
+          (imported Nmap/ZAP files), <code>test_evidence_api.py</code> (upload rules),
+          <code>test_reports_api.py</code> (report lifecycle), <code>test_summarize.py</code> (verified-only
+          summary), and <code>test_finding_qa.py</code> (grounded answers).
         </p>
       </section>
 
-      <!-- ============================================================ 15 -->
+      <!-- ============================================================ 17 -->
       <section id="reading">
-        <div class="sec-kicker">15 · Sources</div>
         <h2>Further reading</h2>
         <p class="lead">The external references behind the method, in the order they are most useful.</p>
         <ul>
-          <li><a href="https://owasp.org/www-community/OWASP_Risk_Rating_Methodology">OWASP Risk Rating Methodology</a> — the likelihood × impact model used in section 9.</li>
+          <li><a href="https://owasp.org/www-community/OWASP_Risk_Rating_Methodology">OWASP Risk Rating Methodology</a> — the likelihood × impact model used in the severity section.</li>
           <li><a href="https://owasp.org/www-project-top-ten/">OWASP Top 10</a> — the category language used in findings.</li>
           <li><a href="https://owasp.org/www-project-web-security-testing-guide/">OWASP Web Security Testing Guide</a> — the manual counterpart to what Aletheia automates.</li>
           <li><a href="https://nmap.org/book/">Nmap Network Scanning</a> — what ports, service detection, and timing templates actually do.</li>
           <li><a href="https://www.zaproxy.org/docs/">ZAP documentation</a> — spider, active scan, alerts, and the REST API.</li>
-          <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers">MDN: HTTP headers</a> — plain-language reference for every header in section 6.</li>
+          <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers">MDN: HTTP headers</a> — plain-language reference for every header in the prober section.</li>
         </ul>
       </section>
 
@@ -1906,34 +2353,29 @@ Set-Cookie: session=abc123; Path=/
       This explainer describes the implementation as of 24 November 2026. If this page and the code disagree,
       the code and <code>docs/risk-methodology.md</code> win.
     </p>
-    <div class="mark">Docs · How it works · v1.0</div>
+    <div class="mark">Docs · How it works · v1.1</div>
   </div>
 </footer>
 
 <script>
 (function () {
   var root = document.documentElement;
-  var btn = document.getElementById('themeToggle');
-  var saved = null;
-  try { saved = localStorage.getItem('aletheia-doc-theme'); } catch (e) {}
+  var themeBtn = document.getElementById('themeToggle');
+  var printBtn = document.getElementById('printBtn');
 
-  if (saved === 'dark' || saved === 'light') {
-    root.setAttribute('data-theme', saved);
-  } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    root.setAttribute('data-theme', 'dark');
+  function themeLabel() {
+    themeBtn.textContent = root.getAttribute('data-theme') === 'dark' ? 'Light mode' : 'Dark mode';
   }
+  themeLabel();
 
-  function label() {
-    btn.textContent = root.getAttribute('data-theme') === 'dark' ? 'Light mode' : 'Dark mode';
-  }
-  label();
-
-  btn.addEventListener('click', function () {
+  themeBtn.addEventListener('click', function () {
     var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     root.setAttribute('data-theme', next);
     try { localStorage.setItem('aletheia-doc-theme', next); } catch (e) {}
-    label();
+    themeLabel();
   });
+
+  printBtn.addEventListener('click', function () { window.print(); });
 
   var bar = document.getElementById('progress');
   function onScroll() {
@@ -1947,15 +2389,24 @@ Set-Cookie: session=abc123; Path=/
   var byId = {};
   links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
 
+  function setActive(id) {
+    links.forEach(function (a) {
+      a.classList.remove('active');
+      a.removeAttribute('aria-current');
+    });
+    var active = byId[id];
+    if (active) {
+      active.classList.add('active');
+      active.setAttribute('aria-current', 'true');
+    }
+  }
+
   if ('IntersectionObserver' in window) {
     var observer = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
-        if (!entry.isIntersecting) return;
-        links.forEach(function (a) { a.classList.remove('active'); });
-        var active = byId[entry.target.id];
-        if (active) active.classList.add('active');
+        if (entry.isIntersecting) setActive(entry.target.id);
       });
-    }, { rootMargin: '-8% 0px -72% 0px', threshold: 0 });
+    }, { rootMargin: '-72px 0px -68% 0px', threshold: 0 });
     Array.prototype.forEach.call(document.querySelectorAll('main section[id]'), function (s) {
       observer.observe(s);
     });

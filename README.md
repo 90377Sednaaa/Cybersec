@@ -32,7 +32,8 @@ Aletheia walks an authorized web application through a complete assessment pipel
 > The canonical plan and decision record is **[docs/PLAN.md](docs/PLAN.md)** - read that before changing architecture.
 >
 > New to the project, or explaining it to someone non-technical? **[How Aletheia works](docs/how-it-works.html)**
-> is an illustrated walkthrough of the scan pipeline, the four tools, and the severity logic. Open it in a browser.
+> is an illustrated walkthrough of the scan pipeline, the four tools, evidence, severity, and reporting.
+> Open it in a browser.
 
 ## Screenshots
 
