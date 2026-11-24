@@ -18,6 +18,9 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import subprocess
+import threading
+import time
 import xml.etree.ElementTree as ET
 from urllib.parse import urlsplit
 
@@ -124,6 +127,66 @@ def parse_nmap_xml(xml_text: str) -> dict:
     return {"hosts": hosts_out, "summary": summary}
 
 
+async def _run_nmap_popen_fallback(argv: list[str], ctx: ScanContext) -> tuple[int, bytes, bytes]:
+    """Fallback using subprocess.Popen + daemon pipe-draining threads when the
+    active asyncio loop does not support subprocess transports (e.g. Windows
+    SelectorEventLoop under `uvicorn --reload`). All ctx.progress/ctx.cancelled
+    calls remain on the event-loop thread so SQLAlchemy sessions and asyncio
+    queues are never touched from worker threads."""
+    proc = subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    stdout_chunks: list[bytes] = []
+    stderr_chunks: list[bytes] = []
+    stdout_bytes_read = 0
+
+    def _drain(stream, bucket: list[bytes], track: bool) -> None:
+        nonlocal stdout_bytes_read
+        if stream is None:
+            return
+        try:
+            while True:
+                chunk = stream.read(65536)
+                if not chunk:
+                    break
+                bucket.append(chunk)
+                if track:
+                    stdout_bytes_read += len(chunk)
+        finally:
+            stream.close()
+
+    t_out = threading.Thread(target=_drain, args=(proc.stdout, stdout_chunks, True), daemon=True)
+    t_err = threading.Thread(target=_drain, args=(proc.stderr, stderr_chunks, False), daemon=True)
+    t_out.start()
+    t_err.start()
+
+    deadline = time.monotonic() + NMAP_TIME_CAP_SECONDS
+    last_reported = 0
+    try:
+        while proc.poll() is None:
+            if ctx.cancelled():
+                proc.kill()
+                await asyncio.to_thread(proc.wait)
+                raise RunnerError("Cancelled")
+            if time.monotonic() >= deadline:
+                proc.kill()
+                await asyncio.to_thread(proc.wait)
+                raise RunnerError(
+                    f"nmap exceeded the {int(NMAP_TIME_CAP_SECONDS)}s time cap and was terminated"
+                )
+            if stdout_bytes_read != last_reported:
+                last_reported = stdout_bytes_read
+                ctx.progress(min(0.9, 0.1 + stdout_bytes_read / 200_000))
+            await asyncio.sleep(0.25)
+    finally:
+        await asyncio.to_thread(t_out.join, 5)
+        await asyncio.to_thread(t_err.join, 5)
+
+    return proc.returncode or 0, b"".join(stdout_chunks), b"".join(stderr_chunks)
+
+
 @register("nmap")
 class NmapRunner(BaseRunner):
     async def run(self, ctx: ScanContext) -> None:
@@ -141,48 +204,56 @@ class NmapRunner(BaseRunner):
         ctx.log(f"$ {ctx.job.command}")
         ctx.progress(0.1)
 
-        process = await asyncio.create_subprocess_exec(
-            *argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        async def consume_stdout() -> bytes:
-            chunks: list[bytes] = []
-            assert process.stdout is not None
-            while True:
-                if ctx.cancelled():
-                    process.kill()
-                    await process.wait()
-                    raise RunnerError("Cancelled")
-                try:
-                    chunk = await asyncio.wait_for(process.stdout.read(65536), timeout=0.5)
-                except asyncio.TimeoutError:
-                    continue
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                done = sum(len(c) for c in chunks)
-                ctx.progress(min(0.9, 0.1 + done / 200_000))
-            return b"".join(chunks)
-
         try:
-            stdout_bytes, stderr = await asyncio.wait_for(
-                asyncio.gather(consume_stdout(), process.stderr.read()), timeout=NMAP_TIME_CAP_SECONDS
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-        except asyncio.TimeoutError:
-            process.kill()
+        except NotImplementedError:
+            # Windows SelectorEventLoop (used by `uvicorn --reload`) does not
+            # implement asyncio subprocess transports. Fall back to subprocess.Popen
+            # with pipe-draining threads while keeping DB/SSE updates on the loop.
+            returncode, stdout_bytes, stderr = await _run_nmap_popen_fallback(argv, ctx)
+            ctx.progress(0.95)
+        else:
+            async def consume_stdout() -> bytes:
+                chunks: list[bytes] = []
+                assert process.stdout is not None
+                while True:
+                    if ctx.cancelled():
+                        process.kill()
+                        await process.wait()
+                        raise RunnerError("Cancelled")
+                    try:
+                        chunk = await asyncio.wait_for(process.stdout.read(65536), timeout=0.5)
+                    except asyncio.TimeoutError:
+                        continue
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    done = sum(len(c) for c in chunks)
+                    ctx.progress(min(0.9, 0.1 + done / 200_000))
+                return b"".join(chunks)
+
+            try:
+                stdout_bytes, stderr = await asyncio.wait_for(
+                    asyncio.gather(consume_stdout(), process.stderr.read()), timeout=NMAP_TIME_CAP_SECONDS
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                raise RunnerError(
+                    f"nmap exceeded the {int(NMAP_TIME_CAP_SECONDS)}s time cap and was terminated"
+                ) from None
             await process.wait()
-            raise RunnerError(
-                f"nmap exceeded the {int(NMAP_TIME_CAP_SECONDS)}s time cap and was terminated"
-            ) from None
-        await process.wait()
-        ctx.progress(0.95)
+            returncode = process.returncode or 0
+            ctx.progress(0.95)
 
         stdout = stdout_bytes.decode(errors="replace")
-        stderr = stderr.decode(errors="replace")
-        if process.returncode != 0:
-            raise RunnerError(f"nmap exited with code {process.returncode}: {stderr.strip()[:400]}")
+        stderr_text = stderr.decode(errors="replace")
+        if returncode != 0:
+            raise RunnerError(f"nmap exited with code {returncode}: {stderr_text.strip()[:400]}")
 
         # `stdout` is already a str (decoded above). Calling .decode() again
         # raised AttributeError here, so every successful nmap run was reported

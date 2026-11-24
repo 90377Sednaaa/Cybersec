@@ -839,3 +839,67 @@ def test_on_demand_summary_endpoint(client, auth, monkeypatch):
     resp = client.post(f"/api/assessments/{aid}/summary", headers=auth)
     assert resp.status_code == 200, resp.text
     assert resp.json()["executive_summary"] == "Fresh executive summary."
+
+
+def test_nmap_runner_falls_back_to_popen_on_selector_loop(monkeypatch):
+    """Under `uvicorn --reload` on Windows, SelectorEventLoop raises
+    NotImplementedError on asyncio.create_subprocess_exec. NmapRunner must
+    fall back transparently to subprocess.Popen and still parse XML."""
+    import io
+    from pathlib import Path
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from app.scanner.base import ScanContext
+    from app.scanner.nmap_runner import NmapRunner
+
+    xml_bytes = (
+        b'<?xml version="1.0"?>'
+        b'<nmaprun><host><address addr="127.0.0.1" addrtype="ipv4"/>'
+        b'<ports><port protocol="tcp" portid="3000"><state state="open"/>'
+        b'<service name="http" product="Node.js"/></port></ports></host>'
+        b'<runstats><finished summary="Nmap done: 1 IP address"/></runstats></nmaprun>'
+    )
+
+    class FakePopen:
+        def __init__(self, _argv, stdout=None, stderr=None) -> None:
+            self.stdout = io.BytesIO(xml_bytes)
+            self.stderr = io.BytesIO(b"")
+            self.returncode = 0
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self):
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+    async def _raise_not_implemented(*_a, **_kw):
+        raise NotImplementedError
+
+    monkeypatch.setattr("app.scanner.nmap_runner.shutil.which", lambda _name: "nmap")
+    monkeypatch.setattr("app.scanner.nmap_runner.asyncio.create_subprocess_exec", _raise_not_implemented)
+    monkeypatch.setattr("app.scanner.nmap_runner.subprocess.Popen", FakePopen)
+
+    job = SimpleNamespace(command="", raw_output=None)
+    ctx = ScanContext(
+        db=MagicMock(),
+        target=SimpleNamespace(
+            base_url="http://localhost:3000",
+            authorization_ref="TEST-AUTH-NMAP-FALLBACK",
+            in_scope_assets=["http://localhost:3000"],
+        ),
+        assessment=SimpleNamespace(intensity=ScanIntensity.passive_safe),
+        job=job,
+        emit_log=lambda _line: None,
+        emit_progress=lambda _value: None,
+        cancelled=lambda: False,
+    )
+
+    asyncio.run(NmapRunner().run(ctx))
+    parsed = json.loads(job.raw_output)
+    assert len(parsed["hosts"]) == 1
+    assert parsed["hosts"][0]["address"] == "127.0.0.1"
+
