@@ -1,13 +1,37 @@
-import { useEffect, useRef, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Link, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Copy } from "lucide-react"
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  Ban,
+  Check,
+  CheckCircle2,
+  Copy,
+  FileText,
+  FileUp,
+  RotateCw,
+  ShieldAlert,
+  Sparkles,
+  Terminal,
+} from "lucide-react"
 import { toast } from "sonner"
 
+import { EmptyState } from "@/components/empty-state"
+import { FindingTriageSheet } from "@/components/finding-triage-sheet"
+import { ImportScanDialog } from "@/components/import-scan-dialog"
+import { QuickAssessmentDialog } from "@/components/quick-assessment-dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { api, apiWithMeta } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import {
@@ -21,8 +45,16 @@ import {
   displayScore,
 } from "@/lib/finding-style"
 import { useScanEvents } from "@/lib/scan-events"
+import type {
+  AssessmentDetail,
+  AssessmentStatus,
+  Finding,
+  InterpretResult,
+  Job,
+  JobStatus,
+  Target,
+} from "@/lib/types"
 import { AssessmentReports } from "@/pages/assessment-reports"
-import type { AssessmentDetail, AssessmentStatus, Finding, Job, JobStatus, Target } from "@/lib/types"
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline"
 
@@ -58,14 +90,6 @@ const BAR_CLASS: Record<string, string> = {
   draft: "bg-muted-foreground/30",
 }
 
-/**
- * Horizontal timing bars for one run.
- *
- * Stacked cards answer "what ran"; a shared time axis answers "where did the
- * time go, and which tool stalled" - which is the question you actually ask
- * when a scan takes longer than expected. Plain divs, so both themes and print
- * behave without a chart library.
- */
 function JobTimeline({
   jobs,
   runStartedAt,
@@ -75,11 +99,9 @@ function JobTimeline({
   jobs: Job[]
   runStartedAt: string | null
   runFinishedAt: string | null
-  /** Timestamp of the last successful fetch, so running bars grow as data refreshes. */
   now: number | null
 }) {
   const parse = (iso: string | null) => (iso ? new Date(iso).getTime() : null)
-
   const starts = jobs.map((job) => parse(job.started_at)).filter((t): t is number => t !== null)
   const ends = jobs.map((job) => parse(job.finished_at)).filter((t): t is number => t !== null)
 
@@ -88,18 +110,13 @@ function JobTimeline({
     return <p className="text-sm text-muted-foreground">No timing recorded yet.</p>
   }
   const latest = parse(runFinishedAt) ?? (ends.length > 0 ? Math.max(...ends) : null)
-  // Only an ACTIVE run may extend its axis to the current poll time, so a
-  // running job's bar keeps growing. Including `now` for a finished run would
-  // stretch the axis from the run's end date to today and crush every bar into
-  // a 1px sliver; ignoring it entirely freezes the axis at the first finished
-  // job and clips the in-progress bar at 100%.
   const active = runFinishedAt === null
   const finish = Math.max(latest ?? 0, active ? (now ?? 0) : 0, origin + 1)
   const span = finish - origin
 
   return (
-    <div className="space-y-2">
-      <div className="space-y-1.5">
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-2">
         {jobs.map((job) => {
           const start = parse(job.started_at)
           const end = parse(job.finished_at) ?? (job.status === "running" ? (now ?? start) : null)
@@ -107,19 +124,15 @@ function JobTimeline({
           const left = queued ? 0 : ((start - origin) / span) * 100
           const width = queued ? 100 : Math.max((((end ?? start) - start) / span) * 100, 1.5)
           return (
-            <div key={job.id} className="flex items-center gap-2">
-              <span className="w-16 shrink-0 truncate text-xs text-muted-foreground" title={job.tool}>
+            <div key={job.id} className="flex items-center gap-3">
+              <span className="w-16 shrink-0 truncate font-mono text-xs text-muted-foreground" title={job.tool}>
                 {job.tool}
               </span>
               <div className="relative h-5 flex-1 overflow-hidden rounded bg-muted/50">
                 <div
                   className={`absolute inset-y-0 rounded ${queued ? "bg-muted-foreground/15" : (BAR_CLASS[job.status] ?? "bg-primary")}`}
                   style={{ left: `${left}%`, width: `${width}%` }}
-                  title={
-                    queued
-                      ? `${job.tool}: queued`
-                      : `${job.tool}: ${formatDuration((end ?? start) - start)}`
-                  }
+                  title={queued ? `${job.tool}: queued` : `${job.tool}: ${formatDuration((end ?? start) - start)}`}
                 />
                 {queued && (
                   <span className="absolute inset-0 flex items-center px-2 text-xs text-muted-foreground">
@@ -127,14 +140,14 @@ function JobTimeline({
                   </span>
                 )}
               </div>
-              <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+              <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
                 {queued ? "-" : formatDuration((end ?? start) - start)}
               </span>
             </div>
           )
         })}
       </div>
-      <div className="flex justify-between pl-18 text-xs tabular-nums text-muted-foreground">
+      <div className="flex justify-between pl-19 font-mono text-xs tabular-nums text-muted-foreground">
         <span>{formatTime(origin)}</span>
         <span>{formatTime(finish)}</span>
       </div>
@@ -145,44 +158,72 @@ function JobTimeline({
 function JobRow({ job }: { job: Job }) {
   const percent = Math.round(job.progress * 100)
   return (
-    <div className="space-y-1 py-2">
+    <div className="flex flex-col gap-2 py-3.5">
       <div className="flex items-center gap-2">
-        <span className="font-medium">{job.tool}</span>
+        <span className="text-sm font-medium">{job.tool}</span>
         <Badge variant={STATUS_VARIANT[job.status]}>{job.status}</Badge>
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{percent}%</span>
+        <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">{percent}%</span>
       </div>
-      {/* A finished job's full bar adds nothing the timeline above does not already show. */}
       {(job.status === "running" || job.status === "pending") && (
-        <div
-          className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
-          role="progressbar"
-          aria-valuenow={percent}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          <div
-            className="h-full rounded-full bg-primary transition-all duration-500 motion-reduce:transition-none"
-            style={{ width: `${percent}%` }}
-          />
-        </div>
+        <Progress value={percent} aria-label={`${job.tool} progress`} className="h-1.5" />
       )}
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>{formatDate(job.started_at)}</span>
-        <span>{formatDate(job.finished_at)}</span>
+      <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+        <span>Started {formatDate(job.started_at)}</span>
+        <span>Finished {formatDate(job.finished_at)}</span>
       </div>
       {job.command && <p className="break-all font-mono text-xs text-muted-foreground">{job.command}</p>}
     </div>
   )
 }
 
+function TerminalStatusBadge({ status }: { status: AssessmentStatus }) {
+  if (status === "failed") {
+    return (
+      <Badge variant="destructive" className="gap-1.5">
+        <AlertCircle className="size-3" />
+        Failed
+      </Badge>
+    )
+  }
+  if (status === "cancelled") {
+    return (
+      <Badge variant="outline" className="gap-1.5">
+        <Ban className="size-3" />
+        Cancelled
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className="gap-1.5">
+      <CheckCircle2 className="size-3 text-primary" />
+      Completed
+    </Badge>
+  )
+}
+
+type RunTab = "pipeline" | "findings" | "report"
+type QueueFilter = "needs_review" | "verified" | "all"
+
 export function AssessmentRunPage() {
   const { id } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const assessmentId = Number(id)
   const validId = Number.isInteger(assessmentId) && assessmentId > 0
+
+  const tabParam = searchParams.get("tab")
+  const activeTab: RunTab =
+    tabParam === "findings" || tabParam === "report" || tabParam === "pipeline" ? tabParam : "pipeline"
 
   const { hasRole } = useAuth()
   const queryClient = useQueryClient()
   const logRef = useRef<HTMLDivElement>(null)
+
+  const [logToolFilter, setLogToolFilter] = useState("all")
+  const [copiedLog, setCopiedLog] = useState(false)
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>("needs_review")
+  const [selectedFindingId, setSelectedFindingId] = useState<number | null>(null)
+  const [rerunOpen, setRerunOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
 
   const { data, isLoading, error, dataUpdatedAt } = useQuery({
     queryKey: ["assessment", assessmentId],
@@ -196,32 +237,50 @@ export function AssessmentRunPage() {
     queryFn: () => api<Target[]>("/api/targets"),
     enabled: validId,
   })
-  const targetName = targets.data?.find((target) => target.id === data?.target_id)?.name
+  const target = targets.data?.find((item) => item.id === data?.target_id)
 
-  // Findings are created when the run finishes, so this card closes the
-  // scan-to-triage loop without a manual trip through the findings filters.
   const runFindings = useQuery({
     queryKey: ["findings", "run", assessmentId],
     queryFn: () => apiWithMeta<Finding[]>(`/api/findings?assessment_id=${assessmentId}&limit=200`),
     enabled: validId,
   })
 
-  // Any state-change event refreshes the progress cards immediately.
-  const { lines, connected } = useScanEvents(validId ? assessmentId : null, (event) => {
-    if (event.type !== "log") {
-      queryClient.invalidateQueries({ queryKey: ["assessment", assessmentId] })
-      queryClient.invalidateQueries({ queryKey: ["assessments"] })
-      queryClient.invalidateQueries({ queryKey: ["findings"] })
-    }
-  })
+  const isFinished = data?.status === "completed" || data?.status === "failed" || data?.status === "cancelled"
+  const shouldStream = validId && data !== undefined && !isFinished
+
+  const { lines, connected } = useScanEvents(
+    validId ? assessmentId : null,
+    (event) => {
+      if (event.type !== "log") {
+        queryClient.invalidateQueries({ queryKey: ["assessment", assessmentId] })
+        queryClient.invalidateQueries({ queryKey: ["assessments"] })
+        queryClient.invalidateQueries({ queryKey: ["findings"] })
+      }
+    },
+    { enabled: shouldStream },
+  )
 
   const cancel = useMutation({
     mutationFn: () => api<{ status: string }>(`/api/assessments/${assessmentId}/cancel`, { method: "POST" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assessment", assessmentId] })
       queryClient.invalidateQueries({ queryKey: ["assessments"] })
-      toast.success("Run cancelled")
+      toast.success("Run cancellation requested")
     },
+  })
+
+  const rerunAI = useMutation({
+    mutationFn: () => api<InterpretResult>(`/api/assessments/${assessmentId}/interpret`, { method: "POST" }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["assessment", assessmentId] })
+      queryClient.invalidateQueries({ queryKey: ["findings"] })
+      toast.success(
+        res.created > 0
+          ? `AI added ${res.created} new candidate ${res.created === 1 ? "finding" : "findings"}`
+          : "AI interpretation finished with no additional findings",
+      )
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "AI interpretation failed"),
   })
 
   useEffect(() => {
@@ -229,63 +288,107 @@ export function AssessmentRunPage() {
     if (el) el.scrollTop = el.scrollHeight
   }, [lines.length])
 
-  const finishedJobs = data?.jobs.filter((j) => j.status === "completed" || j.status === "failed").length ?? 0
-  const jobTool = new Map(data?.jobs.map((j) => [j.id, j.tool]))
-  const canCancel = hasRole("admin", "assessor")
-  const isFinished = data?.status === "completed" || data?.status === "failed" || data?.status === "cancelled"
-  const [copiedLog, setCopiedLog] = useState(false)
+  const finishedJobs =
+    data?.jobs.filter((j) => j.status === "completed" || j.status === "failed" || j.status === "cancelled").length ?? 0
+  const jobTool = useMemo(() => new Map(data?.jobs.map((j) => [j.id, j.tool])), [data?.jobs])
+  const canManage = hasRole("admin", "assessor")
 
-  // Merge live lines with persisted job logs so historical runs display their outputs
-  const displayLines = (() => {
-    if (lines.length > 0) return lines
-    const parsed: { id: string; jobId: number; text: string }[] = []
-    if (data?.jobs) {
-      for (const job of data.jobs) {
+  const jobs = data?.jobs
+  const displayLines = useMemo(() => {
+    if (lines.length > 0) {
+      return lines.map((line) => ({
+        id: String(line.id),
+        tool: line.jobId === null ? "ai" : (jobTool.get(line.jobId) ?? `job ${line.jobId}`),
+        text: line.text,
+      }))
+    }
+    const parsed: { id: string; tool: string; text: string }[] = []
+    if (jobs) {
+      for (const job of jobs) {
         if (!job.log) continue
         const rawLines = job.log.split("\n")
         for (let i = 0; i < rawLines.length; i++) {
           const text = rawLines[i].trim()
           if (text) {
-            parsed.push({ id: `persisted-${job.id}-${i}`, jobId: job.id, text })
+            parsed.push({ id: `persisted-${job.id}-${i}`, tool: job.tool, text })
           }
         }
       }
     }
     return parsed
-  })()
+  }, [lines, jobs, jobTool])
+
+  const logTools = useMemo(() => {
+    const seen = new Set<string>()
+    for (const line of displayLines) seen.add(line.tool)
+    return Array.from(seen)
+  }, [displayLines])
+
+  const visibleLines = useMemo(() => {
+    if (logToolFilter === "all") return displayLines
+    return displayLines.filter((line) => line.tool === logToolFilter)
+  }, [displayLines, logToolFilter])
 
   function handleCopyLog() {
-    const fullText = displayLines.map((l) => `[${jobTool.get(l.jobId) ?? `job ${l.jobId}`}] ${l.text}`).join("\n")
+    const fullText = visibleLines.map((l) => `[${l.tool}] ${l.text}`).join("\n")
     navigator.clipboard.writeText(fullText)
     setCopiedLog(true)
     setTimeout(() => setCopiedLog(false), 2000)
   }
 
-  const runFindingRows = runFindings.data?.data ?? []
+  function setTab(next: RunTab) {
+    setSearchParams(
+      (current) => {
+        const updated = new URLSearchParams(current)
+        if (next === "pipeline") updated.delete("tab")
+        else updated.set("tab", next)
+        return updated
+      },
+      { replace: true },
+    )
+  }
+
+  const runFindingRows = useMemo(() => runFindings.data?.data ?? [], [runFindings.data?.data])
   const runFindingTotal = runFindings.data?.totalCount ?? runFindingRows.length
-  const rankedFindings = [...runFindingRows].sort(
-    (a, b) => SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity] || b.score - a.score,
+  const rankedFindings = useMemo(
+    () =>
+      [...runFindingRows].sort(
+        (a, b) => SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity] || b.score - a.score,
+      ),
+    [runFindingRows],
   )
-  const topFindings = rankedFindings.slice(0, 5)
-  const nextCandidate = rankedFindings.find(
-    (finding) => finding.status === "ai_candidate" || finding.status === "needs_evidence",
+
+  const needsReviewRows = useMemo(
+    () => rankedFindings.filter((f) => f.status === "ai_candidate" || f.status === "needs_evidence"),
+    [rankedFindings],
   )
+  const verifiedRows = useMemo(() => rankedFindings.filter((f) => f.status === "verified"), [rankedFindings])
+
+  const filteredRunFindings = useMemo(() => {
+    if (queueFilter === "needs_review") return needsReviewRows
+    if (queueFilter === "verified") return verifiedRows
+    return rankedFindings
+  }, [queueFilter, needsReviewRows, verifiedRows, rankedFindings])
+
+  const triageQueueIds = useMemo(() => filteredRunFindings.map((f) => f.id), [filteredRunFindings])
+  const nextCandidate = needsReviewRows[0] ?? null
   const severityCounts = SEVERITIES.map((severity) => ({
     severity,
     count: runFindingRows.filter((finding) => finding.severity === severity).length,
   })).filter((entry) => entry.count > 0)
+
+  const hasCompletedJob = data?.jobs.some((j) => j.status === "completed") ?? false
   const findingsHref = `/findings?assessment=${assessmentId}`
 
   if (!validId) {
     return (
-      <div className="space-y-4">
-        <Link
-          to="/assessments"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Assessments
-        </Link>
+      <div className="flex flex-col gap-4">
+        <Button asChild variant="ghost" size="sm" className="-ml-2 w-fit">
+          <Link to="/assessments">
+            <ArrowLeft data-icon="inline-start" />
+            Assessments
+          </Link>
+        </Button>
         <Alert variant="destructive">
           <AlertDescription>Assessment #{id} is not a valid run identifier.</AlertDescription>
         </Alert>
@@ -294,52 +397,65 @@ export function AssessmentRunPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3">
-        <Link
-          to="/assessments"
-          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Assessments
-        </Link>
+    <div className="flex flex-col gap-6">
+      {/* Workstation Header */}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl font-semibold tracking-tight">Assessment #{assessmentId}</h1>
+              {data && <Badge variant={STATUS_VARIANT[data.status]}>{data.status}</Badge>}
+              {data && (
+                <Badge variant={data.intensity === "full_intrusive" ? "destructive" : "secondary"}>
+                  {data.intensity === "full_intrusive" ? "Full / intrusive" : "Passive / safe"}
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {target ? `${target.name} (${target.base_url})` : data ? `Target #${data.target_id}` : "Loading run details..."}
+              {data && ` · ${finishedJobs} of ${data.jobs.length} jobs finished`}
+              {data?.started_at && ` · started ${formatDate(data.started_at)}`}
+            </p>
+          </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Assessment #{assessmentId}</h1>
-          {data && <Badge variant={STATUS_VARIANT[data.status]}>{data.status}</Badge>}
-          {data && (
-            <Badge variant={data.intensity === "full_intrusive" ? "destructive" : "secondary"}>
-              {data.intensity === "full_intrusive" ? "full / intrusive" : "passive / safe"}
-            </Badge>
-          )}
-          {data?.status === "running" && canCancel && (
-            <Button
-              variant="destructive"
-              size="sm"
-              className="ml-auto"
-              disabled={cancel.isPending}
-              onClick={() => cancel.mutate()}
-            >
-              {cancel.isPending ? "Cancelling…" : "Cancel run"}
-            </Button>
+          {data && canManage && (
+            <div className="flex flex-wrap items-center gap-2">
+              {data.status === "running" ? (
+                <Button variant="destructive" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
+                  {cancel.isPending ? <Spinner data-icon="inline-start" /> : null}
+                  {cancel.isPending ? "Cancelling..." : "Cancel run"}
+                </Button>
+              ) : (
+                <>
+                  {hasCompletedJob && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={rerunAI.isPending}
+                      onClick={() => rerunAI.mutate()}
+                    >
+                      {rerunAI.isPending ? <Spinner data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
+                      {rerunAI.isPending ? "Analyzing..." : "Re-run AI"}
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+                    <FileUp data-icon="inline-start" />
+                    Import scan
+                  </Button>
+                  <Button size="sm" onClick={() => setRerunOpen(true)}>
+                    <RotateCw data-icon="inline-start" />
+                    Re-run scan
+                  </Button>
+                </>
+              )}
+            </div>
           )}
         </div>
 
-        <p className="text-sm text-muted-foreground">
-          {targetName ?? (data ? `Target #${data.target_id}` : "Pipeline jobs, progress and live output for this run.")}
-          {data && ` · ${finishedJobs} of ${data.jobs.length} jobs finished`}
-          {data?.started_at && ` · started ${formatDate(data.started_at)}`}
-          {data?.finished_at && ` · finished ${formatDate(data.finished_at)}`}
-        </p>
-
-        {data && data.categories.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {data.categories.map((category) => (
-              <Badge key={category} variant="outline" className="font-normal">
-                {category}
-              </Badge>
-            ))}
-          </div>
+        {data?.notes && (
+          <p className="rounded-lg border bg-muted/25 px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
+            {data.notes}
+          </p>
         )}
       </div>
 
@@ -349,7 +465,16 @@ export function AssessmentRunPage() {
         </Alert>
       )}
 
-      {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {isLoading && (
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-10 w-80" />
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Skeleton className="h-80 w-full" />
+            <Skeleton className="h-80 w-full" />
+          </div>
+        </div>
+      )}
+
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error.message}</AlertDescription>
@@ -357,210 +482,346 @@ export function AssessmentRunPage() {
       )}
 
       {data && (
-        <>
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Jobs</CardTitle>
-                <CardDescription>Each tool runs in sequence and reports its own progress.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {data.jobs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No jobs for this run.</p>
-                ) : (
-                  <>
-                    <JobTimeline
-                      jobs={data.jobs}
-                      runStartedAt={data.started_at}
-                      runFinishedAt={data.finished_at}
-                      now={dataUpdatedAt || null}
-                    />
-                    <div className="divide-y border-t">
-                      {data.jobs.map((job) => (
-                        <JobRow key={job.id} job={job} />
-                      ))}
-                    </div>
-                  </>
+        <Tabs value={activeTab} onValueChange={(v) => setTab(v as RunTab)} className="flex flex-col gap-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b">
+            <TabsList variant="line" className="h-auto pb-0">
+              <TabsTrigger value="pipeline" className="flex-none gap-2 px-4 pb-3">
+                <Terminal className="size-4" />
+                Pipeline &amp; Output
+              </TabsTrigger>
+              <TabsTrigger value="findings" className="flex-none gap-2 px-4 pb-3">
+                <ShieldAlert className="size-4" />
+                Findings Triage
+                <Badge variant="secondary" className="font-mono text-xs">
+                  {runFindingTotal}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="report" className="flex-none gap-2 px-4 pb-3">
+                <FileText className="size-4" />
+                Report &amp; Export
+                {verifiedRows.length > 0 && (
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {verifiedRows.length} verified
+                  </Badge>
                 )}
-              </CardContent>
-            </Card>
+              </TabsTrigger>
+            </TabsList>
 
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="space-y-1.5">
-                    <CardTitle className="text-base">
-                      {isFinished ? "Execution output" : "Live output"}
-                    </CardTitle>
-                    <CardDescription>
-                      {isFinished
-                        ? "Preserved log output from all executed jobs."
-                        : "Streamed straight from the running tools."}
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {displayLines.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleCopyLog}
-                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        {copiedLog ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-                        <span className="ml-1 text-xs">{copiedLog ? "Copied" : "Copy"}</span>
-                      </Button>
-                    )}
-                    {isFinished ? (
-                      <Badge variant="outline" className="gap-1.5 py-0.5 text-xs font-normal">
-                        <CheckCircle2 className="size-3 text-emerald-500" />
-                        Completed
-                      </Badge>
-                    ) : (
-                      <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                        <span
-                          className={`size-1.5 rounded-full ${connected ? "animate-pulse bg-primary motion-reduce:animate-none" : "bg-muted-foreground/40"}`}
-                          aria-hidden="true"
-                        />
-                        {connected ? "live" : "not connected"}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div
-                  ref={logRef}
-                  className="h-[26rem] overflow-y-auto rounded-md border bg-muted/40 p-2 font-mono text-[13px] leading-relaxed"
-                >
-                  {displayLines.length === 0 ? (
-                    <p className="text-muted-foreground">
-                      {connected
-                        ? "Waiting for output…"
-                        : isFinished
-                        ? "No output was recorded for this run."
-                        : "No live output. Logs stream only while a run is active."}
-                    </p>
-                  ) : (
-                    displayLines.map((line) => (
-                      <div key={line.id} className="whitespace-pre-wrap break-all">
-                        <span className="text-muted-foreground">[{jobTool.get(line.jobId) ?? `job ${line.jobId}`}]</span>{" "}
-                        {line.text}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            {activeTab !== "findings" && nextCandidate && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mb-2"
+                onClick={() => {
+                  setTab("findings")
+                  setQueueFilter("needs_review")
+                  setSelectedFindingId(nextCandidate.id)
+                }}
+              >
+                Triage next ({needsReviewRows.length} open)
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+            )}
           </div>
 
-          <Card>
-            <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-              <div className="min-w-0 space-y-1.5">
-                <CardTitle className="text-base">Findings from this run</CardTitle>
-                <CardDescription>
-                  {runFindings.isLoading
-                    ? "Loading findings…"
-                    : runFindingTotal === 0
-                      ? data.status === "running"
-                        ? "Findings appear here when the run finishes and interpretation completes."
-                        : "No findings were recorded for this run."
-                      : `${runFindingTotal} ${runFindingTotal === 1 ? "finding" : "findings"} recorded by this run.`}
-                </CardDescription>
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                {nextCandidate && (
-                  <Button asChild size="sm">
-                    <Link to={`/findings/${nextCandidate.id}`} state={{ from: findingsHref }}>
-                      Review next
-                      <ArrowRight className="size-3.5" />
-                    </Link>
-                  </Button>
-                )}
-                <Button asChild variant="outline" size="sm">
-                  <Link to={findingsHref}>View all</Link>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {runFindings.error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{runFindings.error.message}</AlertDescription>
-                </Alert>
-              )}
-
-              {severityCounts.length > 0 && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                  {severityCounts.map(({ severity, count }) => (
-                    <span key={severity} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <span
-                        className="size-2 rounded-full"
-                        style={{ backgroundColor: `var(--severity-${severity})` }}
-                        aria-hidden="true"
+          {/* TAB 1: Pipeline & Output */}
+          <TabsContent value="pipeline" className="flex flex-col gap-6">
+            <div className="grid gap-6 xl:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Jobs timeline</CardTitle>
+                  <CardDescription>
+                    Reconnaissance tools run in parallel; intrusive tools follow once recon finishes.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-5">
+                  {data.jobs.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No jobs recorded for this run.</p>
+                  ) : (
+                    <>
+                      <JobTimeline
+                        jobs={data.jobs}
+                        runStartedAt={data.started_at}
+                        runFinishedAt={data.finished_at}
+                        now={dataUpdatedAt || null}
                       />
-                      <span className="font-medium text-foreground">{capitalize(severity)}</span>
-                      <span className="font-mono tabular-nums">{count}</span>
-                    </span>
+                      <Separator />
+                      <div className="divide-y">
+                        {data.jobs.map((job) => (
+                          <JobRow key={job.id} job={job} />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="flex flex-col">
+                <CardHeader className="flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col gap-1">
+                      <CardTitle className="text-base">
+                        {isFinished ? "Execution output" : "Live output"}
+                      </CardTitle>
+                      <CardDescription>
+                        {isFinished
+                          ? "Preserved log output from all executed tools."
+                          : "Streamed directly from the running tools."}
+                      </CardDescription>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {visibleLines.length > 0 && (
+                        <Button type="button" variant="ghost" size="xs" onClick={handleCopyLog}>
+                          {copiedLog ? <Check className="text-primary" data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
+                          {copiedLog ? "Copied" : "Copy"}
+                        </Button>
+                      )}
+                      {isFinished ? (
+                        <TerminalStatusBadge status={data.status} />
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span
+                            className={`size-2 rounded-full ${connected ? "animate-pulse bg-primary motion-reduce:animate-none" : "bg-muted-foreground/40"}`}
+                            aria-hidden="true"
+                          />
+                          {connected ? "Live" : "Connecting..."}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {logTools.length > 1 && (
+                    <ToggleGroup
+                      type="single"
+                      value={logToolFilter}
+                      onValueChange={(val) => val && setLogToolFilter(val)}
+                      variant="outline"
+                      size="sm"
+                      className="flex-wrap justify-start"
+                    >
+                      <ToggleGroupItem value="all" className="h-7 px-2.5 text-xs">
+                        All
+                      </ToggleGroupItem>
+                      {logTools.map((tool) => (
+                        <ToggleGroupItem key={tool} value={tool} className="h-7 px-2.5 font-mono text-xs">
+                          {tool}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
+                  )}
+                </CardHeader>
+
+                <CardContent className="flex-1">
+                  <div
+                    ref={logRef}
+                    className="h-[26rem] overflow-y-auto rounded-lg border bg-muted/40 p-3.5 font-mono text-xs leading-relaxed"
+                  >
+                    {visibleLines.length === 0 ? (
+                      <p className="text-muted-foreground">
+                        {connected
+                          ? "Waiting for tool output..."
+                          : isFinished
+                            ? "No output was recorded for this filter."
+                            : "Logs stream automatically while the pipeline is active."}
+                      </p>
+                    ) : (
+                      visibleLines.map((line) => (
+                        <div key={line.id} className="whitespace-pre-wrap break-all py-0.5">
+                          <span className="text-muted-foreground">[{line.tool}]</span> {line.text}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {data.categories.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Selected assessment categories</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-wrap gap-2">
+                  {data.categories.map((category) => (
+                    <Badge key={category} variant="outline" className="font-normal">
+                      {category}
+                    </Badge>
                   ))}
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* TAB 2: Findings Triage (Full list + slide-over triage drawer) */}
+          <TabsContent value="findings" className="flex flex-col gap-5">
+            <Card>
+              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
+                <div className="flex flex-col gap-1.5">
+                  <CardTitle className="text-base">Run findings</CardTitle>
+                  <CardDescription>
+                    Click any row to inspect evidence, ask the analyst, and verify in the slide-over drawer without
+                    leaving this run.
+                  </CardDescription>
                 </div>
-              )}
 
-              {topFindings.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {data.status === "running"
-                    ? "Waiting for interpretation to finish."
-                    : "No findings to review for this run."}
-                </p>
-              ) : (
-                <ul className="divide-y rounded-lg border">
-                  {topFindings.map((finding) => (
-                    <li key={finding.id}>
-                      <Link
-                        to={`/findings/${finding.id}`}
-                        state={{ from: findingsHref }}
-                        className="flex items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-muted/40"
-                      >
-                        <Badge className={SEVERITY_CLASS[finding.severity]}>
-                          {capitalize(finding.severity)}
-                        </Badge>
-                        <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={finding.title}>
-                          {finding.title}
-                        </span>
-                        <span className="hidden w-44 shrink-0 truncate text-xs text-muted-foreground lg:inline">
-                          {finding.category}
-                        </span>
-                        <Badge
-                          variant={FINDING_STATUS_VARIANT[finding.status]}
-                          className={STATUS_CLASS[finding.status]}
+                <div className="flex flex-wrap items-center gap-2">
+                  <ToggleGroup
+                    type="single"
+                    value={queueFilter}
+                    onValueChange={(val) => val && setQueueFilter(val as QueueFilter)}
+                    variant="outline"
+                    size="sm"
+                  >
+                    <ToggleGroupItem value="needs_review" className="text-xs">
+                      Needs review ({needsReviewRows.length})
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="verified" className="text-xs">
+                      Verified ({verifiedRows.length})
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="all" className="text-xs">
+                      All ({runFindingTotal})
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+
+                  <Button asChild variant="ghost" size="sm">
+                    <Link to={findingsHref}>Open in Findings</Link>
+                  </Button>
+                </div>
+              </CardHeader>
+
+              <CardContent className="flex flex-col gap-4">
+                {runFindings.error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{runFindings.error.message}</AlertDescription>
+                  </Alert>
+                )}
+
+                {severityCounts.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border bg-muted/25 px-4 py-2.5">
+                    {severityCounts.map(({ severity, count }) => (
+                      <span key={severity} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span
+                          className="size-2 rounded-full"
+                          style={{ backgroundColor: `var(--severity-${severity})` }}
+                          aria-hidden="true"
+                        />
+                        <span className="font-medium text-foreground">{capitalize(severity)}</span>
+                        <span className="font-mono tabular-nums">{count}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {runFindings.isLoading ? (
+                  <div className="flex flex-col gap-2">
+                    {[0, 1, 2].map((i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : filteredRunFindings.length === 0 ? (
+                  <EmptyState
+                    icon={ShieldAlert}
+                    title={
+                      data.status === "running"
+                        ? "Waiting for scan interpretation"
+                        : queueFilter === "needs_review" && runFindingTotal > 0
+                          ? "All findings in this run have been reviewed"
+                          : "No findings in this view"
+                    }
+                    description={
+                      data.status === "running"
+                        ? "Candidate findings will appear automatically once tools and AI interpretation complete."
+                        : queueFilter === "needs_review" && runFindingTotal > 0
+                          ? "Switch to Verified or All above, or head to the Report & Export tab."
+                          : "No findings match the current filter."
+                    }
+                    className="py-8"
+                    action={
+                      queueFilter === "needs_review" && verifiedRows.length > 0 ? (
+                        <Button size="sm" onClick={() => setTab("report")}>
+                          Review report
+                          <ArrowRight data-icon="inline-end" />
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                ) : (
+                  <ul className="divide-y rounded-lg border">
+                    {filteredRunFindings.map((finding) => (
+                      <li key={finding.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFindingId(finding.id)}
+                          className="flex w-full items-center gap-3.5 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
-                          {STATUS_SHORT_LABEL[finding.status]}
-                        </Badge>
-                        <span className="w-8 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                          {displayScore(finding.score, finding.severity)}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                          <Badge className={SEVERITY_CLASS[finding.severity]}>{capitalize(finding.severity)}</Badge>
+                          <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={finding.title}>
+                            {finding.title}
+                          </span>
+                          <span className="hidden w-44 shrink-0 truncate text-xs text-muted-foreground lg:inline">
+                            {finding.category}
+                          </span>
+                          <Badge
+                            variant={FINDING_STATUS_VARIANT[finding.status]}
+                            className={STATUS_CLASS[finding.status]}
+                          >
+                            {STATUS_SHORT_LABEL[finding.status]}
+                          </Badge>
+                          <span className="w-9 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                            {displayScore(finding.score, finding.severity)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-              {runFindingTotal > topFindings.length && (
-                <p className="text-xs text-muted-foreground">
-                  Showing the {topFindings.length} most severe of {runFindingTotal}.{" "}
-                  <Link to={findingsHref} className="font-medium text-primary underline-offset-4 hover:underline">
-                    View all findings
-                  </Link>
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          {/* TAB 3: Report & Export (lazy-mounted so iframe only loads when requested) */}
+          <TabsContent value="report" className="flex flex-col gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                {activeTab === "report" && (
+                  <AssessmentReports assessmentId={data.id} assessmentStatus={data.status} />
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
 
-          <Card>
-            <CardContent>
-              <AssessmentReports assessmentId={data.id} assessmentStatus={data.status} />
-            </CardContent>
-          </Card>
-        </>
+      {/* Slide-over Triage Sheet */}
+      <FindingTriageSheet
+        findingId={selectedFindingId}
+        queueIds={triageQueueIds}
+        fromHref={`/assessments/${assessmentId}?tab=findings`}
+        onSelectFinding={setSelectedFindingId}
+      />
+
+      {/* Re-run Scan Dialog */}
+      {data && (
+        <QuickAssessmentDialog
+          key={`rerun-${data.id}`}
+          open={rerunOpen}
+          onOpenChange={setRerunOpen}
+          defaultTargetId={data.target_id}
+          defaultIntensity={data.intensity}
+          defaultCategories={data.categories}
+        />
+      )}
+
+      {/* Append External Scan Dialog */}
+      {data && (
+        <ImportScanDialog
+          key={`import-run-${data.id}`}
+          targets={targets.data ?? []}
+          defaultTargetId={data.target_id}
+          assessmentId={data.id}
+          open={importOpen}
+          onOpenChange={setImportOpen}
+        />
       )}
     </div>
   )

@@ -284,47 +284,54 @@ export function AssessmentReports({
           </h3>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {reports.data.map((report) => (
-              <div key={report.id} className="flex items-center justify-between gap-2 rounded-md border p-2.5 bg-muted/20">
-                <div className="truncate">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium">Report #{report.id}</span>
-                    <Badge variant={STATUS_VARIANT[report.status]} className="text-[10px] px-1.5 py-0">
-                      {report.status}
-                    </Badge>
+              <div key={report.id} className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 truncate">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium">Report #{report.id}</span>
+                      <Badge variant={STATUS_VARIANT[report.status]} className="px-1.5 py-0 text-[10px]">
+                        {report.status}
+                      </Badge>
+                    </div>
+                    <p className="truncate pt-0.5 text-xs text-muted-foreground">
+                      {formatDate(report.created_at)}
+                    </p>
                   </div>
-                  <p className="truncate pt-0.5 text-xs text-muted-foreground">
-                    {formatDate(report.created_at)}
+                  <div className="flex shrink-0 items-center gap-1">
+                    {report.status === "ready" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs"
+                        disabled={downloadingId === report.id}
+                        onClick={() => void handleDownload(report)}
+                      >
+                        <Download className="size-3" />
+                        <span className="sr-only">Download PDF</span>
+                      </Button>
+                    )}
+                    {canGenerate && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                        disabled={report.status === "pending"}
+                        onClick={() => {
+                          remove.reset()
+                          setDeleting(report)
+                        }}
+                      >
+                        <Trash2 className="size-3" />
+                        <span className="sr-only">Delete</span>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {report.status === "failed" && report.error && (
+                  <p className="line-clamp-3 text-xs leading-snug text-destructive" title={report.error}>
+                    {report.error}
                   </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {report.status === "ready" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 px-2 text-xs"
-                      disabled={downloadingId === report.id}
-                      onClick={() => void handleDownload(report)}
-                    >
-                      <Download className="size-3" />
-                      <span className="sr-only">Download PDF</span>
-                    </Button>
-                  )}
-                  {canGenerate && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                      disabled={report.status === "pending"}
-                      onClick={() => {
-                        remove.reset()
-                        setDeleting(report)
-                      }}
-                    >
-                      <Trash2 className="size-3" />
-                      <span className="sr-only">Delete</span>
-                    </Button>
-                  )}
-                </div>
+                )}
               </div>
             ))}
           </div>

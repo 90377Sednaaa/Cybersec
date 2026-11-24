@@ -8,7 +8,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
+import { Spinner } from "@/components/ui/spinner"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
@@ -36,13 +39,35 @@ const ACTIONS: Record<FindingStatus, { to: FindingStatus; label: string; variant
   false_positive: [{ to: "ai_candidate", label: "Reopen as candidate", variant: "secondary" }],
 }
 
-export function FindingReview({ finding }: { finding: FindingDetail }) {
+interface FindingReviewProps {
+  finding: FindingDetail
+  /** When supplied, enables an optional auto-advance switch after status decisions. */
+  hasNext?: boolean
+  onAdvance?: () => void
+  autoAdvance?: boolean
+  onAutoAdvanceChange?: (next: boolean) => void
+}
+
+export function FindingReview({
+  finding,
+  hasNext = false,
+  onAdvance,
+  autoAdvance: controlledAutoAdvance,
+  onAutoAdvanceChange,
+}: FindingReviewProps) {
   const { hasRole } = useAuth()
   const queryClient = useQueryClient()
   const [notes, setNotes] = useState(finding.assessor_notes)
   const [severity, setSeverity] = useState<Severity>(finding.severity)
   const initialScore = finding.score > 0 ? finding.score : SEVERITY_SCORE[finding.severity]
   const [score, setScore] = useState<string>(String(initialScore))
+  const [localAutoAdvance, setLocalAutoAdvance] = useState(true)
+
+  const autoAdvance = controlledAutoAdvance ?? localAutoAdvance
+  const setAutoAdvance = (next: boolean) => {
+    if (onAutoAdvanceChange) onAutoAdvanceChange(next)
+    else setLocalAutoAdvance(next)
+  }
 
   const update = useMutation({
     mutationFn: (payload: FindingUpdate) =>
@@ -58,6 +83,9 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
       }
       const status = payload.status
       toast.success(status ? (messages[status] ?? "Finding updated") : "Changes saved")
+      if (status && hasNext && autoAdvance && onAdvance) {
+        onAdvance()
+      }
     },
   })
 
@@ -86,10 +114,11 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Assessor Notes Input */}
-      <div className="grid gap-1.5">
-        <Label htmlFor={`notes-${finding.id}`} className="text-xs font-medium">Assessor notes</Label>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`notes-${finding.id}`} className="text-xs font-medium">
+          Assessor notes
+        </Label>
         <Textarea
           id={`notes-${finding.id}`}
           value={notes}
@@ -101,22 +130,23 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
         />
       </div>
 
-      {/* Severity and Score Adjustments */}
-      <div className="space-y-2.5 border-t pt-3">
-        <div className="flex flex-wrap items-center gap-1.5 text-sm">
+      <Separator />
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
           <SlidersHorizontal className="size-3.5 text-primary" />
           <span className="font-medium text-foreground">Adjust severity or score</span>
           {(severityChanged || scoreChanged) && (
-            <Badge variant="outline" className="border-amber-500/40 py-0 text-[10px] text-amber-500">
+            <Badge variant="outline" className="text-xs">
               Override active
             </Badge>
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="grid gap-1">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor={`severity-${finding.id}`} className="text-xs text-muted-foreground">
-              Severity Level
+              Severity level
             </Label>
             <Select
               value={severity}
@@ -128,22 +158,24 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
                 }
               }}
             >
-              <SelectTrigger id={`severity-${finding.id}`} className="h-8 text-sm">
+              <SelectTrigger id={`severity-${finding.id}`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SEVERITIES.map((s) => (
-                  <SelectItem key={s} value={s} className="text-xs">
-                    {capitalize(s)}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {SEVERITIES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {capitalize(s)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
 
-          <div className="grid gap-1">
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor={`score-${finding.id}`} className="text-xs text-muted-foreground">
-              Risk Score (0.0 – 10.0)
+              Risk score (0.0 to 10.0)
             </Label>
             <Input
               id={`score-${finding.id}`}
@@ -153,14 +185,14 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
               step="0.1"
               value={score}
               onChange={(e) => setScore(e.target.value)}
-              className="h-8 font-mono text-sm"
+              className="font-mono text-sm"
             />
           </div>
         </div>
       </div>
 
       {finding.evidence.length === 0 && finding.status !== "verified" && (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           No evidence is attached yet. Confirming a finding without evidence weakens the assessment report.
         </p>
       )}
@@ -171,28 +203,46 @@ export function FindingReview({ finding }: { finding: FindingDetail }) {
         </Alert>
       )}
 
-      {/* Action Buttons */}
-      <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
-        {ACTIONS[finding.status].map((action) => (
-          <Button
-            key={action.to}
-            size="sm"
-            variant={action.variant}
-            disabled={update.isPending}
-            onClick={() => update.mutate(buildPayload(action.to))}
-          >
-            {action.label}
-          </Button>
-        ))}
+      <Separator />
 
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={update.isPending || !hasAdjustments}
-          onClick={() => update.mutate(buildPayload())}
-        >
-          {notesChanged && !severityChanged && !scoreChanged ? "Save notes only" : "Save changes"}
-        </Button>
+      <div className="flex flex-col gap-3">
+        {onAdvance && (
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor={`advance-${finding.id}`} className="cursor-pointer text-xs font-normal text-muted-foreground">
+              Advance to next finding after decision
+            </Label>
+            <Switch
+              id={`advance-${finding.id}`}
+              checked={autoAdvance}
+              onCheckedChange={setAutoAdvance}
+              disabled={!hasNext}
+            />
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          {ACTIONS[finding.status].map((action) => (
+            <Button
+              key={action.to}
+              size="sm"
+              variant={action.variant}
+              disabled={update.isPending}
+              onClick={() => update.mutate(buildPayload(action.to))}
+            >
+              {update.isPending ? <Spinner data-icon="inline-start" /> : null}
+              {action.label}
+            </Button>
+          ))}
+
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={update.isPending || !hasAdjustments}
+            onClick={() => update.mutate(buildPayload())}
+          >
+            {notesChanged && !severityChanged && !scoreChanged ? "Save notes only" : "Save changes"}
+          </Button>
+        </div>
       </div>
     </div>
   )

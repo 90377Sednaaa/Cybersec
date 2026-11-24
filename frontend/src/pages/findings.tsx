@@ -1,7 +1,7 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom"
-import { ArrowUpDown, Radar, RotateCcw, Search, Server, ShieldAlert, X } from "lucide-react"
+import { ArrowUpDown, ExternalLink, Radar, RotateCcw, Search, Server, ShieldAlert, X } from "lucide-react"
 import { cn } from "cn"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -9,9 +9,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmptyState } from "@/components/empty-state"
+import { FindingTriageSheet } from "@/components/finding-triage-sheet"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { HelpHint } from "@/components/help-hint"
 import { useFindingCounts } from "@/hooks/use-finding-counts"
@@ -74,12 +76,14 @@ function FilterSelect({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>All</SelectItem>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
+          <SelectGroup>
+            <SelectItem value={ALL}>All</SelectItem>
+            {options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectContent>
       </Select>
     </div>
@@ -123,6 +127,7 @@ export function FindingsPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [selectedFindingId, setSelectedFindingId] = useState<number | null>(null)
 
   // Filters live in the URL so they survive opening a finding, the browser Back
   // button, and dashboard/run deep links.
@@ -272,10 +277,12 @@ export function FindingsPage() {
     setSearchParams(new URLSearchParams(), { replace: true })
   }
 
-  const listState = { from: `/findings${location.search}` }
+  const queueIds = useMemo(() => filteredFindings.map((f) => f.id), [filteredFindings])
+  const fromHref = `/findings${location.search}`
+  const listState = { from: fromHref, queueIds }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div>
         <div className="flex items-center gap-1.5">
           <h1 className="text-2xl font-semibold tracking-tight">Findings</h1>
@@ -491,20 +498,22 @@ export function FindingsPage() {
                 <TableHead className="hidden w-40 xl:table-cell">Category</TableHead>
                 <TableHead className="w-32">Status</TableHead>
                 <TableHead className="w-16 text-right">Score</TableHead>
+                <TableHead className="w-10" aria-label="Full view" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {findingsQuery.isLoading && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                    Loading findings…
-                  </TableCell>
-                </TableRow>
-              )}
+              {findingsQuery.isLoading &&
+                [0, 1, 2, 3, 4].map((index) => (
+                  <TableRow key={index}>
+                    <TableCell colSpan={8}>
+                      <Skeleton className="h-9 w-full" />
+                    </TableCell>
+                  </TableRow>
+                ))}
 
               {!findingsQuery.isLoading && filteredFindings.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-32 text-center">
+                  <TableCell colSpan={8} className="h-32 text-center">
                     <EmptyState
                       icon={ShieldAlert}
                       title={filtersActive ? "No findings match your active filters" : "No findings recorded yet"}
@@ -530,14 +539,14 @@ export function FindingsPage() {
                     key={finding.id}
                     className="cursor-pointer transition-colors hover:bg-muted/50"
                     tabIndex={0}
-                    onClick={() => navigate(`/findings/${finding.id}`, { state: listState })}
+                    onClick={() => setSelectedFindingId(finding.id)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
-                        navigate(`/findings/${finding.id}`, { state: listState })
+                        setSelectedFindingId(finding.id)
                       }
                     }}
                   >
-                    <TableCell className="font-mono text-xs font-semibold text-foreground">
+                    <TableCell className="py-3 font-mono text-xs font-semibold text-foreground">
                       #{finding.id}
                     </TableCell>
                     <TableCell>
@@ -573,6 +582,17 @@ export function FindingsPage() {
                     <TableCell className="text-right font-mono text-xs font-medium tabular-nums">
                       {displayScore(finding.score, finding.severity)}
                     </TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Open Finding #${finding.id} full page`}
+                        title="Open full page"
+                        onClick={() => navigate(`/findings/${finding.id}`, { state: listState })}
+                      >
+                        <ExternalLink />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 )
               })}
@@ -580,6 +600,13 @@ export function FindingsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <FindingTriageSheet
+        findingId={selectedFindingId}
+        queueIds={queueIds}
+        fromHref={fromHref}
+        onSelectFinding={setSelectedFindingId}
+      />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react"
-import type { ChangeEvent, DragEvent, FormEvent } from "react"
+import type { ChangeEvent, DragEvent, FormEvent, ReactNode } from "react"
 import { useNavigate } from "react-router-dom"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Check, Copy, FileCode, FileUp, Terminal, UploadCloud, X } from "lucide-react"
@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -33,17 +34,45 @@ import type { AssessmentDetail, Target } from "@/lib/types"
 
 type ToolChoice = "nmap" | "zap"
 
-interface ImportScanDialogProps {
-  targets: Target[]
+function safeHostname(url: string | undefined): string {
+  if (!url) return "target-host"
+  try {
+    return new URL(url).hostname || "target-host"
+  } catch {
+    return "target-host"
+  }
 }
 
-export function ImportScanDialog({ targets }: ImportScanDialogProps) {
+interface ImportScanDialogProps {
+  targets: Target[]
+  defaultTargetId?: number | null
+  assessmentId?: number | null
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  trigger?: ReactNode
+}
+
+export function ImportScanDialog({
+  targets,
+  defaultTargetId = null,
+  assessmentId = null,
+  open: controlledOpen,
+  onOpenChange,
+  trigger,
+}: ImportScanDialogProps) {
   const { hasRole } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
-  const [open, setOpen] = useState(false)
-  const [targetId, setTargetId] = useState("")
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isControlled = controlledOpen !== undefined
+  const open = isControlled ? controlledOpen : internalOpen
+  const setOpen = (next: boolean) => {
+    if (!isControlled) setInternalOpen(next)
+    onOpenChange?.(next)
+  }
+
+  const [targetId, setTargetId] = useState(defaultTargetId ? String(defaultTargetId) : "")
   const [tool, setTool] = useState<ToolChoice>("nmap")
   const [file, setFile] = useState<File | null>(null)
   const [dragActive, setDragActive] = useState(false)
@@ -52,16 +81,17 @@ export function ImportScanDialog({ targets }: ImportScanDialogProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canImport = hasRole("admin", "assessor")
-  const selectedTarget = targets.find((t) => String(t.id) === targetId)
+  const effectiveTargetId = defaultTargetId != null ? String(defaultTargetId) : targetId
+  const selectedTarget = targets.find((t) => String(t.id) === effectiveTargetId)
 
-  const targetHost = selectedTarget ? new URL(selectedTarget.base_url).hostname : "target-host"
+  const targetHost = safeHostname(selectedTarget?.base_url)
   const cliSnippet =
     tool === "nmap"
       ? `nmap -sV -oX scan.xml ${targetHost}`
       : `zap-cli quick-scan --spider -r -o zap.json ${selectedTarget?.base_url ?? "https://target-url"}`
 
   function reset() {
-    setTargetId("")
+    setTargetId(defaultTargetId ? String(defaultTargetId) : "")
     setTool("nmap")
     setFile(null)
     setDragActive(false)
@@ -119,14 +149,17 @@ export function ImportScanDialog({ targets }: ImportScanDialogProps) {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!targetId || !file) {
+      if (!effectiveTargetId || !file) {
         throw new Error("Target and scan file are required.")
       }
 
       const formData = new FormData()
-      formData.append("target_id", targetId)
+      formData.append("target_id", effectiveTargetId)
       formData.append("tool", tool)
       formData.append("file", file)
+      if (assessmentId != null) {
+        formData.append("assessment_id", String(assessmentId))
+      }
 
       return api<AssessmentDetail>("/api/assessments/import", {
         method: "POST",
@@ -135,10 +168,14 @@ export function ImportScanDialog({ targets }: ImportScanDialogProps) {
     },
     onSuccess: (assessment) => {
       queryClient.invalidateQueries({ queryKey: ["assessments"] })
+      queryClient.invalidateQueries({ queryKey: ["assessment", assessment.id] })
+      queryClient.invalidateQueries({ queryKey: ["findings"] })
       setOpen(false)
       reset()
-      toast.success(`Imported ${tool.toUpperCase()} scan successfully`)
-      navigate(`/assessments/${assessment.id}`)
+      toast.success(`Imported ${tool.toUpperCase()} scan`)
+      if (assessmentId == null) {
+        navigate(`/assessments/${assessment.id}`)
+      }
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Failed to import scan")
@@ -159,51 +196,62 @@ export function ImportScanDialog({ targets }: ImportScanDialogProps) {
         if (!next) reset()
       }}
     >
-      <DialogTrigger asChild>
-        <Button variant="outline" disabled={!canImport || targets.length === 0} className="gap-2">
-          <FileUp className="size-4" />
-          Import scan
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button variant="outline" disabled={!canImport || targets.length === 0}>
+              <FileUp data-icon="inline-start" />
+              Import scan
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader className="gap-1.5">
           <DialogTitle className="flex items-center gap-2">
             <UploadCloud className="size-5 text-primary" />
-            Import external scan
+            {assessmentId != null ? `Import scan into Assessment #${assessmentId}` : "Import external scan"}
           </DialogTitle>
           <DialogDescription>
-            Attach offline or manual scan results from local tools. Findings will be automatically
-            normalized and forwarded to AI interpretation.
+            Attach offline or manual scan results from local tools. Findings are normalized and forwarded to AI
+            interpretation automatically.
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5 pt-1">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="import-target">Target</Label>
-            <Select value={targetId} onValueChange={(val) => { setTargetId(val); setError(null); }}>
+            <Select
+              value={effectiveTargetId}
+              disabled={defaultTargetId != null}
+              onValueChange={(val) => {
+                setTargetId(val)
+                setError(null)
+              }}
+            >
               <SelectTrigger id="import-target" className="w-full">
                 <SelectValue placeholder="Select authorized target" />
               </SelectTrigger>
               <SelectContent>
-                {targets.map((t) => (
-                  <SelectItem key={t.id} value={String(t.id)}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{t.name}</span>
-                      <span className="text-muted-foreground text-xs font-mono">({t.base_url})</span>
-                    </div>
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {targets.map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>
+                      <span className="font-medium">{t.name}</span>{" "}
+                      <span className="font-mono text-xs text-muted-foreground">({t.base_url})</span>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
             {selectedTarget && (
-              <div className="flex items-center gap-2 pt-1">
-                <span className="text-muted-foreground text-xs">Scope limit:</span>
+              <div className="flex items-center gap-2 pt-0.5">
+                <span className="text-xs text-muted-foreground">Scope limit:</span>
                 <Badge variant="outline" className="text-xs">
                   {selectedTarget.allowed_intensity === "full_intrusive" ? "Full / intrusive" : "Passive / safe"}
                 </Badge>
@@ -211,7 +259,7 @@ export function ImportScanDialog({ targets }: ImportScanDialogProps) {
             )}
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Tool format</Label>
             <Tabs
               value={tool}
@@ -223,43 +271,37 @@ export function ImportScanDialog({ targets }: ImportScanDialogProps) {
               className="w-full"
             >
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="nmap" className="gap-2">
-                  <Terminal className="size-4" />
+                <TabsTrigger value="nmap">
+                  <Terminal />
                   Nmap (XML)
                 </TabsTrigger>
-                <TabsTrigger value="zap" className="gap-2">
-                  <FileCode className="size-4" />
+                <TabsTrigger value="zap">
+                  <FileCode />
                   OWASP ZAP (JSON)
                 </TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
 
-          <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
-            <div className="flex items-center justify-between pb-1">
-              <span className="text-muted-foreground text-xs font-medium">CLI execution reference:</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleCopySnippet}
-                className="h-6 px-2 text-xs"
-              >
-                {copied ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
+          <div className="flex flex-col gap-1.5 rounded-lg border bg-muted/30 p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">CLI execution reference</span>
+              <Button type="button" variant="ghost" size="xs" onClick={handleCopySnippet}>
+                {copied ? <Check className="text-primary" /> : <Copy />}
                 <span className="sr-only">Copy command</span>
               </Button>
             </div>
-            <code className="text-foreground/90 block overflow-x-auto font-mono text-xs select-all">
+            <code className="block overflow-x-auto font-mono text-xs text-foreground/90 select-all">
               {cliSnippet}
             </code>
             {tool === "zap" && (
-              <p className="text-muted-foreground pt-1.5 text-xs">
-                Or in ZAP GUI: <em>Report &rarr; Generate Report &rarr; JSON format</em>.
+              <p className="text-xs text-muted-foreground">
+                Or in ZAP GUI: Report &rarr; Generate Report &rarr; JSON format.
               </p>
             )}
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Scan file</Label>
             <input
               ref={fileInputRef}
@@ -281,35 +323,25 @@ export function ImportScanDialog({ targets }: ImportScanDialogProps) {
                     : "border-border/80 hover:border-primary/50 hover:bg-muted/20"
                 }`}
               >
-                <UploadCloud className="text-muted-foreground size-8" />
-                <p className="text-foreground pt-2 text-sm font-medium">
-                  Click to browse or drag file here
-                </p>
-                <p className="text-muted-foreground pt-1 text-xs">
-                  {tool === "nmap" ? "Accepts .xml files (up to 25MB)" : "Accepts .json files (up to 25MB)"}
+                <UploadCloud className="size-8 text-muted-foreground" />
+                <p className="pt-2 text-sm font-medium text-foreground">Click to browse or drag file here</p>
+                <p className="pt-1 text-xs text-muted-foreground">
+                  {tool === "nmap" ? "Accepts .xml files (up to 25 MB)" : "Accepts .json files (up to 25 MB)"}
                 </p>
               </div>
             ) : (
-              <div className="flex items-center justify-between rounded-lg border border-border/80 bg-muted/20 p-3">
+              <div className="flex items-center justify-between rounded-lg border bg-muted/20 p-3.5">
                 <div className="flex items-center gap-3 overflow-hidden">
                   <div className="rounded-md bg-primary/10 p-2 text-primary">
                     <FileCode className="size-5" />
                   </div>
                   <div className="truncate">
-                    <p className="text-foreground truncate text-sm font-medium">{file.name}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {(file.size / 1024).toFixed(1)} KB
-                    </p>
+                    <p className="truncate text-sm font-medium text-foreground">{file.name}</p>
+                    <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
                   </div>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setFile(null)}
-                  className="size-8 p-0"
-                >
-                  <X className="size-4" />
+                <Button type="button" variant="ghost" size="icon-sm" onClick={() => setFile(null)}>
+                  <X />
                   <span className="sr-only">Remove file</span>
                 </Button>
               </div>
@@ -320,22 +352,9 @@ export function ImportScanDialog({ targets }: ImportScanDialogProps) {
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={!targetId || !file || mutation.isPending}
-              className="gap-2"
-            >
-              {mutation.isPending ? (
-                <>
-                  <Spinner className="size-4" />
-                  Importing & analyzing...
-                </>
-              ) : (
-                <>
-                  <UploadCloud className="size-4" />
-                  Import & analyze
-                </>
-              )}
+            <Button type="submit" disabled={!effectiveTargetId || !file || mutation.isPending}>
+              {mutation.isPending ? <Spinner data-icon="inline-start" /> : <UploadCloud data-icon="inline-start" />}
+              {mutation.isPending ? "Importing & analyzing..." : "Import & analyze"}
             </Button>
           </DialogFooter>
         </form>

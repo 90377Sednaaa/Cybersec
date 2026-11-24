@@ -31,7 +31,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FindingReview } from "@/pages/finding-review"
 import { FindingQAPanel } from "@/components/finding-qa-panel"
-import { api, apiBlob, apiWithMeta, getToken } from "@/lib/api"
+import { api, apiBlob, apiWithMeta } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useShowShortcutHints } from "@/lib/shortcuts"
 import {
@@ -290,8 +290,11 @@ export function FindingDetailPage() {
   const findingId = id ? parseInt(id, 10) : null
   const navigate = useNavigate()
   const location = useLocation()
-  const locationState = location.state as { from?: unknown } | null
+  const locationState = location.state as { from?: unknown; queueIds?: unknown } | null
   const backTo = typeof locationState?.from === "string" ? locationState.from : "/findings"
+  const stateQueueIds = Array.isArray(locationState?.queueIds)
+    ? locationState.queueIds.filter((v): v is number => typeof v === "number")
+    : null
   const { hasRole } = useAuth()
   const [showHints] = useShowShortcutHints()
   const queryClient = useQueryClient()
@@ -325,22 +328,15 @@ export function FindingDetailPage() {
   const assessment = assessmentsQuery.data?.find((a) => a.id === data?.assessment_id)
   const target = targetsQuery.data?.find((t) => t.id === assessment?.target_id)
 
-  // Mutation for uploading evidence
+  // Mutation for uploading evidence (goes through shared api() for 401 session handling)
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData()
       formData.append("file", file)
-      const token = getToken()
-      const res = await fetch(`/api/findings/${findingId}/evidence`, {
+      return api<Evidence>(`/api/findings/${findingId}/evidence`, {
         method: "POST",
         body: formData,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.detail || "Failed to upload evidence file")
-      }
-      return res.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["finding", findingId] })
@@ -376,11 +372,14 @@ export function FindingDetailPage() {
     uploadMutation.mutate(file)
   }
 
-  // Calculate Prev / Next IDs
+  // Calculate Prev / Next IDs honoring the caller's filtered queue when available.
   const allFindings = findingsQuery.data?.data ?? []
-  const currentIndex = allFindings.findIndex((f) => f.id === findingId)
-  const prevFinding = currentIndex > 0 ? allFindings[currentIndex - 1] : null
-  const nextFinding = currentIndex !== -1 && currentIndex < allFindings.length - 1 ? allFindings[currentIndex + 1] : null
+  const queueIds = stateQueueIds && stateQueueIds.length > 0 ? stateQueueIds : allFindings.map((f) => f.id)
+  const currentIndex = findingId !== null ? queueIds.indexOf(findingId) : -1
+  const prevFindingId = currentIndex > 0 ? queueIds[currentIndex - 1] : null
+  const nextFindingId = currentIndex !== -1 && currentIndex < queueIds.length - 1 ? queueIds[currentIndex + 1] : null
+  const prevFinding = prevFindingId !== null ? (allFindings.find((f) => f.id === prevFindingId) ?? { id: prevFindingId, title: `Finding #${prevFindingId}` }) : null
+  const nextFinding = nextFindingId !== null ? (allFindings.find((f) => f.id === nextFindingId) ?? { id: nextFindingId, title: `Finding #${nextFindingId}` }) : null
 
   // Keyboard navigation for ArrowLeft (Previous) and ArrowRight (Next)
   useEffect(() => {
@@ -398,18 +397,18 @@ export function FindingDetailPage() {
         return
       }
 
-      if (e.key === "ArrowLeft" && prevFinding) {
+      if (e.key === "ArrowLeft" && prevFindingId !== null) {
         e.preventDefault()
-        navigate(`/findings/${prevFinding.id}`, { state: location.state })
-      } else if (e.key === "ArrowRight" && nextFinding) {
+        navigate(`/findings/${prevFindingId}`, { state: location.state })
+      } else if (e.key === "ArrowRight" && nextFindingId !== null) {
         e.preventDefault()
-        navigate(`/findings/${nextFinding.id}`, { state: location.state })
+        navigate(`/findings/${nextFindingId}`, { state: location.state })
       }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [prevFinding, nextFinding, navigate, location.state])
+  }, [prevFindingId, nextFindingId, navigate, location.state])
 
   if (isLoading) {
     return (
@@ -621,7 +620,12 @@ export function FindingDetailPage() {
               </h2>
             </CardHeader>
             <CardContent className="px-5 pb-5">
-              <FindingReview key={data.id} finding={data} />
+              <FindingReview
+                key={data.id}
+                finding={data}
+                hasNext={nextFinding !== null}
+                onAdvance={() => nextFinding && navigate(`/findings/${nextFinding.id}`, { state: location.state })}
+              />
             </CardContent>
           </Card>
         </div>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Check } from "lucide-react"
+import { toast } from "sonner"
 
 import { HelpHint } from "@/components/help-hint"
 import { ModelPicker } from "@/components/model-picker"
@@ -180,6 +181,7 @@ function TaskRow({
     onSuccess: () => {
       setError(null)
       queryClient.invalidateQueries({ queryKey: ["llm-settings"] })
+      toast.success("Task model saved")
     },
     onError: (err) => setError(err instanceof Error ? err.message : "Failed to save"),
   })

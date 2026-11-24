@@ -36,6 +36,11 @@ export interface TargetCreate {
   out_of_scope_assets: string[]
 }
 
+export type TargetUpdate = Partial<TargetCreate>
+
+export const SCAN_TOOLS = ["dns", "nmap", "prober", "zap"] as const
+export type ScanTool = (typeof SCAN_TOOLS)[number]
+
 export const ASSESSMENT_CATEGORIES = [
   "Input validation & injection",
   "Security configuration & HTTPS",
@@ -64,6 +69,13 @@ export interface AssessmentCreate {
   target_id: number
   intensity?: ScanIntensity | null
   categories?: string[]
+  tools?: string[]
+}
+
+export interface InterpretResult {
+  assessment_id: number
+  created: number
+  notes: string
 }
 
 export interface Job {

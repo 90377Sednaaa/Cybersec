@@ -8,10 +8,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmptyState } from "@/components/empty-state"
+import { ImportScanDialog } from "@/components/import-scan-dialog"
+import { QuickAssessmentDialog } from "@/components/quick-assessment-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useFindingCounts } from "@/hooks/use-finding-counts"
 import { api, apiWithMeta } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { SEVERITIES, capitalize } from "@/lib/finding-style"
 import type { Assessment, AssessmentStatus, Finding, Severity, Target } from "@/lib/types"
 
@@ -83,6 +86,8 @@ function StatCard({ title, value, icon: Icon, hint, loading, to }: StatCardProps
 
 export function DashboardPage() {
   const navigate = useNavigate()
+  const { hasRole } = useAuth()
+  const canScan = hasRole("admin", "assessor")
   const [scope, setScope] = useState<"verified" | "all">("all")
 
   const targets = useQuery({
@@ -159,17 +164,26 @@ export function DashboardPage() {
     .sort((a, b) => a.id - b.id)
     .slice(-8)
     .map((assessment) => ({
+      id: assessment.id,
       label: `#${assessment.id}`,
       count: findingRows?.filter((f) => f.assessment_id === assessment.id).length ?? 0,
     }))
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Assessment results and vulnerability summaries. Only assessor-verified findings count as confirmed.
-        </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Assessment results and vulnerability summaries. Only assessor-verified findings count as confirmed.
+          </p>
+        </div>
+        {canScan && (
+          <div className="flex flex-wrap items-center gap-2">
+            <ImportScanDialog targets={targets.data ?? []} />
+            <QuickAssessmentDialog />
+          </div>
+        )}
       </div>
 
       {loadError && (
@@ -339,18 +353,23 @@ export function DashboardPage() {
                 ) : null,
               )}
             </div>
-            <ul className="space-y-1.5">
+            <ul className="flex flex-col gap-1">
               {reviewBuckets.map((bucket) => (
-                <li key={bucket.key} className="flex items-center justify-between rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted/40">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: bucket.color }}
-                      aria-hidden="true"
-                    />
-                    <span className="text-muted-foreground font-medium">{bucket.label}</span>
-                  </div>
-                  <span className="font-semibold tabular-nums text-foreground">{bucket.count}</span>
+                <li key={bucket.key}>
+                  <Link
+                    to={`/findings?status=${bucket.key}`}
+                    className="flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-muted/60"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="size-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: bucket.color }}
+                        aria-hidden="true"
+                      />
+                      <span className="font-medium text-muted-foreground">{bucket.label}</span>
+                    </div>
+                    <span className="font-semibold tabular-nums text-foreground">{bucket.count}</span>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -378,7 +397,15 @@ export function DashboardPage() {
               <ResponsiveContainer width="100%" height="100%">
                 {/* Bars, not an area: runs are discrete categories, and a single
                     run would render as a lone dot with no shape to read. */}
-                <BarChart data={trendData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                <BarChart
+                  data={trendData}
+                  margin={{ top: 8, right: 8, left: -20, bottom: 0 }}
+                  style={{ cursor: "pointer" }}
+                  onClick={(state) => {
+                    const match = trendData.find((entry) => entry.label === state?.activeLabel)
+                    if (match) navigate(`/assessments/${match.id}`)
+                  }}
+                >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} />
                   <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
@@ -391,10 +418,10 @@ export function DashboardPage() {
                       fontSize: 12,
                       color: "var(--popover-foreground)",
                     }}
-                    labelFormatter={(label) => `Run ${label}`}
+                    labelFormatter={(label) => `Run ${label} (click to open)`}
                     formatter={(value) => [`${value} findings`, "Findings"]}
                   />
-                  <Bar dataKey="count" fill="var(--primary)" radius={4} maxBarSize={56} />
+                  <Bar dataKey="count" fill="var(--primary)" radius={4} maxBarSize={56} className="cursor-pointer" />
                 </BarChart>
               </ResponsiveContainer>
             )}

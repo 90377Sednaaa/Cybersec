@@ -1,11 +1,12 @@
 import { useCallback, useState } from "react"
-import { Link, NavLink, Outlet } from "react-router-dom"
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
 import {
   BookOpen,
   Crosshair,
   LayoutDashboard,
   LogOut,
   Moon,
+  Plus,
   Radar,
   Settings,
   ShieldAlert,
@@ -14,13 +15,23 @@ import {
 import type { LucideIcon } from "lucide-react"
 
 import logo from "@/assets/aletheia-logo.png"
+import { QuickAssessmentDialog } from "@/components/quick-assessment-dialog"
 import { ShortcutsMenu } from "@/components/shortcuts-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -54,6 +65,65 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/assessments": Radar,
   "/findings": ShieldAlert,
   "/settings": Settings,
+}
+
+function HeaderBreadcrumb() {
+  const { pathname } = useLocation()
+  const segments = pathname.split("/").filter(Boolean)
+
+  if (segments.length === 0) {
+    return (
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbPage className="font-medium">Dashboard</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+    )
+  }
+
+  const rootLabels: Record<string, string> = {
+    targets: "Targets",
+    assessments: "Assessments",
+    findings: "Findings",
+    settings: "AI Settings",
+  }
+  const root = segments[0]
+  const rootLabel = rootLabels[root] ?? root
+  const detailId = segments[1]
+
+  return (
+    <Breadcrumb>
+      <BreadcrumbList>
+        <BreadcrumbItem className="hidden sm:inline-flex">
+          <BreadcrumbLink asChild>
+            <Link to="/">Aletheia</Link>
+          </BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator className="hidden sm:inline-flex" />
+        {detailId ? (
+          <>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link to={`/${root}`}>{rootLabel}</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage className="font-mono text-xs font-medium">
+                {root === "assessments" ? `Run #${detailId}` : `#${detailId}`}
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </>
+        ) : (
+          <BreadcrumbItem>
+            <BreadcrumbPage className="font-medium">{rootLabel}</BreadcrumbPage>
+          </BreadcrumbItem>
+        )}
+      </BreadcrumbList>
+    </Breadcrumb>
+  )
 }
 
 function BrandHeader() {
@@ -122,13 +192,13 @@ function UserFooter() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton size="lg" tooltip={user.full_name || user.email}>
               <Avatar className="size-8">
-                <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+                <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
                   {initials(user.full_name, user.email)}
                 </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left leading-tight">
                 <span className="truncate text-sm font-medium">{user.full_name || user.email}</span>
-                <span className="truncate text-xs text-muted-foreground capitalize">{user.role}</span>
+                <span className="truncate text-xs capitalize text-muted-foreground">{user.role}</span>
               </div>
             </SidebarMenuButton>
           </DropdownMenuTrigger>
@@ -138,10 +208,12 @@ function UserFooter() {
               <p className="text-xs text-muted-foreground">{user.email}</p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} variant="destructive">
-              <LogOut className="size-4" />
-              Sign out
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={logout} variant="destructive">
+                <LogOut className="size-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
@@ -159,9 +231,16 @@ function ThemeToggle() {
 }
 
 export function AppShell() {
+  const { hasRole } = useAuth()
+  const canScan = hasRole("admin", "assessor")
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [quickScanOpen, setQuickScanOpen] = useState(false)
   const toggleShortcuts = useCallback(() => setShortcutsOpen((prev) => !prev), [])
-  useAppShortcuts({ onToggleHelp: toggleShortcuts })
+  const openQuickScan = useCallback(() => {
+    if (canScan) setQuickScanOpen(true)
+  }, [canScan])
+
+  useAppShortcuts({ onToggleHelp: toggleShortcuts, onNewScan: openQuickScan })
 
   return (
     <SidebarProvider>
@@ -178,15 +257,19 @@ export function AppShell() {
         <SidebarRail />
       </Sidebar>
       <SidebarInset className="min-w-0">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:px-6">
           <SidebarTrigger aria-label="Toggle sidebar" />
           <Separator orientation="vertical" className="mr-2 !h-4" />
-          <div className="flex min-w-0 items-center gap-2 text-xs">
-            <span className="shrink-0 font-semibold tracking-tight text-foreground">Aletheia</span>
-            <span className="shrink-0 font-mono text-muted-foreground/40">/</span>
-            <span className="truncate text-muted-foreground">Security Assessment &amp; Vulnerability Analysis</span>
+          <div className="min-w-0 flex-1">
+            <HeaderBreadcrumb />
           </div>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1.5">
+            {canScan && (
+              <Button size="sm" onClick={() => setQuickScanOpen(true)} className="mr-1">
+                <Plus data-icon="inline-start" />
+                <span className="hidden sm:inline">New scan</span>
+              </Button>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="User Guide" asChild>
@@ -201,9 +284,12 @@ export function AppShell() {
             <ThemeToggle />
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-6">
-          <Outlet />
+        <main className="flex-1 overflow-auto p-6 lg:p-8">
+          <div className="mx-auto w-full max-w-7xl">
+            <Outlet />
+          </div>
         </main>
+        <QuickAssessmentDialog open={quickScanOpen} onOpenChange={setQuickScanOpen} />
       </SidebarInset>
     </SidebarProvider>
   )

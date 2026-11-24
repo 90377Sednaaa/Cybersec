@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react"
 
-import { getToken } from "@/lib/api"
+import { clearToken, getToken } from "@/lib/api"
 import type { ScanEvent } from "@/lib/types"
 
 export interface LogLine {
   id: number
-  jobId: number
+  jobId: number | null
   text: string
 }
 
@@ -19,14 +19,15 @@ const MAX_BACKOFF_MS = 15_000
  *
  * Reconnects with capped exponential backoff when the stream drops mid-run
  * (dev-server restart, proxy idle timeout, laptop sleep). A terminal
- * `assessment` event stops the loop, so a finished run is fetched once and
- * never polled again. Log lines emitted during a disconnect are not replayed
- * by the API; the `snapshot` event on reconnect restores job/assessment state.
+ * `assessment` event or `enabled = false` stops the loop cleanly; a 401
+ * clears the expired session instead of retrying forever.
  */
-export function useScanEvents(assessmentId: number | null, onEvent?: (event: ScanEvent) => void) {
-  // Keep the id alongside the lines so switching runs needs no setState inside
-  // the effect (which tripped react-hooks/set-state-in-effect). Lines from a
-  // previous run simply stop being rendered until the new run appends one.
+export function useScanEvents(
+  assessmentId: number | null,
+  onEvent?: (event: ScanEvent) => void,
+  options?: { enabled?: boolean },
+) {
+  const enabled = options?.enabled ?? true
   const [logState, setLogState] = useState<{ id: number | null; lines: LogLine[] }>({
     id: assessmentId,
     lines: [],
@@ -41,12 +42,12 @@ export function useScanEvents(assessmentId: number | null, onEvent?: (event: Sca
   const lines = logState.id === assessmentId ? logState.lines : []
 
   useEffect(() => {
-    if (assessmentId === null) return
+    if (assessmentId === null || !enabled) return
     const controller = new AbortController()
     let counter = 0
     let retryTimer: ReturnType<typeof setTimeout> | null = null
 
-    function appendLine(text: string, jobId: number) {
+    function appendLine(text: string, jobId: number | null) {
       setLogState((prev) => ({
         id: assessmentId,
         lines: [
@@ -58,13 +59,18 @@ export function useScanEvents(assessmentId: number | null, onEvent?: (event: Sca
 
     /** One SSE connection. Returns true when the run reached a terminal state. */
     async function connect(): Promise<boolean> {
-      // Re-read on every attempt: the token may have been replaced while we
-      // were backing off, and a stale one would just 401 forever.
       const token = getToken()
       const res = await fetch(`/api/assessments/${assessmentId}/events`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         signal: controller.signal,
       })
+      if (res.status === 401 && token) {
+        clearToken()
+        sessionStorage.setItem("aletheia-return-to", window.location.pathname)
+        window.location.href = "/login"
+        return true
+      }
+      if (res.status === 404) return true
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
       setConnected(true)
 
@@ -79,7 +85,6 @@ export function useScanEvents(assessmentId: number | null, onEvent?: (event: Sca
         const blocks = buffer.split("\n\n")
         buffer = blocks.pop() ?? ""
         for (const block of blocks) {
-          // Keep-alive heartbeats are comment lines without a "data:" field.
           const dataLine = block.split("\n").find((l) => l.startsWith("data: "))
           if (!dataLine) continue
           let event: ScanEvent
@@ -88,7 +93,7 @@ export function useScanEvents(assessmentId: number | null, onEvent?: (event: Sca
           } catch {
             continue
           }
-          if (event.type === "log") appendLine(event.line, event.job_id)
+          if (event.type === "log") appendLine(event.line, event.job_id ?? null)
           if (event.type === "assessment") terminal = true
           onEventRef.current?.(event)
         }
@@ -123,7 +128,7 @@ export function useScanEvents(assessmentId: number | null, onEvent?: (event: Sca
       if (retryTimer) clearTimeout(retryTimer)
       setConnected(false)
     }
-  }, [assessmentId])
+  }, [assessmentId, enabled])
 
-  return { lines, connected }
+  return { lines, connected: enabled && connected }
 }

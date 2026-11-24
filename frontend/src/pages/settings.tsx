@@ -110,7 +110,12 @@ function ProviderForm({ provider, onDone }: { provider: LLMProvider | null; onDo
   }
 
   // Enabling needs an explicit acknowledgment unless one was already recorded.
-  const needsAcknowledgment = enabled && !provider?.acknowledged_external_at
+  // Per backend `_require_ack_on_endpoint_change`, changing base_url or api_key
+  // on an already-enabled provider also requires re-confirming the destination.
+  const endpointChanged = Boolean(provider) && baseUrl.trim() !== provider!.base_url
+  const keyChanged = Boolean(provider) && apiKey.trim().length > 0
+  const needsAcknowledgment =
+    enabled && (!provider?.acknowledged_external_at || endpointChanged || keyChanged)
 
   const mutation = useMutation({
     mutationFn: (payload: LLMProviderInput) =>
