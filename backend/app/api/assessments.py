@@ -28,7 +28,16 @@ from app.schemas.assessment import (
     PrioritizationOut,
     ScanEvent,
 )
-from app.scanner.orchestrator import EVENT_QUEUE_SIZE, INTRUSIVE_TOOLS, pipelines, plan_tools, request_cancel, start_pipeline
+from app.scanner.orchestrator import (
+    EVENT_QUEUE_SIZE,
+    INTRUSIVE_TOOLS,
+    effective_intensity,
+    pipelines,
+    plan_tools,
+    request_cancel,
+    start_job_retry,
+    start_pipeline,
+)
 from app.scanner.registry import registered_tools
 
 router = APIRouter(prefix="/assessments", tags=["assessments"])
@@ -480,3 +489,72 @@ def cancel_assessment(
         raise HTTPException(status.HTTP_409_CONFLICT, f"Assessment is {assessment.status.value}; cannot cancel.")
     signalled = request_cancel(assessment_id, db)
     return {"status": "cancelling" if signalled else "cancelled"}
+
+
+@router.post(
+    "/{assessment_id}/jobs/{job_id}/retry",
+    response_model=AssessmentDetail,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_assessment_job(
+    assessment_id: int,
+    job_id: int,
+    _: User = Depends(require_role(Role.admin, Role.assessor)),
+    db: Session = Depends(get_db),
+) -> AssessmentDetail:
+    """Re-run a single tool job inside an existing assessment without touching
+    the other jobs. Enforces the target intensity gate and one-active-run-per-target."""
+    assessment = db.get(
+        Assessment,
+        assessment_id,
+        options=(joinedload(Assessment.jobs), joinedload(Assessment.target)),
+    )
+    if assessment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
+    if assessment.target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Target no longer exists")
+    if assessment.status == AssessmentStatus.running or assessment.id in pipelines:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Assessment is currently running. Wait for it to finish or cancel it first.",
+        )
+
+    active = db.scalar(
+        select(Assessment)
+        .where(Assessment.target_id == assessment.target_id, Assessment.status == AssessmentStatus.running)
+        .limit(1)
+    )
+    if active is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Target '{assessment.target.name}' already has a running assessment (#{active.id}).",
+        )
+
+    job = next((j for j in assessment.jobs if j.id == job_id), None)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found in this assessment")
+    if job.status in (JobStatus.running, JobStatus.pending):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Job '{job.tool}' is already {job.status.value}.")
+
+    effective = effective_intensity(assessment, assessment.target)
+    if job.tool in INTRUSIVE_TOOLS and effective != ScanIntensity.full_intrusive:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Intensity gate: target '{assessment.target.name}' currently allows '{effective.value}', "
+            f"so intrusive tool '{job.tool}' cannot be retried.",
+        )
+
+    job.status = JobStatus.pending
+    job.progress = 0.0
+    job.log = ""
+    job.raw_output = ""
+    job.command = ""
+    job.started_at = None
+    job.finished_at = None
+    assessment.status = AssessmentStatus.running
+    assessment.finished_at = None
+    db.commit()
+    db.refresh(assessment)
+
+    start_job_retry(assessment.id, job.id)
+    return _detail(db, assessment)

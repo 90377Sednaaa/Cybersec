@@ -23,7 +23,7 @@ from app.database import SessionLocal
 from app.models import Assessment, AssessmentStatus, Job, JobStatus, ScanIntensity, Target
 from app.models.user import utcnow
 from app.scanner.base import RunnerError, ScanContext, format_exception
-from app.scanner.normalize import normalize_assessment
+from app.scanner.normalize import normalize_assessment, normalize_job
 from app.scanner.registry import get_runner
 
 # tool execution order; zap appended only at full intensity
@@ -108,6 +108,89 @@ def start_pipeline(assessment_id: int) -> PipelineHandle:
     handle.task = asyncio.create_task(run_pipeline(assessment_id, handle))
     pipelines[assessment_id] = handle
     return handle
+
+
+def start_job_retry(assessment_id: int, job_id: int) -> PipelineHandle:
+    """Re-run a single tool job inside an existing assessment without touching
+    the other jobs. Reuses the same PipelineHandle / SSE event bus so live logs
+    and Cancel work identically."""
+    if assessment_id in pipelines:
+        raise RuntimeError(f"Assessment {assessment_id} already has a running pipeline")
+    handle = PipelineHandle(assessment_id)
+    handle.task = asyncio.create_task(run_single_job_pipeline(assessment_id, job_id, handle))
+    pipelines[assessment_id] = handle
+    return handle
+
+
+async def run_single_job_pipeline(assessment_id: int, job_id: int, handle: PipelineHandle) -> None:
+    db = SessionLocal()
+    try:
+        assessment = db.get(Assessment, assessment_id)
+        job = db.get(Job, job_id)
+        if assessment is None or job is None or job.assessment_id != assessment_id:
+            broadcast(handle, {"type": "assessment", "status": AssessmentStatus.failed.value})
+            return
+        if assessment.target is None:
+            assessment.status = AssessmentStatus.failed
+            assessment.notes = "Target no longer exists; the job cannot be retried."
+            assessment.finished_at = utcnow()
+            db.commit()
+            broadcast(handle, {"type": "assessment", "status": AssessmentStatus.failed.value})
+            return
+
+        target = assessment.target
+        effective = effective_intensity(assessment, target)
+        assessment.status = AssessmentStatus.running
+        assessment.finished_at = None
+        db.commit()
+
+        if job.tool in INTRUSIVE_TOOLS and effective != ScanIntensity.full_intrusive:
+            job.status = JobStatus.cancelled
+            job.finished_at = utcnow()
+            job.log += (
+                f"[cancelled] skipped: target allowed intensity is {effective.value}, "
+                "so intrusive tools may not run\n"
+            )
+            db.commit()
+            broadcast(
+                handle,
+                {"type": "job", "job_id": job.id, "status": job.status.value, "progress": job.progress},
+            )
+        else:
+            await _run_job(db, handle, assessment, target, job, effective)
+
+        if handle.cancel_event.is_set():
+            _mark_cancelled([job], assessment)
+        else:
+            existing_notes = (assessment.notes or "").strip()
+            if job.status == JobStatus.completed:
+                created = normalize_job(db, assessment, job)
+                retry_note = f"Retried {job.tool}; {created} new candidate finding(s) emitted by rule-based normalizer."
+                assessment.notes = f"{existing_notes} {retry_note}".strip() if existing_notes else retry_note
+                await _run_interpret(db, handle, assessment, [job], target)
+            else:
+                retry_note = f"Retry of {job.tool} ended with status {job.status.value}."
+                assessment.notes = f"{existing_notes} {retry_note}".strip() if existing_notes else retry_note
+
+            if handle.cancel_event.is_set():
+                _mark_cancelled([job], assessment)
+            else:
+                assessment.status = AssessmentStatus.completed
+
+        assessment.finished_at = utcnow()
+        db.commit()
+        broadcast(handle, {"type": "assessment", "status": assessment.status.value})
+    except Exception as exc:  # noqa: BLE001
+        assessment = db.get(Assessment, assessment_id)
+        if assessment is not None:
+            assessment.status = AssessmentStatus.failed
+            assessment.notes = f"Orchestrator retry error: {exc}"
+            assessment.finished_at = utcnow()
+            db.commit()
+        broadcast(handle, {"type": "assessment", "status": AssessmentStatus.failed.value})
+    finally:
+        pipelines.pop(assessment_id, None)
+        db.close()
 
 
 async def run_pipeline(assessment_id: int, handle: PipelineHandle) -> None:

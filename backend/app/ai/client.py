@@ -133,6 +133,23 @@ def chat(
     )
 
 
+MAX_RETRY_AFTER_SECONDS = 15.0
+RATE_LIMIT_BACKOFF_SECONDS = (2.0, 5.0)
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a numeric Retry-After header (seconds), clamped to a safe cap."""
+    if not value:
+        return None
+    try:
+        seconds = float(value.strip())
+    except ValueError:
+        return None
+    if seconds <= 0:
+        return None
+    return min(seconds, MAX_RETRY_AFTER_SECONDS)
+
+
 def _send_with_retry(
     base_url: str,
     headers: dict,
@@ -140,29 +157,60 @@ def _send_with_retry(
     timeout: float,
     transport: httpx.BaseTransport | None,
 ) -> dict:
-    # no api key -> peer-to-peer local profile (Ollama); short backoff, one retry
+    # Transient transport / 5xx errors get 1 retry (2 attempts, 1s sleep).
+    # HTTP 429 rate limits get up to 2 retries (3 attempts), honoring Retry-After
+    # when provided or backing off 2s -> 5s so provider rate windows can clear.
     last_error = ""
-    for attempt in range(2):
+    rate_limit_retries = 0
+    transient_retries = 0
+
+    while True:
         try:
             with httpx.Client(timeout=timeout, transport=transport) as client:
                 resp = client.post(f"{base_url.rstrip('/')}/chat/completions", headers=headers, json=body)
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             last_error = f"transport failure: {type(exc).__name__}"
-        else:
-            if 200 <= resp.status_code < 300:
-                try:
-                    return resp.json()
-                except ValueError:
-                    last_error = "provider returned non-JSON body"
-            elif resp.status_code in (429, 500, 502, 503, 504):
-                last_error = f"HTTP {resp.status_code} from provider"
-            else:
-                # A gateway can echo the request - Authorization header included -
-                # back in its error body. This string ends up in
-                # assessment.notes, SSE logs and the /test response, so scrub it
-                # before it leaves the process.
-                detail = redact_text(resp.text)[:300]
-                raise LLMRequestError(f"Provider rejected the request (HTTP {resp.status_code}): {detail}")
-        if attempt == 0:
-            time.sleep(1.0)
+            if transient_retries < 1:
+                transient_retries += 1
+                time.sleep(1.0)
+                continue
+            break
+
+        if 200 <= resp.status_code < 300:
+            try:
+                return resp.json()
+            except ValueError:
+                last_error = "provider returned non-JSON body"
+                if transient_retries < 1:
+                    transient_retries += 1
+                    time.sleep(1.0)
+                    continue
+                break
+
+        if resp.status_code == 429:
+            last_error = "HTTP 429 from provider (rate limited)"
+            if rate_limit_retries < len(RATE_LIMIT_BACKOFF_SECONDS):
+                delay = _parse_retry_after(resp.headers.get("Retry-After"))
+                if delay is None:
+                    delay = RATE_LIMIT_BACKOFF_SECONDS[rate_limit_retries]
+                rate_limit_retries += 1
+                time.sleep(delay)
+                continue
+            break
+
+        if resp.status_code in (500, 502, 503, 504):
+            last_error = f"HTTP {resp.status_code} from provider"
+            if transient_retries < 1:
+                transient_retries += 1
+                time.sleep(1.0)
+                continue
+            break
+
+        # A gateway can echo the request - Authorization header included -
+        # back in its error body. This string ends up in
+        # assessment.notes, SSE logs and the /test response, so scrub it
+        # before it leaves the process.
+        detail = redact_text(resp.text)[:300]
+        raise LLMRequestError(f"Provider rejected the request (HTTP {resp.status_code}): {detail}")
+
     raise LLMRequestError(f"LLM call failed after retry: {last_error}")

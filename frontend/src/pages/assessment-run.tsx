@@ -158,14 +158,44 @@ function JobTimeline({
   )
 }
 
-function JobRow({ job }: { job: Job }) {
+function JobRow({
+  job,
+  canRetry,
+  isRetrying,
+  disabled,
+  onRetry,
+}: {
+  job: Job
+  canRetry: boolean
+  isRetrying: boolean
+  disabled: boolean
+  onRetry: () => void
+}) {
   const percent = Math.round(job.progress * 100)
+  const failedOrCancelled = job.status === "failed" || job.status === "cancelled"
   return (
     <div className="flex flex-col gap-2 py-3.5">
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">{job.tool}</span>
         <Badge variant={STATUS_VARIANT[job.status]}>{job.status}</Badge>
         <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">{percent}%</span>
+        {canRetry && (
+          <Button
+            type="button"
+            size="xs"
+            variant={failedOrCancelled ? "outline" : "ghost"}
+            disabled={disabled}
+            onClick={onRetry}
+            title={failedOrCancelled ? `Retry ${job.tool} only` : `Re-run ${job.tool} only`}
+          >
+            {isRetrying ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <RotateCw data-icon="inline-start" />
+            )}
+            {isRetrying ? "Starting..." : failedOrCancelled ? "Retry" : "Re-run"}
+          </Button>
+        )}
       </div>
       {(job.status === "running" || job.status === "pending") && (
         <Progress value={percent} aria-label={`${job.tool} progress`} className="h-1.5" />
@@ -299,6 +329,17 @@ export function AssessmentRunPage() {
       )
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "AI interpretation failed"),
+  })
+
+  const retryJob = useMutation({
+    mutationFn: (job: Job) =>
+      api<AssessmentDetail>(`/api/assessments/${assessmentId}/jobs/${job.id}/retry`, { method: "POST" }),
+    onSuccess: (updated, job) => {
+      queryClient.setQueryData(["assessment", assessmentId], updated)
+      queryClient.invalidateQueries({ queryKey: ["assessments"] })
+      toast.success(`Retrying ${job.tool}...`)
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to retry tool"),
   })
 
   useEffect(() => {
@@ -579,7 +620,14 @@ export function AssessmentRunPage() {
                       <Separator />
                       <div className="divide-y">
                         {data.jobs.map((job) => (
-                          <JobRow key={job.id} job={job} />
+                          <JobRow
+                            key={job.id}
+                            job={job}
+                            canRetry={canManage && isFinished && job.status !== "running" && job.status !== "pending"}
+                            isRetrying={retryJob.isPending && retryJob.variables?.id === job.id}
+                            disabled={retryJob.isPending}
+                            onRetry={() => retryJob.mutate(job)}
+                          />
                         ))}
                       </div>
                     </>

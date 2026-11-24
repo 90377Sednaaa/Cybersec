@@ -903,3 +903,111 @@ def test_nmap_runner_falls_back_to_popen_on_selector_loop(monkeypatch):
     assert len(parsed["hosts"]) == 1
     assert parsed["hosts"][0]["address"] == "127.0.0.1"
 
+
+def test_llm_client_retries_429_with_retry_after_and_backoff(monkeypatch):
+    """HTTP 429 gets up to 3 attempts, honoring numeric Retry-After (clamped)
+    or exponential backoff (2s, 5s) without breaking single-retry transport errors."""
+    import httpx
+    from app.ai import client as ai_client
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(ai_client.time, "sleep", lambda s: sleeps.append(s))
+
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429, headers={"Retry-After": "3"}, text="rate limited")
+        if attempts == 2:
+            return httpx.Response(429, text="rate limited")
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]},
+        )
+
+    result = ai_client._send_with_retry(
+        "http://mock-provider.test/api/v1",
+        {"Content-Type": "application/json"},
+        {"model": "test", "messages": []},
+        timeout=5.0,
+        transport=httpx.MockTransport(handler),
+    )
+    assert result["choices"][0]["message"]["content"] == "ok"
+    assert attempts == 3
+    assert sleeps == [3.0, 5.0]
+
+
+def test_retry_single_job_endpoint_and_intensity_gate(client, auth, monkeypatch):
+    """POST /api/assessments/{id}/jobs/{job_id}/retry resets only the chosen job,
+    starts single-job retry, and enforces the target intensity gate on zap."""
+    from app.api import assessments as assessments_api
+
+    target = client.post(
+        "/api/targets",
+        json={
+            "name": "RetryJobTarget",
+            "base_url": "http://127.0.0.1:3002",
+            "authorization_ref": "AUTH-RETRY-1",
+            "allowed_intensity": "passive_safe",
+        },
+        headers=auth,
+    ).json()
+
+    with SessionLocal() as db:
+        assessment = Assessment(
+            target_id=target["id"],
+            intensity=ScanIntensity.passive_safe,
+            categories=["Security configuration & HTTPS"],
+            status=AssessmentStatus.completed,
+        )
+        db.add(assessment)
+        db.flush()
+        dns_job = Job(
+            assessment_id=assessment.id,
+            tool="dns",
+            status=JobStatus.completed,
+            progress=1.0,
+            log="dns ok\n",
+            raw_output=json.dumps({"records": {"A": ["127.0.0.1"]}}),
+        )
+        nmap_job = Job(
+            assessment_id=assessment.id,
+            tool="nmap",
+            status=JobStatus.failed,
+            progress=0.1,
+            log="[error] boom\n",
+        )
+        zap_job = Job(
+            assessment_id=assessment.id,
+            tool="zap",
+            status=JobStatus.cancelled,
+            progress=0.0,
+            log="[cancelled]\n",
+        )
+        db.add_all([dns_job, nmap_job, zap_job])
+        db.commit()
+        aid, dns_id, nmap_id, zap_id = assessment.id, dns_job.id, nmap_job.id, zap_job.id
+
+    # Intrusive tool retry on a passive_safe target must be rejected with 409
+    r_gate = client.post(f"/api/assessments/{aid}/jobs/{zap_id}/retry", headers=auth)
+    assert r_gate.status_code == 409
+
+    started: list[tuple[int, int]] = []
+    monkeypatch.setattr(assessments_api, "start_job_retry", lambda a_id, j_id: started.append((a_id, j_id)))
+
+    r_retry = client.post(f"/api/assessments/{aid}/jobs/{nmap_id}/retry", headers=auth)
+    assert r_retry.status_code == 202, r_retry.text
+    body = r_retry.json()
+    assert body["status"] == "running"
+    assert started == [(aid, nmap_id)]
+
+    jobs_by_id = {j["id"]: j for j in body["jobs"]}
+    # Only nmap was reset; dns stayed completed with its original log intact
+    assert jobs_by_id[nmap_id]["status"] == "pending"
+    assert jobs_by_id[nmap_id]["log"] == ""
+    assert jobs_by_id[dns_id]["status"] == "completed"
+    assert jobs_by_id[dns_id]["log"] == "dns ok\n"
+
+
