@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Download, FileText, Maximize2, Minimize2, RefreshCw, Trash2 } from "lucide-react"
+import { Download, FileText, Maximize2, Minimize2, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import { HelpHint } from "@/components/help-hint"
 import { api, apiBlob } from "@/lib/api"
@@ -88,6 +89,19 @@ export function AssessmentReports({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [isFullscreen])
 
+  const generateSummary = useMutation({
+    mutationFn: () =>
+      api<{ assessment_id: number; executive_summary: string; model: string }>(
+        `/api/assessments/${assessmentId}/summary`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["report-preview-html", assessmentId] })
+      toast.success("AI executive summary updated")
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to generate AI summary"),
+  })
+
   const generate = useMutation({
     mutationFn: () => api<Report>(`/api/assessments/${assessmentId}/report`, { method: "POST" }),
     onSuccess: () => {
@@ -130,25 +144,37 @@ export function AssessmentReports({
   const running = assessmentStatus === "running"
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-5">
       {/* Top Header & Actions Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <FileText className="size-4 text-primary" />
           <h2 className="text-base font-semibold tracking-tight">Security Assessment Report</h2>
           <HelpHint label="Security report">
-            Rendered live from verified findings. You can review the report directly, view in full screen, or download a compiled PDF.
+            Rendered live from assessment findings. Generate an AI executive summary over verified findings, view in
+            full screen, or export a compiled PDF.
           </HelpHint>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {canGenerate && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={running || generateSummary.isPending}
+              onClick={() => generateSummary.mutate()}
+            >
+              {generateSummary.isPending ? <Spinner data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
+              {generateSummary.isPending ? "Summarizing..." : "AI summary"}
+            </Button>
+          )}
+
           <Button
             size="sm"
             variant="outline"
             disabled={reportHtml.isFetching || running}
             onClick={() => void reportHtml.refetch()}
-            className="gap-1.5"
           >
-            <RefreshCw className={`size-3.5 ${reportHtml.isFetching ? "animate-spin" : ""}`} />
+            <RefreshCw className={reportHtml.isFetching ? "animate-spin" : ""} data-icon="inline-start" />
             Refresh
           </Button>
 
@@ -157,9 +183,8 @@ export function AssessmentReports({
             variant="outline"
             disabled={!reportHtml.data}
             onClick={() => setIsFullscreen(true)}
-            className="gap-1.5"
           >
-            <Maximize2 className="size-3.5" />
+            <Maximize2 data-icon="inline-start" />
             Full screen
           </Button>
 
@@ -169,10 +194,9 @@ export function AssessmentReports({
               variant="outline"
               disabled={downloadingId === latestReady.id}
               onClick={() => void handleDownload(latestReady)}
-              className="gap-1.5"
             >
-              <Download className="size-3.5" />
-              {downloadingId === latestReady.id ? "Downloading…" : "Download PDF"}
+              <Download data-icon="inline-start" />
+              {downloadingId === latestReady.id ? "Downloading..." : "Download PDF"}
             </Button>
           )}
 
@@ -182,7 +206,8 @@ export function AssessmentReports({
               disabled={running || hasPending || generate.isPending}
               onClick={() => generate.mutate()}
             >
-              {generate.isPending || hasPending ? "Generating PDF…" : "Generate PDF"}
+              {generate.isPending || hasPending ? <Spinner data-icon="inline-start" /> : null}
+              {generate.isPending || hasPending ? "Generating PDF..." : "Generate PDF"}
             </Button>
           )}
         </div>
@@ -278,7 +303,8 @@ export function AssessmentReports({
 
       {/* Generated PDF history */}
       {reports.data && reports.data.length > 0 && (
-        <div className="space-y-2 pt-2 border-t">
+        <div className="flex flex-col gap-3">
+          <Separator />
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             PDF Exports ({reports.data.length})
           </h3>

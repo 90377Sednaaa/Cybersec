@@ -296,20 +296,14 @@ export function FindingsPage() {
         </p>
       </div>
 
-      <Alert>
-        <AlertDescription>
-          AI-generated findings are candidates, not confirmed vulnerabilities, until an assessor verifies them.
-        </AlertDescription>
-      </Alert>
-
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <CardTitle>Findings repository</CardTitle>
               <CardDescription>
                 {findingsQuery.isLoading ? (
-                  "Loading findings…"
+                  "Loading findings..."
                 ) : totalCount > loadedCount ? (
                   <>
                     <strong className="text-foreground">{filteredFindings.length}</strong> shown · newest{" "}
@@ -347,7 +341,7 @@ export function FindingsPage() {
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           {assessment !== ALL && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
               <Radar className="size-4 shrink-0 text-primary" />

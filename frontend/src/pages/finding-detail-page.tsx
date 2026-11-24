@@ -28,6 +28,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FindingReview } from "@/pages/finding-review"
 import { FindingQAPanel } from "@/components/finding-qa-panel"
@@ -270,7 +271,7 @@ function MetaItem({
 }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd
         className={cn(
           "mt-0.5 text-xs font-medium text-foreground",
@@ -412,18 +413,18 @@ export function FindingDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="flex flex-col gap-6">
         <div className="flex items-center gap-2">
           <Skeleton className="h-8 w-24" />
           <Skeleton className="h-5 w-32" />
         </div>
         <Skeleton className="h-10 w-2/3" />
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-5 space-y-4">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="flex flex-col gap-4 lg:col-span-5">
             <Skeleton className="h-64 w-full" />
             <Skeleton className="h-48 w-full" />
           </div>
-          <div className="lg:col-span-7 space-y-4">
+          <div className="flex flex-col gap-4 lg:col-span-7">
             <Skeleton className="h-96 w-full" />
           </div>
         </div>
@@ -433,8 +434,8 @@ export function FindingDetailPage() {
 
   if (error || !data) {
     return (
-      <div className="space-y-4">
-        <Button asChild variant="outline" size="sm">
+      <div className="flex flex-col gap-4">
+        <Button asChild variant="outline" size="sm" className="self-start">
           <Link to={backTo}>
             <ArrowLeft className="size-4" /> Back to Findings
           </Link>
@@ -448,7 +449,7 @@ export function FindingDetailPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-6">
       {/* Top Navigation & Stepper Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
@@ -542,19 +543,19 @@ export function FindingDetailPage() {
       )}
 
       {/* Main Two-Column Layout */}
-      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-12">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
         {/* Left Column: Finding Overview & Decision (5 cols on lg) */}
-        <div className="space-y-4 lg:col-span-5">
+        <div className="flex flex-col gap-6 lg:col-span-5">
           {/* Overview Card */}
-          <Card className="gap-0 overflow-hidden py-0">
-            <CardHeader className="gap-3 px-5 pb-4 pt-5">
+          <Card>
+            <CardHeader className="gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge className={SEVERITY_CLASS[data.severity]}>{capitalize(data.severity)}</Badge>
                 <Badge variant={STATUS_VARIANT[data.status]} className={STATUS_CLASS[data.status]}>
                   {STATUS_LABEL[data.status]}
                 </Badge>
                 <span
-                  className="ml-auto font-mono text-xs text-muted-foreground"
+                  className="ml-auto font-mono text-xs text-muted-foreground tabular-nums"
                   title="Risk score"
                   aria-label={`Risk score ${displayScore(data.score, data.severity)} out of 10`}
                 >
@@ -567,7 +568,7 @@ export function FindingDetailPage() {
               </h1>
             </CardHeader>
 
-            <CardContent className="space-y-4 px-5 pb-5">
+            <CardContent className="flex flex-col gap-4">
               <p className="text-pretty whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                 {data.description || "No description provided."}
               </p>
@@ -589,7 +590,7 @@ export function FindingDetailPage() {
 
               {data.verified_by && (
                 <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-                  <ShieldCheck className="size-3.5 shrink-0 text-emerald-500" />
+                  <ShieldCheck className="size-3.5 shrink-0 text-[var(--state-verified)]" />
                   <span>
                     {data.status === "false_positive" ? "Reviewed by" : "Verified by"}{" "}
                     <strong className="font-medium text-foreground">{data.verified_by}</strong>
@@ -599,12 +600,14 @@ export function FindingDetailPage() {
                 </div>
               )}
 
-              <div className="space-y-1.5 border-t pt-3.5">
+              <Separator />
+
+              <div className="flex flex-col gap-1.5">
                 <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
                   <Wrench className="size-3.5 text-primary" />
                   Remediation
                 </h2>
-                <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                   {data.remediation || "No remediation guidance available."}
                 </p>
               </div>
@@ -612,14 +615,14 @@ export function FindingDetailPage() {
           </Card>
 
           {/* Review Decision Workflow */}
-          <Card className="gap-0 overflow-hidden py-0">
-            <CardHeader className="px-5 pb-3 pt-5">
+          <Card>
+            <CardHeader>
               <h2 className="flex items-center gap-1.5 text-sm font-semibold">
                 <ShieldCheck className="size-4 text-primary" />
                 Assessor review
               </h2>
             </CardHeader>
-            <CardContent className="px-5 pb-5">
+            <CardContent>
               <FindingReview
                 key={data.id}
                 finding={data}
@@ -631,7 +634,7 @@ export function FindingDetailPage() {
         </div>
 
         {/* Right Column: Evidence & Analyst (7 cols on lg) */}
-        <div className="space-y-4 lg:col-span-7">
+        <div className="flex flex-col gap-4 lg:col-span-7">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-baseline gap-2">
               <h2 className="text-sm font-semibold tracking-tight text-foreground">Evidence</h2>
@@ -663,8 +666,8 @@ export function FindingDetailPage() {
           </div>
 
           {data.evidence.length === 0 ? (
-            <Card className="border-dashed bg-transparent py-0 shadow-none">
-              <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+            <Card className="border-dashed bg-transparent shadow-none">
+              <CardContent className="flex flex-col items-center justify-center py-6 text-center">
                 <div className="mb-3 flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
                   <Terminal className="size-5" />
                 </div>
@@ -675,7 +678,7 @@ export function FindingDetailPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-3">
+            <div className="flex flex-col gap-3">
               {data.evidence.map((item) => (
                 <EvidenceBlock
                   key={item.id}

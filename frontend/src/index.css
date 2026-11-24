@@ -45,13 +45,15 @@
   --sidebar-ring: oklch(0.55 0.2 262);
   --severity-critical: oklch(0.52 0.24 27);
   --severity-high: oklch(0.58 0.2 45);
-  --severity-medium: oklch(0.60 0.17 65);
-  --severity-low: oklch(0.54 0.16 240);
+  --severity-medium: oklch(0.62 0.16 78);
+  --severity-low: oklch(0.52 0.12 200);
   --severity-info: oklch(0.50 0.02 260);
-  /* Verification-state palette. Distinct from --severity-*: a finding's review
-     state is not its severity, and conflating the two hues makes a dashboard
-     read as if every verified finding were low-risk. */
+  /* Verification-state palette. Distinct from --severity-* and from brand
+     primary blue, shared 1:1 between Dashboard progress bars and Findings chips. */
   --state-verified: oklch(0.56 0.14 155);
+  --state-candidate: oklch(0.66 0.16 75);
+  --state-needs-evidence: oklch(0.62 0.18 48);
+  --state-false-positive: oklch(0.54 0.02 260);
 }
 
 .dark {
@@ -88,10 +90,13 @@
   --sidebar-ring: oklch(0.62 0.19 258);
   --severity-critical: oklch(0.58 0.23 27);
   --severity-high: oklch(0.62 0.2 48);
-  --severity-medium: oklch(0.64 0.18 68);
-  --severity-low: oklch(0.58 0.16 240);
+  --severity-medium: oklch(0.66 0.16 78);
+  --severity-low: oklch(0.58 0.13 200);
   --severity-info: oklch(0.54 0.02 260);
-  --state-verified: oklch(0.74 0.15 158);
+  --state-verified: oklch(0.72 0.15 158);
+  --state-candidate: oklch(0.74 0.15 78);
+  --state-needs-evidence: oklch(0.68 0.17 48);
+  --state-false-positive: oklch(0.60 0.02 260);
 }
 
 @theme inline {
@@ -136,6 +141,9 @@
   --color-severity-low: var(--severity-low);
   --color-severity-info: var(--severity-info);
   --color-state-verified: var(--state-verified);
+  --color-state-candidate: var(--state-candidate);
+  --color-state-needs-evidence: var(--state-needs-evidence);
+  --color-state-false-positive: var(--state-false-positive);
 }
 
 @layer base {

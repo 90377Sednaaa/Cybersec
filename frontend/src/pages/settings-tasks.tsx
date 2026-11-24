@@ -39,7 +39,7 @@ const TASK_INFO: Record<string, { label: string; hint: string }> = {
   },
   prioritization: {
     label: "Risk prioritization",
-    hint: "Reserved for risk-based ordering of findings.",
+    hint: "Ranks findings by exploitability and chaining risk on the Assessment Triage tab.",
   },
   qa: {
     label: "Finding Q&A",

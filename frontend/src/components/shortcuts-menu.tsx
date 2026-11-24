@@ -57,7 +57,7 @@ export function ShortcutsMenu({
           <p className="text-xs text-muted-foreground">Press g, then a key, to jump.</p>
         </div>
         <Separator />
-        <ul className="space-y-1 px-3 py-2">
+        <ul className="flex flex-col gap-1 px-3 py-2">
           {NAV_SHORTCUTS.map((item) => (
             <ShortcutRow key={item.key} label={item.label} keys={["g", item.key]} />
           ))}
@@ -68,7 +68,7 @@ export function ShortcutsMenu({
           <ShortcutRow label="Next finding" keys={["→"]} />
         </ul>
         <Separator />
-        <ul className="space-y-1 px-3 py-2">
+        <ul className="flex flex-col gap-1 px-3 py-2">
           <ShortcutRow label="This panel" keys={["?"]} />
           <ShortcutRow label="Close panel" keys={["Esc"]} />
         </ul>

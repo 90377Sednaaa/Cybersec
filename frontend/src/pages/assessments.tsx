@@ -102,7 +102,7 @@ export function AssessmentsPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <Select value={targetFilter} onValueChange={setTargetFilter}>
-              <SelectTrigger className="h-8 w-44 text-xs" aria-label="Filter by target">
+              <SelectTrigger className="h-9 w-44 text-sm" aria-label="Filter by target">
                 <SelectValue placeholder="All targets" />
               </SelectTrigger>
               <SelectContent>
@@ -118,7 +118,7 @@ export function AssessmentsPage() {
             </Select>
 
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="h-8 w-36 text-xs" aria-label="Filter by status">
+              <SelectTrigger className="h-9 w-36 text-sm" aria-label="Filter by status">
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>
               <SelectContent>

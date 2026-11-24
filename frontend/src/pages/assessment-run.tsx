@@ -11,6 +11,7 @@ import {
   Copy,
   FileText,
   FileUp,
+  ListOrdered,
   RotateCw,
   ShieldAlert,
   Sparkles,
@@ -25,7 +26,7 @@ import { QuickAssessmentDialog } from "@/components/quick-assessment-dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -52,6 +53,8 @@ import type {
   InterpretResult,
   Job,
   JobStatus,
+  PrioritizationResult,
+  PriorityEntry,
   Target,
 } from "@/lib/types"
 import { AssessmentReports } from "@/pages/assessment-reports"
@@ -245,6 +248,21 @@ export function AssessmentRunPage() {
     enabled: validId,
   })
 
+  const prioritizationQuery = useQuery({
+    queryKey: ["prioritization", assessmentId],
+    queryFn: () => api<PrioritizationResult>(`/api/assessments/${assessmentId}/prioritization`),
+    enabled: validId,
+  })
+
+  const prioritize = useMutation({
+    mutationFn: () => api<PrioritizationResult>(`/api/assessments/${assessmentId}/prioritize`, { method: "POST" }),
+    onSuccess: (res) => {
+      queryClient.setQueryData(["prioritization", assessmentId], res)
+      toast.success(`AI ranked ${res.rankings.length} active findings by exploitability and impact`)
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "AI prioritization failed"),
+  })
+
   const isFinished = data?.status === "completed" || data?.status === "failed" || data?.status === "cancelled"
   const shouldStream = validId && data !== undefined && !isFinished
 
@@ -348,14 +366,27 @@ export function AssessmentRunPage() {
     )
   }
 
+  const priorityByFindingId = useMemo(() => {
+    const map = new Map<number, PriorityEntry>()
+    for (const entry of prioritizationQuery.data?.rankings ?? []) {
+      map.set(entry.finding_id, entry)
+    }
+    return map
+  }, [prioritizationQuery.data])
+
   const runFindingRows = useMemo(() => runFindings.data?.data ?? [], [runFindings.data?.data])
   const runFindingTotal = runFindings.data?.totalCount ?? runFindingRows.length
   const rankedFindings = useMemo(
     () =>
-      [...runFindingRows].sort(
-        (a, b) => SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity] || b.score - a.score,
-      ),
-    [runFindingRows],
+      [...runFindingRows].sort((a, b) => {
+        const rankA = priorityByFindingId.get(a.id)?.rank
+        const rankB = priorityByFindingId.get(b.id)?.rank
+        if (rankA !== undefined && rankB !== undefined) return rankA - rankB
+        if (rankA !== undefined) return -1
+        if (rankB !== undefined) return 1
+        return SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity] || b.score - a.score
+      }),
+    [runFindingRows, priorityByFindingId],
   )
 
   const needsReviewRows = useMemo(
@@ -557,61 +588,65 @@ export function AssessmentRunPage() {
               </Card>
 
               <Card className="flex flex-col">
-                <CardHeader className="flex flex-col gap-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex flex-col gap-1">
-                      <CardTitle className="text-base">
-                        {isFinished ? "Execution output" : "Live output"}
-                      </CardTitle>
-                      <CardDescription>
-                        {isFinished
-                          ? "Preserved log output from all executed tools."
-                          : "Streamed directly from the running tools."}
-                      </CardDescription>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {visibleLines.length > 0 && (
-                        <Button type="button" variant="ghost" size="xs" onClick={handleCopyLog}>
-                          {copiedLog ? <Check className="text-primary" data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-                          {copiedLog ? "Copied" : "Copy"}
-                        </Button>
-                      )}
-                      {isFinished ? (
-                        <TerminalStatusBadge status={data.status} />
-                      ) : (
-                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <span
-                            className={`size-2 rounded-full ${connected ? "animate-pulse bg-primary motion-reduce:animate-none" : "bg-muted-foreground/40"}`}
-                            aria-hidden="true"
-                          />
-                          {connected ? "Live" : "Connecting..."}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {logTools.length > 1 && (
-                    <ToggleGroup
-                      type="single"
-                      value={logToolFilter}
-                      onValueChange={(val) => val && setLogToolFilter(val)}
-                      variant="outline"
-                      size="sm"
-                      className="flex-wrap justify-start"
-                    >
-                      <ToggleGroupItem value="all" className="h-7 px-2.5 text-xs">
-                        All
-                      </ToggleGroupItem>
-                      {logTools.map((tool) => (
-                        <ToggleGroupItem key={tool} value={tool} className="h-7 px-2.5 font-mono text-xs">
-                          {tool}
-                        </ToggleGroupItem>
-                      ))}
-                    </ToggleGroup>
-                  )}
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    {isFinished ? "Execution output" : "Live output"}
+                  </CardTitle>
+                  <CardDescription>
+                    {isFinished
+                      ? "Preserved log output from all executed tools."
+                      : "Streamed directly from the running tools."}
+                  </CardDescription>
+                  <CardAction>
+                    {isFinished ? (
+                      <TerminalStatusBadge status={data.status} />
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span
+                          className={`size-2 rounded-full ${connected ? "animate-pulse bg-primary motion-reduce:animate-none" : "bg-muted-foreground/40"}`}
+                          aria-hidden="true"
+                        />
+                        {connected ? "Live" : "Connecting..."}
+                      </span>
+                    )}
+                  </CardAction>
                 </CardHeader>
 
-                <CardContent className="flex-1">
+                <CardContent className="flex flex-1 flex-col gap-3">
+                  {(logTools.length > 1 || visibleLines.length > 0) && (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      {logTools.length > 1 ? (
+                        <ToggleGroup
+                          type="single"
+                          value={logToolFilter}
+                          onValueChange={(val) => val && setLogToolFilter(val)}
+                          variant="outline"
+                          size="sm"
+                          className="flex-wrap justify-start"
+                        >
+                          <ToggleGroupItem value="all" className="h-7 px-2.5 text-xs">
+                            All
+                          </ToggleGroupItem>
+                          {logTools.map((tool) => (
+                            <ToggleGroupItem key={tool} value={tool} className="h-7 px-2.5 font-mono text-xs">
+                              {tool}
+                            </ToggleGroupItem>
+                          ))}
+                        </ToggleGroup>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {visibleLines.length} {visibleLines.length === 1 ? "line" : "lines"}
+                        </span>
+                      )}
+                      {visibleLines.length > 0 && (
+                        <Button type="button" variant="outline" size="xs" onClick={handleCopyLog}>
+                          {copiedLog ? <Check className="text-primary" data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
+                          {copiedLog ? "Copied" : "Copy log"}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
                   <div
                     ref={logRef}
                     className="h-[26rem] overflow-y-auto rounded-lg border bg-muted/40 p-3.5 font-mono text-xs leading-relaxed"
@@ -655,16 +690,33 @@ export function AssessmentRunPage() {
           {/* TAB 2: Findings Triage (Full list + slide-over triage drawer) */}
           <TabsContent value="findings" className="flex flex-col gap-5">
             <Card>
-              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
-                <div className="flex flex-col gap-1.5">
-                  <CardTitle className="text-base">Run findings</CardTitle>
-                  <CardDescription>
-                    Click any row to inspect evidence, ask the analyst, and verify in the slide-over drawer without
-                    leaving this run.
-                  </CardDescription>
-                </div>
+              <CardHeader>
+                <CardTitle className="text-base">Run findings</CardTitle>
+                <CardDescription>
+                  Click any row to inspect evidence, ask the analyst, and verify in the slide-over drawer without
+                  leaving this run.
+                </CardDescription>
+                <CardAction className="flex flex-wrap items-center gap-2">
+                  {canManage && runFindingTotal > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={prioritize.isPending}
+                      onClick={() => prioritize.mutate()}
+                    >
+                      {prioritize.isPending ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : (
+                        <ListOrdered data-icon="inline-start" />
+                      )}
+                      {prioritize.isPending
+                        ? "Prioritizing..."
+                        : priorityByFindingId.size > 0
+                          ? "Re-rank with AI"
+                          : "AI Prioritize"}
+                    </Button>
+                  )}
 
-                <div className="flex flex-wrap items-center gap-2">
                   <ToggleGroup
                     type="single"
                     value={queueFilter}
@@ -686,7 +738,7 @@ export function AssessmentRunPage() {
                   <Button asChild variant="ghost" size="sm">
                     <Link to={findingsHref}>Open in Findings</Link>
                   </Button>
-                </div>
+                </CardAction>
               </CardHeader>
 
               <CardContent className="flex flex-col gap-4">
@@ -747,32 +799,47 @@ export function AssessmentRunPage() {
                   />
                 ) : (
                   <ul className="divide-y rounded-lg border">
-                    {filteredRunFindings.map((finding) => (
-                      <li key={finding.id}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedFindingId(finding.id)}
-                          className="flex w-full items-center gap-3.5 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <Badge className={SEVERITY_CLASS[finding.severity]}>{capitalize(finding.severity)}</Badge>
-                          <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={finding.title}>
-                            {finding.title}
-                          </span>
-                          <span className="hidden w-44 shrink-0 truncate text-xs text-muted-foreground lg:inline">
-                            {finding.category}
-                          </span>
-                          <Badge
-                            variant={FINDING_STATUS_VARIANT[finding.status]}
-                            className={STATUS_CLASS[finding.status]}
+                    {filteredRunFindings.map((finding) => {
+                      const prio = priorityByFindingId.get(finding.id)
+                      return (
+                        <li key={finding.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFindingId(finding.id)}
+                            className="flex w-full items-center gap-3.5 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            {STATUS_SHORT_LABEL[finding.status]}
-                          </Badge>
-                          <span className="w-9 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                            {displayScore(finding.score, finding.severity)}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
+                            {prio && (
+                              <Badge variant="outline" className="w-8 shrink-0 justify-center font-mono text-xs">
+                                #{prio.rank}
+                              </Badge>
+                            )}
+                            <Badge className={SEVERITY_CLASS[finding.severity]}>{capitalize(finding.severity)}</Badge>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-medium text-foreground" title={finding.title}>
+                                {finding.title}
+                              </p>
+                              {prio && (
+                                <p className="truncate text-xs text-muted-foreground" title={prio.rationale}>
+                                  {prio.rationale}
+                                </p>
+                              )}
+                            </div>
+                            <span className="hidden w-44 shrink-0 truncate text-xs text-muted-foreground lg:inline">
+                              {finding.category}
+                            </span>
+                            <Badge
+                              variant={FINDING_STATUS_VARIANT[finding.status]}
+                              className={STATUS_CLASS[finding.status]}
+                            >
+                              {STATUS_SHORT_LABEL[finding.status]}
+                            </Badge>
+                            <span className="w-9 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                              {displayScore(finding.score, finding.severity)}
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    })}
                   </ul>
                 )}
               </CardContent>
@@ -782,7 +849,7 @@ export function AssessmentRunPage() {
           {/* TAB 3: Report & Export (lazy-mounted so iframe only loads when requested) */}
           <TabsContent value="report" className="flex flex-col gap-4">
             <Card>
-              <CardContent className="pt-6">
+              <CardContent>
                 {activeTab === "report" && (
                   <AssessmentReports assessmentId={data.id} assessmentStatus={data.status} />
                 )}

@@ -78,6 +78,20 @@ export interface InterpretResult {
   notes: string
 }
 
+export interface PriorityEntry {
+  finding_id: number
+  rank: number
+  urgency: "immediate" | "high" | "medium" | "low" | string
+  rationale: string
+}
+
+export interface PrioritizationResult {
+  assessment_id: number
+  model: string
+  created_at: string | null
+  rankings: PriorityEntry[]
+}
+
 export interface Job {
   id: number
   assessment_id: number | null

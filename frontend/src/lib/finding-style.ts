@@ -45,13 +45,17 @@ export const STATUS_VARIANT: Record<FindingStatus, "default" | "secondary" | "ou
   false_positive: "outline",
 }
 
-// Distinct semantic styling: ensures unconfirmed AI candidates stand out unmistakably
-// to enforce the human-verification hard rule.
+// Distinct semantic styling backed by --state-* tokens so Dashboard progress
+// bars and Findings table/drawer chips share the exact same 4-hue mapping.
 export const STATUS_CLASS: Record<FindingStatus, string> = {
-  ai_candidate: "border-amber-500/70 bg-amber-500/10 text-amber-700 dark:text-amber-300 font-medium",
-  needs_evidence: "border-orange-500/50 bg-orange-500/10 text-orange-700 dark:text-orange-300",
-  verified: "border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-medium",
-  false_positive: "border-muted-foreground/30 text-muted-foreground line-through bg-muted/30",
+  ai_candidate:
+    "border-state-candidate/60 bg-state-candidate/12 text-amber-800 dark:text-amber-300 font-medium",
+  needs_evidence:
+    "border-state-needs-evidence/60 bg-state-needs-evidence/12 text-orange-800 dark:text-orange-300 font-medium",
+  verified:
+    "border-state-verified/60 bg-state-verified/15 text-emerald-800 dark:text-emerald-300 font-medium",
+  false_positive:
+    "border-state-false-positive/40 bg-muted/40 text-muted-foreground line-through",
 }
 
 // Representative fallback scores matching backend app/reporting.py score_for()
