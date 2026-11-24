@@ -30,6 +30,9 @@ Aletheia walks an authorized web application through a complete assessment pipel
 - **Humans do the confirming.** Nothing counts as a vulnerability until an assessor verifies it - every AI-generated finding stays marked as a candidate until then.
 
 > The canonical plan and decision record is **[docs/PLAN.md](docs/PLAN.md)** - read that before changing architecture.
+>
+> New to the project, or explaining it to someone non-technical? **[How Aletheia works](docs/how-it-works.html)**
+> is an illustrated walkthrough of the scan pipeline, the four tools, and the severity logic. Open it in a browser.
 
 ## Screenshots
 
