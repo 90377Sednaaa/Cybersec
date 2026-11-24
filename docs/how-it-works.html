@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How Aletheia Works · Technical Explainer</title>
-<meta name="description" content="A plain-language explanation of Aletheia's scan pipeline, its four tools, evidence, finding severity, and reporting.">
+<meta name="description" content="A plain-language explanation of Aletheia's scan pipeline, its four tools, AI integration, evidence, finding severity, and reporting.">
 <style>
   :root{
     --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
@@ -98,7 +98,8 @@
     font:600 16px/1 var(--serif);letter-spacing:.01em;
     color:var(--ink);text-decoration:none;
   }
-  .wordmark::before{content:"";width:9px;height:9px;background:var(--accent);flex:none}
+  .wordmark-logo{width:26px;height:26px;display:block;object-fit:contain}
+  html[data-theme="dark"] .wordmark-logo{filter:brightness(1.35) saturate(1.05)}
   .masthead-sub{
     font-size:12px;color:var(--faint);
     padding-left:14px;border-left:1px solid var(--rule);
@@ -125,8 +126,7 @@
     font:500 10px/1.5 var(--sans);letter-spacing:.14em;text-transform:uppercase;
     color:var(--muted);
   }
-  .cover-title-wrap{display:grid;grid-template-columns:1px minmax(0,1fr);gap:32px}
-  .cover-rule{background:var(--accent);opacity:.5}
+  .cover-title-wrap{display:block}
   .cover h1{
     margin:0 0 24px;max-width:900px;
     font-family:var(--serif);font-weight:600;
@@ -201,23 +201,24 @@
 
   /* ---------- sections ---------- */
   section{
-    padding-top:34px;margin-top:62px;
-    border-top:1px solid var(--rule-strong);
+    padding-top:40px;margin-top:62px;
+    border-top:1px solid var(--rule);
     scroll-margin-top:72px;
   }
   section:first-of-type{border-top:0;margin-top:0;padding-top:0}
   h1,h2,h3{text-wrap:balance}
   p{text-wrap:pretty}
   h2{
-    margin:0 0 18px;
+    margin:0 0 16px;
     font-family:var(--serif);font-weight:600;
-    font-size:clamp(1.75rem, 3.2vw, 2.45rem);line-height:1.12;
-    letter-spacing:-.02em;
+    font-size:clamp(1.8rem, 3.3vw, 2.55rem);line-height:1.1;
+    letter-spacing:-.022em;
   }
   h3{
-    margin:36px 0 10px;
-    font-size:1.08rem;line-height:1.4;font-weight:650;
-    letter-spacing:-.005em;
+    margin:38px 0 10px;
+    font-family:var(--serif);font-weight:600;
+    font-size:1.28rem;line-height:1.3;
+    letter-spacing:-.012em;
   }
   h4{margin:24px 0 6px;font-size:.95rem;font-weight:650}
   p{margin:0 0 16px;max-width:70ch}
@@ -381,8 +382,6 @@
     body{font-size:16px}
     .masthead-inner{padding:0 16px;gap:10px}
     .masthead-sub{display:none}
-    .cover-title-wrap{grid-template-columns:1fr}
-    .cover-rule{display:none}
     .cover h1{letter-spacing:-.02em}
     .cover .lede{font-size:1.05rem;margin-bottom:40px}
     .cover-meta{grid-template-columns:1fr}
@@ -417,7 +416,6 @@
     li{margin-bottom:4px}
     .cover{border-bottom:1px solid #999;break-after:page}
     .cover-inner{max-width:none;padding:0 0 22px}
-    .cover-rule{opacity:1}
     .cover-top{margin-bottom:26px}
     .cover h1{font-size:38pt;line-height:1.02}
     .cover .lede{font-size:12pt;margin-bottom:26px}
@@ -454,7 +452,7 @@
 
 <header class="masthead">
   <div class="masthead-inner">
-    <a class="wordmark" href="#top">Aletheia</a>
+    <a class="wordmark" href="#top"><img class="wordmark-logo" src="data:image/png;base64,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" alt="">Aletheia</a>
     <span class="masthead-sub">Technical explainer</span>
     <div class="masthead-actions">
       <button class="ghost-btn" id="printBtn" type="button">Print / Save PDF</button>
@@ -471,7 +469,6 @@
       <span>Documentation · v1.1 · 24 November 2026</span>
     </div>
     <div class="cover-title-wrap">
-      <div class="cover-rule" aria-hidden="true"></div>
       <div>
         <h1>How Aletheia Works</h1>
         <p class="lede">
@@ -489,7 +486,7 @@
       </div>
       <div>
         <dt class="meta-label">Scope</dt>
-        <dd class="meta-value">Scan pipeline, tool logic, findings, evidence, severity, reporting</dd>
+        <dd class="meta-value">Scan pipeline, tool logic, AI, findings, evidence, severity, reporting</dd>
       </div>
       <div>
         <dt class="meta-label">Source of truth</dt>
@@ -497,13 +494,14 @@
       </div>
       <div>
         <dt class="meta-label">Reading time</dt>
-        <dd class="meta-value">About 45 minutes, or 5 for the short version</dd>
+        <dd class="meta-value">About 50 minutes, or 5 for the short version</dd>
       </div>
     </dl>
     <nav class="cover-index" aria-label="Start here">
       <span class="index-label">Inside</span>
       <a href="#pipeline">The pipeline</a><span class="sep">/</span>
       <a href="#dns">The four tools</a><span class="sep">/</span>
+      <a href="#ai">AI integration</a><span class="sep">/</span>
       <a href="#severity">Severity</a><span class="sep">/</span>
       <a href="#evidence">Evidence</a><span class="sep">/</span>
       <a href="#report">The report</a><span class="sep">/</span>
@@ -524,15 +522,16 @@
       <li><a href="#prober"><span class="n">06</span><span>The prober: reading the paperwork</span></a></li>
       <li><a href="#zap"><span class="n">07</span><span>ZAP: the automated attacker</span></a></li>
       <li><a href="#findings"><span class="n">08</span><span>From output to finding</span></a></li>
-      <li><a href="#evidence"><span class="n">09</span><span>Evidence and the verification record</span></a></li>
-      <li><a href="#severity"><span class="n">10</span><span>How severity works</span></a></li>
-      <li><a href="#report"><span class="n">11</span><span>The report and the AI narrative</span></a></li>
-      <li><a href="#safety"><span class="n">12</span><span>The safety rails</span></a></li>
-      <li><a href="#example"><span class="n">13</span><span>A full run, end to end</span></a></li>
-      <li><a href="#limits"><span class="n">14</span><span>Limits and honest notes</span></a></li>
-      <li><a href="#glossary"><span class="n">15</span><span>Glossary</span></a></li>
-      <li><a href="#code-map"><span class="n">16</span><span>Where this lives in the code</span></a></li>
-      <li><a href="#reading"><span class="n">17</span><span>Further reading</span></a></li>
+      <li><a href="#ai"><span class="n">09</span><span>How the AI integration works</span></a></li>
+      <li><a href="#evidence"><span class="n">10</span><span>Evidence and the verification record</span></a></li>
+      <li><a href="#severity"><span class="n">11</span><span>How severity works</span></a></li>
+      <li><a href="#report"><span class="n">12</span><span>The report and the AI narrative</span></a></li>
+      <li><a href="#safety"><span class="n">13</span><span>The safety rails</span></a></li>
+      <li><a href="#example"><span class="n">14</span><span>A full run, end to end</span></a></li>
+      <li><a href="#limits"><span class="n">15</span><span>Limits and honest notes</span></a></li>
+      <li><a href="#glossary"><span class="n">16</span><span>Glossary</span></a></li>
+      <li><a href="#code-map"><span class="n">17</span><span>Where this lives in the code</span></a></li>
+      <li><a href="#reading"><span class="n">18</span><span>Further reading</span></a></li>
     </ol>
   </nav>
 
@@ -1468,31 +1467,13 @@ Set-Cookie: session=abc123; Path=/
 
         <h3>Layer two: the AI interpreter</h3>
         <p>
-          After normalization, the interpreter sends the raw outputs to a language model with a strict job: find
-          what the rules cannot. Non-obvious combinations, risky configuration patterns, and intelligence worth
-          investigating. It is explicitly told not to restate the deterministic findings unless it adds a new
-          interpretation.
+          After normalization, the interpreter reads the raw outputs and proposes what the rules cannot see:
+          non-obvious combinations, risky configuration patterns, and intelligence worth investigating. It is
+          explicitly told not to restate the deterministic findings unless it adds a new interpretation.
         </p>
-        <div class="table-wrap">
-          <table>
-            <caption>Table 12. Guard rails on the AI layer</caption>
-            <thead><tr><th style="width:32%">Constraint</th><th>Effect</th></tr></thead>
-            <tbody>
-              <tr><td>JSON-schema-constrained output</td><td>Each candidate must have a title, description, category, severity, confidence, and optional remediation.</td></tr>
-              <tr><td>Maximum 10 findings</td><td>Keeps the output reviewable and prevents a wall of speculation.</td></tr>
-              <tr><td>Minimum confidence 0.3</td><td>Low-confidence guesses are dropped before they reach the assessor.</td></tr>
-              <tr><td>Severity must be a known tier</td><td>Anything else falls back to <code>low</code>, never to a made-up level.</td></tr>
-              <tr><td>Exact-title deduplication</td><td>The AI cannot collide with a rule-based finding of the same name.</td></tr>
-              <tr><td>Redaction before every call</td><td>Secret patterns and target-specific terms are stripped before the prompt leaves the machine.</td></tr>
-              <tr><td>Failure is non-fatal</td><td>A missing provider or bad output degrades to the rule-based result plus a note.</td></tr>
-            </tbody>
-          </table>
-        </div>
         <p>
-          The AI's confidence is stored separately from the severity. A candidate can be high severity and low
-          confidence, which is a very different review task from high severity and high confidence. Rule-based
-          candidates are stored with confidence <code>1.0</code>, because the rule itself is certain; that does
-          not make the conclusion certain.
+          The interpreter is one of three AI tasks in the platform. The next section covers all three, the
+          plumbing they share, and the guard rails that keep them from overstepping.
         </p>
 
         <div class="callout">
@@ -1509,13 +1490,205 @@ Set-Cookie: session=abc123; Path=/
           <span class="tag">In the code</span>
           <p>
             <code>backend/app/scanner/normalize.py</code>: <code>normalize_job()</code> and
-            <code>create_candidate()</code>. <code>backend/app/ai/interpret.py</code>:
-            <code>interpret_assessment()</code>, the schema, and the repair-retry loop.
+            <code>create_candidate()</code>. The AI layer is the next section.
           </p>
         </div>
       </section>
 
       <!-- ============================================================ 09 -->
+      <section id="ai">
+        <h2>How the AI integration works</h2>
+        <p class="lead">
+          The AI is not a scanner. It reads what the scanners produced and turns it into one of three things: a
+          set of candidate findings, a report narrative, or an answer about a specific finding. One plumbing
+          layer, one redaction gate, and one rule: the model proposes, the assessor decides.
+        </p>
+
+        <figure>
+          <div class="fig-scroll">
+          <svg viewBox="0 0 960 340" role="img" aria-labelledby="fig-ai-title">
+            <title id="fig-ai-title">The AI path from raw tool output through redaction and a model to schema-checked results and an assessor</title>
+
+            <rect class="d-box" x="20" y="60" width="190" height="84" rx="9"/>
+            <text class="d-tiny" x="38" y="84">INPUT</text>
+            <text class="d-title-sm" x="38" y="108">Raw outputs</text>
+            <text class="d-sub" x="38" y="128">DNS · Nmap · prober · ZAP</text>
+
+            <rect class="d-box" x="250" y="60" width="180" height="84" rx="9"/>
+            <text class="d-tiny" x="268" y="84">GATE</text>
+            <text class="d-title-sm" x="268" y="108">Redaction</text>
+            <text class="d-sub" x="268" y="128">secrets + deny list</text>
+
+            <rect class="d-box" x="470" y="60" width="160" height="84" rx="9"/>
+            <text class="d-tiny" x="488" y="84">PROMPT</text>
+            <text class="d-title-sm" x="488" y="108">Context</text>
+            <text class="d-sub" x="488" y="128">task + evidence</text>
+
+            <rect class="d-box-accent" x="670" y="60" width="190" height="84" rx="9"/>
+            <text class="d-tiny" x="688" y="84">MODEL</text>
+            <text class="d-title-sm" x="688" y="108">Per-task model</text>
+            <text class="d-sub" x="688" y="128">OpenAI-compatible</text>
+
+            <line class="d-arrow" x1="210" y1="102" x2="244" y2="102" marker-end="url(#arrowAI)"/>
+            <line class="d-arrow" x1="430" y1="102" x2="464" y2="102" marker-end="url(#arrowAI)"/>
+            <line class="d-arrow" x1="630" y1="102" x2="664" y2="102" marker-end="url(#arrowAIAccent)"/>
+
+            <rect class="d-box" x="670" y="240" width="190" height="72" rx="9"/>
+            <text class="d-title-sm" x="688" y="266">Schema check</text>
+            <text class="d-sub" x="688" y="286">JSON + Pydantic</text>
+
+            <line class="d-arrow" x1="765" y1="144" x2="765" y2="234" marker-end="url(#arrowAI)"/>
+
+            <rect class="d-box" x="410" y="240" width="210" height="72" rx="9"/>
+            <text class="d-title-sm" x="428" y="266">Structured result</text>
+            <text class="d-sub" x="428" y="286">findings · summary · answer</text>
+
+            <line class="d-arrow" x1="670" y1="276" x2="626" y2="276" marker-end="url(#arrowAI)"/>
+
+            <rect class="d-box-accent" x="120" y="240" width="240" height="72" rx="9"/>
+            <text class="d-title-sm" x="138" y="266">Assessor</text>
+            <text class="d-sub" x="138" y="286">confirms or dismisses</text>
+
+            <line class="d-arrow-accent" x1="410" y1="276" x2="366" y2="276" marker-end="url(#arrowAIAccent)"/>
+
+            <path class="d-arrow-dash" d="M700 240 V 200 H 740 V 148" marker-end="url(#arrowAIRetry)"/>
+            <text class="d-label" x="752" y="214" style="fill:var(--medium)">repair retry (2)</text>
+
+            <text class="d-sub" x="20" y="330">Every result is stored in ai_outputs with the model name. Nothing on this path changes a finding's status.</text>
+
+            <defs>
+              <marker id="arrowAI" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#8b93a1"/>
+              </marker>
+              <marker id="arrowAIAccent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#3b5bdb"/>
+              </marker>
+              <marker id="arrowAIRetry" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#a97a00"/>
+              </marker>
+            </defs>
+          </svg>
+          </div>
+          <figcaption>
+            <b>Figure 5.</b> The AI path. Raw output is redacted before it becomes a prompt; the answer must
+            survive schema validation before it becomes a candidate, a summary, or an answer. A failed parse is
+            retried, never trusted.
+          </figcaption>
+        </figure>
+
+        <h3>Where the AI sits</h3>
+        <p>
+          Interpretation runs after the deterministic normalizer and before the assessor. Summary runs when a
+          report is generated. Q&amp;A runs on demand, one finding at a time. None of them blocks a scan, and none
+          of them sends traffic to the target: the model only reads stored output.
+        </p>
+
+        <h3>Three tasks, three guard rails</h3>
+        <div class="table-wrap">
+          <table>
+            <caption>Table 12. The AI tasks</caption>
+            <thead>
+              <tr><th style="width:16%">Task</th><th style="width:16%">Runs</th><th style="width:38%">Input to output</th><th>Guard rail</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Interpretation</strong></td>
+                <td>After normalization</td>
+                <td>Raw job output, redacted, up to 6,000 characters per job, to at most 10 candidate findings.</td>
+                <td>Schema-bound; confidence at least 0.3; failure never fails the scan.</td>
+              </tr>
+              <tr>
+                <td><strong>Summary</strong></td>
+                <td>At report time</td>
+                <td>Verified findings only, up to 30, to an executive summary and per-finding explanations.</td>
+                <td>Unverified findings are filtered out before the prompt; cached and refreshed after a new verification.</td>
+              </tr>
+              <tr>
+                <td><strong>Q&amp;A</strong></td>
+                <td>On demand</td>
+                <td>One finding plus its evidence and the last 6 turns, to a cited answer.</td>
+                <td>Grounded in attached evidence; instructed to name missing data; every answer is audited.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>What the model sees</h3>
+        <p>
+          Interpretation receives a context block built from every completed job's raw output. Summary receives
+          only verified findings, with their title, category, severity, score, description, assessor note,
+          remediation, and verification timestamp. Q&amp;A receives one finding's metadata and its attached
+          evidence, capped at 4,000 characters per item. None of the three receives the user table, the
+          authorization record, or a live connection to the target.
+        </p>
+        <p>
+          Before any of that leaves the process, a redaction layer strips common secret patterns (API keys,
+          tokens, passwords) and a per-target deny list of names, hosts, authorization references, and scope
+          assets. The model sees the shape of the evidence, not the customer's identity.
+        </p>
+
+        <h3>Structured output, not prose</h3>
+        <p>
+          Interpretation is asked for JSON, not an essay. The answer is parsed against a schema, and a malformed
+          response gets up to two repair retries with the parser error appended. Individual candidates that fail
+          validation are dropped; one bad candidate never kills the batch. The output is capped at 10 findings,
+          anything below 0.3 confidence is discarded, and a severity outside the five tiers becomes
+          <code>low</code> rather than a made-up level. Titles already used by another finding in the assessment are skipped.
+        </p>
+        <p>
+          Confidence is stored separately from severity. A candidate can be high severity and low confidence,
+          which is a different review task from high severity and high confidence. Rule-based candidates carry
+          confidence <code>1.0</code> because the rule is certain; the conclusion is still unverified.
+        </p>
+
+        <h3>One provider, three task models</h3>
+        <p>
+          The AI layer is provider-agnostic: any OpenAI-compatible endpoint works, including OpenRouter and a
+          local Ollama instance. Interpretation, summary, and Q&amp;A can each point at a different model, so a
+          fast model can draft candidates while a reasoning model writes the report narrative. Reasoning models
+          are handled explicitly: their reasoning trace is captured separately and their effort level can be
+          configured. Provider keys are encrypted at rest, never returned by any API response, and a
+          test-connection action reports the resolved model and latency.
+        </p>
+
+        <h3>Failure is a feature</h3>
+        <p>
+          AI is optional. If no provider is configured, the interpreter returns zero candidates and the scan
+          completes with the rule-based result. If the provider is down or the answer never parses, the failure
+          is recorded in the assessment notes and the audit table, and the scan still completes. A report renders
+          with a clean placeholder when no summary is available. Q&amp;A is the one place that returns an error:
+          if no model is configured for it, the endpoint says so instead of pretending.
+        </p>
+
+        <h3>What the AI never does</h3>
+        <ul>
+          <li><strong>It never confirms a finding.</strong> Every AI finding is <code>ai_candidate</code>; only an assessor, or an admin acting in that role, changes the status.</li>
+          <li><strong>It never invents the target.</strong> The prompt forbids URLs, hosts, and versions that are not grounded in the supplied output, and the evidence stays attached so the assessor can check.</li>
+          <li><strong>It never sees unverified findings in the summary.</strong> That is a hard filter in code, not a polite instruction.</li>
+          <li><strong>It never answers outside the evidence.</strong> Q&amp;A is instructed to name what is missing rather than fill the gap.</li>
+          <li><strong>It never leaves an answer unaudited.</strong> Every output is stored in <code>ai_outputs</code> with the model name.</li>
+        </ul>
+
+        <h3>Asking the analyst</h3>
+        <p>
+          The per-finding Q&amp;A panel is not a general chatbot. It receives that finding's metadata and attached
+          evidence, answers with inline <code>[Evidence #id]</code> citations, and keeps the last six turns of
+          context. Binary uploads are described to the model, not analysed as images. If the evidence does not
+          support an answer, the model is instructed to say what is missing rather than speculate.
+        </p>
+
+        <div class="callout code">
+          <span class="tag">In the code</span>
+          <p>
+            <code>backend/app/ai/client.py</code> resolves the provider and handles reasoning models;
+            <code>ai/interpret.py</code> owns the schema and the repair-retry loop;
+            <code>ai/summarize.py</code> enforces the verified-only filter; <code>ai/qa.py</code> builds the
+            evidence context and parses citations; <code>ai/redaction.py</code> is the gate before every call.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================================ 10 -->
       <section id="evidence">
         <h2>Evidence and the verification record</h2>
         <p class="lead">
@@ -1606,7 +1779,7 @@ Set-Cookie:
         </div>
       </section>
 
-      <!-- ============================================================ 10 -->
+      <!-- ============================================================ 11 -->
       <section id="severity">
         <h2>How severity works</h2>
         <p class="lead">
@@ -1617,8 +1790,8 @@ Set-Cookie:
 
         <figure>
           <div class="fig-scroll">
-          <svg viewBox="0 0 960 360" role="img" aria-labelledby="fig5-title">
-            <title id="fig5-title">Severity flows from tool suggestions to a candidate, then to an assessor decision and the report</title>
+          <svg viewBox="0 0 960 360" role="img" aria-labelledby="fig6-title">
+            <title id="fig6-title">Severity flows from tool suggestions to a candidate, then to an assessor decision and the report</title>
             <rect class="d-box-soft" x="30" y="20" width="270" height="66" rx="8"/>
             <text class="d-title-sm" x="48" y="45">Prober rule</text>
             <text class="d-sub" x="48" y="64">fixed severity per check</text>
@@ -1649,12 +1822,12 @@ Set-Cookie:
           </svg>
           </div>
           <figcaption>
-            <b>Figure 5.</b> Suggestions enter at the top; judgement happens at the bottom. The report uses the
+            <b>Figure 6.</b> Suggestions enter at the top; judgement happens at the bottom. The report uses the
             assessor's value, not the tool's.
           </figcaption>
         </figure>
 
-        <h3>9.1 The five tiers</h3>
+        <h3>The five tiers</h3>
         <div class="table-wrap">
           <table>
             <caption>Table 14. Severity tiers in practice</caption>
@@ -1705,7 +1878,7 @@ Set-Cookie:
           </p>
         </div>
 
-        <h3>9.2 Where the first suggestion comes from</h3>
+        <h3>Where the first suggestion comes from</h3>
         <ul>
           <li><strong>The prober</strong> uses a fixed table. Missing CSP is high, HSTS medium, the two low-impact headers low, Permissions-Policy info, expired certificate high, self-signed medium. These are defensible defaults, not context-aware judgements.</li>
           <li><strong>ZAP</strong> supplies its own <code>risk</code> field. It is a four-level scale with no critical tier.</li>
@@ -1715,7 +1888,7 @@ Set-Cookie:
           All three are suggestions attached to a candidate. None of them changes a finding's status to verified.
         </p>
 
-        <h3>9.3 The logic: OWASP likelihood × impact</h3>
+        <h3>The logic: OWASP likelihood × impact</h3>
         <p>
           Aletheia uses the qualitative form of the OWASP Risk Rating Methodology. Instead of inventing a number,
           the assessor answers two questions on a three-point scale.
@@ -1809,7 +1982,7 @@ Set-Cookie:
           </p>
         </div>
 
-        <h3>9.4 The 0–10 score</h3>
+        <h3>The 0–10 score</h3>
         <p>
           Tiers are good for humans and bad for sorting. Reports and risk registers need a number. Aletheia maps
           each tier to a band on a 0–10 scale, and shows one representative value per band when the assessor has
@@ -1840,7 +2013,7 @@ Set-Cookie:
           silently.
         </p>
 
-        <h3>9.5 Who has the final say</h3>
+        <h3>Who has the final say</h3>
         <p>
           Only a signed-in assessor, or an admin acting in that role, can change the authoritative severity. The
           API records that person's identity and the timestamp, and the finding's status moves to
@@ -1853,14 +2026,14 @@ Set-Cookie:
           path that sets a finding to <code>verified</code> without an action from a permitted human role.
         </p>
 
-        <h3>9.6 Where severity appears</h3>
+        <h3>Where severity appears</h3>
         <ul>
           <li><strong>Finding badges</strong> use one semantic colour per tier: red, orange, amber, blue, grey. The colours are state, not decoration, and they work in both themes.</li>
           <li><strong>The dashboard</strong> shows the severity mix and, separately, verification progress. A wall of red is a work queue, not a verdict.</li>
           <li><strong>The report</strong> groups findings by tier, shows each score, and derives the overall posture from the highest tier present.</li>
         </ul>
 
-        <h3>9.7 A severity decision, traced</h3>
+        <h3>A severity decision, traced</h3>
         <p>
           Take a finding titled "Missing security header: content-security-policy" on a lab application.
         </p>
@@ -1888,51 +2061,17 @@ Set-Cookie:
         </div>
       </section>
 
-      <!-- ============================================================ 11 -->
+      <!-- ============================================================ 12 -->
       <section id="report">
         <h2>The report and the AI narrative</h2>
         <p class="lead">
-          The scan produces candidates; the report is the artifact that leaves the building. It is also where the
-          AI's second and third jobs appear, under much tighter constraints than interpretation.
+          The scan produces candidates; the report is the artifact that leaves the building. It is where the AI
+          summary lands, under a much tighter constraint than interpretation.
         </p>
-
-        <h3>One provider, three task models</h3>
         <p>
-          The AI layer is provider-agnostic: any OpenAI-compatible endpoint works, including a local Ollama
-          instance for offline demos. Interpretation, summary, and Q&amp;A can each point at a different model, so
-          a fast model can draft candidates while a stronger reasoning model writes the report narrative. Provider
-          keys are encrypted at rest and never returned by any API response.
+          The summary itself is described in the AI section. Here the question is how the document is built and
+          what a reader finds inside it.
         </p>
-
-        <h3>Three AI tasks, three different guard rails</h3>
-        <div class="table-wrap">
-          <table>
-            <caption>Table 19. The AI tasks</caption>
-            <thead>
-              <tr><th style="width:16%">Task</th><th style="width:28%">Input</th><th style="width:26%">Output</th><th>Guard rail</th></tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><strong>Interpretation</strong></td>
-                <td>Raw tool output from completed jobs, redacted, up to 6,000 characters per job.</td>
-                <td>Up to 10 candidate findings.</td>
-                <td>Schema-constrained; confidence at least 0.3; failure never fails the scan.</td>
-              </tr>
-              <tr>
-                <td><strong>Summary</strong></td>
-                <td>Verified findings only, up to 30.</td>
-                <td>Executive summary (200 words), target overview (80 words), per-finding explanation.</td>
-                <td>Unverified findings are filtered out before the prompt; cached and regenerated after a new verification.</td>
-              </tr>
-              <tr>
-                <td><strong>Q&amp;A</strong></td>
-                <td>One finding, its attached evidence, and the last 6 turns of the conversation.</td>
-                <td>Markdown answer with <code>[Evidence #id]</code> citations.</td>
-                <td>Grounded in attached evidence; instructed to name missing data; every answer is audited.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
 
         <h3>From HTML to PDF</h3>
         <ol>
@@ -1966,25 +2105,17 @@ Set-Cookie:
           </p>
         </div>
 
-        <h3>Asking the analyst</h3>
-        <p>
-          The per-finding Q&amp;A panel is not a general chatbot. It receives that finding's metadata and attached
-          evidence, answers with inline citations, and records the exchange. If the evidence does not support an
-          answer, the model is instructed to say what is missing rather than fill the gap. Binary uploads are
-          described to the model, not analysed as images.
-        </p>
-
         <div class="callout code">
           <span class="tag">In the code</span>
           <p>
             <code>backend/app/ai/summarize.py</code> builds the verified-only summary;
-            <code>backend/app/ai/qa.py</code> answers finding questions and parses citations;
-            <code>backend/app/reporting.py</code> and <code>app/templates/report.html</code> produce the PDF.
+            <code>backend/app/reporting.py</code> assembles the context and prints the PDF;
+            <code>app/templates/report.html</code> is the document itself.
           </p>
         </div>
       </section>
 
-      <!-- ============================================================ 12 -->
+      <!-- ============================================================ 13 -->
       <section id="safety">
         <h2>The safety rails</h2>
         <p class="lead">
@@ -1994,7 +2125,7 @@ Set-Cookie:
 
         <div class="table-wrap">
           <table>
-            <caption>Table 20. Enforcement points</caption>
+            <caption>Table 19. Enforcement points</caption>
             <thead><tr><th style="width:24%">Gate</th><th style="width:38%">What it stops</th><th>Where it is enforced</th></tr></thead>
             <tbody>
               <tr>
@@ -2032,7 +2163,7 @@ Set-Cookie:
         </p>
         <div class="table-wrap">
           <table>
-            <caption>Table 21. Target fields that control the run</caption>
+            <caption>Table 20. Target fields that control the run</caption>
             <thead>
               <tr><th style="width:24%">Field</th><th>Why it exists</th></tr>
             </thead>
@@ -2064,7 +2195,7 @@ Set-Cookie:
         <h3>Who can do what</h3>
         <div class="table-wrap">
           <table>
-            <caption>Table 22. Roles and permissions</caption>
+            <caption>Table 21. Roles and permissions</caption>
             <thead>
               <tr><th style="width:16%">Role</th><th style="width:38%">Can read</th><th>Can change</th></tr>
             </thead>
@@ -2104,7 +2235,7 @@ Set-Cookie:
         </p>
         <div class="table-wrap">
           <table>
-            <caption>Table 23. Host policy</caption>
+            <caption>Table 22. Host policy</caption>
             <thead><tr><th style="width:30%">Address class</th><th style="width:22%">Allowed?</th><th>Condition</th></tr></thead>
             <tbody>
               <tr><td>Public</td><td>Yes</td><td>Normal registered target.</td></tr>
@@ -2145,7 +2276,7 @@ Set-Cookie:
         </div>
       </section>
 
-      <!-- ============================================================ 13 -->
+      <!-- ============================================================ 14 -->
       <section id="example">
         <h2>A full run, end to end</h2>
         <p class="lead">
@@ -2156,7 +2287,7 @@ Set-Cookie:
 
         <div class="table-wrap">
           <table>
-            <caption>Table 24. One assessment, job by job</caption>
+            <caption>Table 23. One assessment, job by job</caption>
             <thead><tr><th style="width:15%">Step</th><th style="width:40%">What happens</th><th>What it becomes</th></tr></thead>
             <tbody>
               <tr>
@@ -2212,7 +2343,7 @@ Set-Cookie:
         </p>
       </section>
 
-      <!-- ============================================================ 14 -->
+      <!-- ============================================================ 15 -->
       <section id="limits">
         <h2>Limits and honest notes</h2>
         <p class="lead">
@@ -2251,7 +2382,7 @@ Set-Cookie:
         </ul>
       </section>
 
-      <!-- ============================================================ 15 -->
+      <!-- ============================================================ 16 -->
       <section id="glossary">
         <h2>Glossary</h2>
         <p class="lead">The terms a non-specialist is most likely to meet while reading a report.</p>
@@ -2273,6 +2404,9 @@ Set-Cookie:
           <div><dt>CWE</dt><dd>Common Weakness Enumeration: a public catalogue of weakness types, used to compare findings across tools.</dd></div>
           <div><dt>OWASP</dt><dd>The Open Worldwide Application Security Project, publisher of the Risk Rating Methodology and the Top 10.</dd></div>
           <div><dt>Idempotent</dt><dd>An operation that can be repeated without changing the result beyond the first time. Attaching the same transcript twice is a no-op.</dd></div>
+          <div><dt>Redaction</dt><dd>Removing secrets and target-identifying terms from content before it is sent to a model.</dd></div>
+          <div><dt>JSON schema</dt><dd>A machine-readable description of the exact shape a model's output must take. It is how "answer in JSON" becomes "answer in this JSON".</dd></div>
+          <div><dt>Prompt</dt><dd>The instruction and context sent to a model for one task.</dd></div>
           <div><dt>Audit trail</dt><dd>The who, what, and when record of a decision. In Aletheia it is the verifier's identity, the timestamp, and the assessor's note.</dd></div>
           <div><dt>Posture</dt><dd>The overall risk label of an assessment, derived from its highest severity tier rather than an average.</dd></div>
           <div><dt>Candidate</dt><dd>A finding produced by a tool or AI that has not yet been verified by an assessor. It is visible, but not confirmed.</dd></div>
@@ -2282,7 +2416,7 @@ Set-Cookie:
         </dl>
       </section>
 
-      <!-- ============================================================ 16 -->
+      <!-- ============================================================ 17 -->
       <section id="code-map">
         <h2>Where this lives in the code</h2>
         <p class="lead">
@@ -2291,7 +2425,7 @@ Set-Cookie:
 
         <div class="table-wrap">
           <table>
-            <caption>Table 25. Concept to code</caption>
+            <caption>Table 24. Concept to code</caption>
             <thead><tr><th style="width:28%">Concept</th><th style="width:40%">File</th><th>Look at</th></tr></thead>
             <tbody>
               <tr><td>Pipeline order and failure isolation</td><td><code>backend/app/scanner/orchestrator.py</code></td><td><code>BASE_TOOLS</code>, <code>INTRUSIVE_TOOLS</code>, <code>run_pipeline()</code>, <code>_run_job()</code></td></tr>
@@ -2308,6 +2442,7 @@ Set-Cookie:
               <tr><td>Finding Q&amp;A</td><td><code>backend/app/ai/qa.py</code></td><td><code>answer_finding_question()</code>, citation parsing</td></tr>
               <tr><td>PDF report</td><td><code>backend/app/reporting.py</code>, <code>app/templates/report.html</code></td><td><code>build_report_context()</code>, <code>generate_pdf_bytes()</code></td></tr>
               <tr><td>LLM plumbing</td><td><code>backend/app/ai/client.py</code>, <code>ai/redaction.py</code></td><td>Provider resolution, per-task models, redaction gate</td></tr>
+              <tr><td>Model catalog</td><td><code>backend/app/ai/catalog.py</code></td><td>Provider model list, reasoning hints, effort levels</td></tr>
               <tr><td>Severity matrix and score</td><td><code>backend/app/risk.py</code></td><td><code>RISK_MATRIX</code>, <code>SCORE_BANDS</code>, <code>REPRESENTATIVE_SCORES</code></td></tr>
               <tr><td>Methodology document</td><td><code>docs/risk-methodology.md</code></td><td>Matrix, bands, and the doc/code consistency test</td></tr>
               <tr><td>Host safety</td><td><code>backend/app/scanner/hostguard.py</code></td><td><code>check_host()</code>, <code>request_guard()</code></td></tr>
@@ -2328,7 +2463,7 @@ Set-Cookie:
         </p>
       </section>
 
-      <!-- ============================================================ 17 -->
+      <!-- ============================================================ 18 -->
       <section id="reading">
         <h2>Further reading</h2>
         <p class="lead">The external references behind the method, in the order they are most useful.</p>
