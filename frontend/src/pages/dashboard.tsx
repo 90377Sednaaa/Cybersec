@@ -8,13 +8,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmptyState } from "@/components/empty-state"
-import { ImportScanDialog } from "@/components/import-scan-dialog"
-import { QuickAssessmentDialog } from "@/components/quick-assessment-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useFindingCounts } from "@/hooks/use-finding-counts"
 import { api, apiWithMeta } from "@/lib/api"
-import { useAuth } from "@/lib/auth"
 import { SEVERITIES, capitalize } from "@/lib/finding-style"
 import type { Assessment, AssessmentStatus, Finding, Severity, Target } from "@/lib/types"
 
@@ -86,8 +83,6 @@ function StatCard({ title, value, icon: Icon, hint, loading, to }: StatCardProps
 
 export function DashboardPage() {
   const navigate = useNavigate()
-  const { hasRole } = useAuth()
-  const canScan = hasRole("admin", "assessor")
   const [scope, setScope] = useState<"verified" | "all">("all")
 
   const targets = useQuery({
@@ -171,19 +166,11 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            Assessment results and vulnerability summaries. Only assessor-verified findings count as confirmed.
-          </p>
-        </div>
-        {canScan && (
-          <div className="flex flex-wrap items-center gap-2">
-            <ImportScanDialog targets={targets.data ?? []} />
-            <QuickAssessmentDialog />
-          </div>
-        )}
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">
+          Assessment results and vulnerability summaries. Only assessor-verified findings count as confirmed.
+        </p>
       </div>
 
       {loadError && (

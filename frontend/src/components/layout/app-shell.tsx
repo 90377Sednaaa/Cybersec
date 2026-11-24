@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   LogOut,
   Moon,
-  Plus,
   Radar,
   Settings,
   ShieldAlert,
@@ -15,7 +14,6 @@ import {
 import type { LucideIcon } from "lucide-react"
 
 import logo from "@/assets/aletheia-logo.png"
-import { QuickAssessmentDialog } from "@/components/quick-assessment-dialog"
 import { ShortcutsMenu } from "@/components/shortcuts-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -231,16 +229,10 @@ function ThemeToggle() {
 }
 
 export function AppShell() {
-  const { hasRole } = useAuth()
-  const canScan = hasRole("admin", "assessor")
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  const [quickScanOpen, setQuickScanOpen] = useState(false)
   const toggleShortcuts = useCallback(() => setShortcutsOpen((prev) => !prev), [])
-  const openQuickScan = useCallback(() => {
-    if (canScan) setQuickScanOpen(true)
-  }, [canScan])
 
-  useAppShortcuts({ onToggleHelp: toggleShortcuts, onNewScan: openQuickScan })
+  useAppShortcuts({ onToggleHelp: toggleShortcuts })
 
   return (
     <SidebarProvider>
@@ -264,12 +256,6 @@ export function AppShell() {
             <HeaderBreadcrumb />
           </div>
           <div className="ml-auto flex items-center gap-1.5">
-            {canScan && (
-              <Button size="sm" onClick={() => setQuickScanOpen(true)} className="mr-1">
-                <Plus data-icon="inline-start" />
-                <span className="hidden sm:inline">New scan</span>
-              </Button>
-            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="User Guide" asChild>
@@ -289,7 +275,6 @@ export function AppShell() {
             <Outlet />
           </div>
         </main>
-        <QuickAssessmentDialog open={quickScanOpen} onOpenChange={setQuickScanOpen} />
       </SidebarInset>
     </SidebarProvider>
   )

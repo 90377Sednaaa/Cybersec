@@ -88,13 +88,7 @@ export function useShowShortcutHints(): [boolean, (next: boolean) => void] {
  * paths also disarm a chord that was armed before focus moved, so pressing `g`,
  * clicking into a notes field and typing can never navigate later.
  */
-export function useAppShortcuts({
-  onToggleHelp,
-  onNewScan,
-}: {
-  onToggleHelp?: () => void
-  onNewScan?: () => void
-} = {}) {
+export function useAppShortcuts({ onToggleHelp }: { onToggleHelp?: () => void } = {}) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
@@ -131,18 +125,11 @@ export function useAppShortcuts({
         return
       }
 
-      if (!withinWindow && key === "c" && onNewScan) {
-        event.preventDefault()
-        pending = false
-        onNewScan()
-        return
-      }
-
       pending = key === "g"
       pendingAt = Date.now()
     }
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [navigate, onToggleHelp, onNewScan, pathname])
+  }, [navigate, onToggleHelp, pathname])
 }

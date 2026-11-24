@@ -64,7 +64,6 @@ export function ShortcutsMenu({
         </ul>
         <Separator />
         <ul className="flex flex-col gap-1 px-3 py-2">
-          <ShortcutRow label="Launch new scan" keys={["c"]} />
           <ShortcutRow label="Previous finding" keys={["←"]} />
           <ShortcutRow label="Next finding" keys={["→"]} />
         </ul>
