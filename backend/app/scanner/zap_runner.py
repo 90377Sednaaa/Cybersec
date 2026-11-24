@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -42,6 +44,26 @@ def zap_category(alert_title: str) -> str:
     return "Input validation & injection"
 
 
+def build_zap_exclude_regexes(base_url: str, out_of_scope_assets: list[str] | None) -> list[str]:
+    """Convert target out-of-scope entries (full URLs or paths) into ZAP regexes."""
+    base_root = base_url.rstrip("/")
+    regexes: list[str] = []
+    for raw in out_of_scope_assets or []:
+        entry = (raw or "").strip()
+        if not entry:
+            continue
+        if "://" in entry:
+            pattern = re.escape(entry.rstrip("/")) + r"(/.*|\?.*)?$"
+        else:
+            path = "/" + entry.lstrip("/")
+            parts = urlsplit(base_root)
+            origin = f"{parts.scheme}://{parts.netloc}" if parts.scheme and parts.netloc else base_root
+            pattern = re.escape(origin + path.rstrip("/")) + r"(/.*|\?.*)?$"
+        if pattern not in regexes:
+            regexes.append(pattern)
+    return regexes
+
+
 class ZapUnavailable(RunnerError):
     pass
 
@@ -57,11 +79,37 @@ class ZapRunner(BaseRunner):
             base_url=settings.zap_api_url.rstrip("/"), timeout=10.0, params={"apikey": settings.zap_api_key}
         )
 
-    async def _wait_phase(self, client: httpx.AsyncClient, view: str, ctx: ScanContext, lo: float, hi: float) -> None:
-        for i in range(MAX_POLLS):
+    async def _apply_exclusions(self, client: httpx.AsyncClient, ctx: ScanContext) -> None:
+        patterns = build_zap_exclude_regexes(
+            ctx.target.base_url,
+            getattr(ctx.target, "out_of_scope_assets", None),
+        )
+        if not patterns:
+            return
+        for regex in patterns:
+            await client.post("/JSON/spider/action/excludeFromScan/", params={"regex": regex})
+            await client.post("/JSON/ascan/action/excludeFromScan/", params={"regex": regex})
+        ctx.log(f"Applied {len(patterns)} out-of-scope exclusion rule(s) in ZAP")
+
+    async def _wait_phase(
+        self,
+        client: httpx.AsyncClient,
+        view: str,
+        stop_action: str,
+        scan_id: str | None,
+        ctx: ScanContext,
+        lo: float,
+        hi: float,
+    ) -> None:
+        params = {"scanId": scan_id} if scan_id is not None else {}
+        for _ in range(MAX_POLLS):
             if ctx.cancelled():
+                try:
+                    await client.post(stop_action, params=params)
+                except httpx.HTTPError:
+                    pass
                 raise RunnerError("Cancelled")
-            resp = await client.get(view)
+            resp = await client.get(view, params=params)
             resp.raise_for_status()
             progress = int(resp.json().get("status", "0")) / 100.0
             ctx.progress(lo + (hi - lo) * progress)
@@ -86,10 +134,22 @@ class ZapRunner(BaseRunner):
                 ctx.log(f"Connected to ZAP {version}")
                 ctx.progress(0.05)
 
+                await self._apply_exclusions(client, ctx)
+
                 # Spider (endpoint discovery) - always.
                 ctx.log(f"Spidering {ctx.target.base_url}")
-                await client.post("/JSON/spider/action/scan/", params={"url": ctx.target.base_url})
-                await self._wait_phase(client, "/JSON/spider/view/status/", ctx, 0.05, 0.45)
+                spider_resp = await client.post("/JSON/spider/action/scan/", params={"url": ctx.target.base_url})
+                spider_resp.raise_for_status()
+                spider_id = str(spider_resp.json().get("scan", "0"))
+                await self._wait_phase(
+                    client,
+                    "/JSON/spider/view/status/",
+                    "/JSON/spider/action/stop/",
+                    spider_id,
+                    ctx,
+                    0.05,
+                    0.45,
+                )
 
                 alerts: list[dict] = []
 
@@ -97,8 +157,18 @@ class ZapRunner(BaseRunner):
                 if ctx.is_full:
                     ctx.log("Active scan starting (full intensity)")
                     await client.post("/JSON/pscan/action/enableAllScanners/")
-                    await client.post("/JSON/ascan/action/scan/", params={"url": ctx.target.base_url})
-                    await self._wait_phase(client, "/JSON/ascan/view/status/", ctx, 0.45, 0.9)
+                    ascan_resp = await client.post("/JSON/ascan/action/scan/", params={"url": ctx.target.base_url})
+                    ascan_resp.raise_for_status()
+                    ascan_id = str(ascan_resp.json().get("scan", "0"))
+                    await self._wait_phase(
+                        client,
+                        "/JSON/ascan/view/status/",
+                        "/JSON/ascan/action/stop/",
+                        ascan_id,
+                        ctx,
+                        0.45,
+                        0.9,
+                    )
                 else:
                     ctx.log("Skipping active scan: target is passive_safe")
                     ctx.progress(0.9)
@@ -106,6 +176,7 @@ class ZapRunner(BaseRunner):
                 resp = await client.get(
                     "/JSON/core/view/alerts/", params={"baseurl": ctx.target.base_url, "start": 0, "count": 500}
                 )
+                resp.raise_for_status()
                 alerts = resp.json().get("alerts", [])
 
             # Normalise ZAP alerts into our raw structure.
@@ -116,10 +187,15 @@ class ZapRunner(BaseRunner):
                     "risk": a.get("risk"),  # informational/low/medium/high (ZAP scale)
                     "confidence": a.get("confidence"),
                     "url": a.get("url"),
+                    "method": a.get("method") or "",
+                    "param": a.get("param") or "",
+                    "attack": (a.get("attack") or "")[:300],
                     "description": (a.get("description") or "")[:1500],
                     "solution": (a.get("solution") or "")[:1500],
                     "evidence": (a.get("evidence") or "")[:500],
                     "cwe": a.get("cweid"),
+                    "wascid": a.get("wascid"),
+                    "reference": (a.get("reference") or "")[:500],
                 }
                 for a in alerts
             ]

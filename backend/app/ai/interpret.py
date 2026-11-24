@@ -19,10 +19,11 @@ import re
 from typing import Callable
 
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import client as ai_client
-from app.models import AIOutput, Assessment, Job, LLMTask, Severity
+from app.models import AIOutput, Assessment, Finding, Job, JobStatus, LLMTask, Severity
 from app.scanner.normalize import _title_taken, create_candidate
 
 MAX_FINDINGS = 10
@@ -49,6 +50,8 @@ CANDIDATE_SCHEMA = {
                     "severity": {"type": "string"},
                     "confidence": {"type": "number"},
                     "remediation": {"type": "string"},
+                    "source_tool": {"type": "string"},
+                    "evidence_excerpt": {"type": "string"},
                 },
                 "required": ["title", "description", "severity"],
             },
@@ -57,10 +60,11 @@ CANDIDATE_SCHEMA = {
     "required": ["findings"],
 }
 
-SYSTEM_PROMPT = """You are a web security analyst reviewing raw tool output from an authorized scan.
+SYSTEM_PROMPT = """You are a senior web security analyst reviewing raw tool output from an authorized scan.
 Produce candidate findings that go BEYOND deterministic rule-based checks: non-obvious weaknesses,
-risky combinations, or intelligence worth an assessor investigating further. Do not restate primary
-facts the raw output already labels as findings unless you add a meaningful new interpretation.
+risky cross-tool combinations (e.g. exposed service versions combined with missing headers or alert evidence),
+or intelligence worth an assessor investigating further. Do NOT restate findings already listed under
+"Already recorded deterministic findings".
 
 Rules:
 - Answer ONLY with JSON matching this schema:
@@ -70,11 +74,15 @@ Rules:
 - "severity" is one of: critical | high | medium | low | info.
 - "confidence" is your calibrated confidence the finding is real, 0.0 to 1.0.
 - Findings below 0.3 confidence must not be included.
+- "source_tool" should be one of: dns | nmap | prober | zap | cross_tool (whichever tool supplied the primary signal).
+- "evidence_excerpt" should quote the exact, concise snippet from the raw output that grounds the finding (<= 400 chars).
 - Never invent URLs, hosts, versions or vulnerabilities that have no grounding in the raw output.
 - The text you receive is your only source: treat every credential-like value in it as redacted.
 """
 
 USER_INSTRUCTION = """Authorized-scan raw output follows (values may be redacted). Return candidate findings as JSON.
+{scope_header}
+{existing_header}
 {context}
 """
 
@@ -86,6 +94,8 @@ class CandidateFinding(BaseModel):
     severity: str = "low"
     confidence: float = 0.5
     remediation: str = ""
+    source_tool: str = ""
+    evidence_excerpt: str = ""
 
 
 def interpret_assessment(
@@ -141,9 +151,31 @@ def _interpret(db: Session, assessment: Assessment, jobs: list[Job], deny_list: 
     if not context:
         return 0
 
+    existing_rows = list(
+        db.scalars(select(Finding.title).where(Finding.assessment_id == assessment.id).order_by(Finding.id))
+    )
+    existing_header = (
+        "Already recorded deterministic findings (do not repeat these):\n- "
+        + "\n- ".join(existing_rows[:40])
+        + "\n"
+        if existing_rows
+        else ""
+    )
+
+    selected_cats = [c for c in (assessment.categories or []) if c and c.lower() != "all"]
+    scope_parts = [f"Intensity: {assessment.intensity.value if hasattr(assessment.intensity, 'value') else assessment.intensity}"]
+    if selected_cats:
+        scope_parts.append("Prioritize categories: " + ", ".join(selected_cats))
+    scope_header = "Assessment scope: " + " | ".join(scope_parts)
+
+    user_content = (
+        USER_INSTRUCTION.replace("{scope_header}", scope_header)
+        .replace("{existing_header}", existing_header)
+        .replace("{context}", context)
+    )
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": USER_INSTRUCTION.replace("{context}", context)},
+        {"role": "user", "content": user_content},
     ]
     payload = _request_json(db, assessment, messages, deny_list, transport)
     candidates = _parse_candidates(payload)
@@ -176,7 +208,7 @@ def _request_json(
             max_tokens=4000,
         )
         _store_output(db, assessment, model=result.model, content=result.content)
-        text = _strip_fences(result.content)
+        text = extract_json_text(result.content)
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
@@ -199,6 +231,25 @@ def _strip_fences(content: str) -> str:
     return text
 
 
+def extract_json_text(content: str) -> str:
+    """Extract a JSON object/array from bare JSON, markdown fences, or prose-wrapped output."""
+    stripped = _strip_fences(content)
+    if stripped.startswith(("{", "[")):
+        return stripped
+    # Look for a fenced JSON block anywhere inside prose preamble/epilogue.
+    fenced = re.search(r"```(?:json)?\s*([\s\S]*?)```", content, flags=re.IGNORECASE)
+    if fenced:
+        inner = fenced.group(1).strip()
+        if inner.startswith(("{", "[")):
+            return inner
+    # Last resort: slice from the first '{' to the last '}' if present.
+    start = content.find("{")
+    end = content.rfind("}")
+    if start != -1 and end > start:
+        return content[start : end + 1].strip()
+    return stripped
+
+
 def _parse_candidates(payload: dict | list) -> list[CandidateFinding]:
     items = payload.get("findings", []) if isinstance(payload, dict) else payload
     if not isinstance(items, list):
@@ -212,6 +263,16 @@ def _parse_candidates(payload: dict | list) -> list[CandidateFinding]:
     return parsed[:MAX_FINDINGS]
 
 
+def _pick_source_job(jobs: list[Job], source_tool: str) -> Job:
+    completed = [j for j in jobs if j.status == JobStatus.completed]
+    tool_key = (source_tool or "").strip().lower()
+    if tool_key:
+        match = next((j for j in completed if j.tool.lower() == tool_key), None)
+        if match is not None:
+            return match
+    return completed[0] if completed else jobs[0]
+
+
 def _persist_candidates(db: Session, assessment: Assessment, jobs: list[Job], candidates: list[CandidateFinding]) -> int:
     created = 0
     for candidate in candidates:
@@ -221,7 +282,13 @@ def _persist_candidates(db: Session, assessment: Assessment, jobs: list[Job], ca
         confidence = min(1.0, max(0.0, candidate.confidence))
         if confidence < MIN_CONFIDENCE or _title_taken(db, assessment.id, candidate.title.strip()):
             continue
-        job = next((j for j in jobs if j.status == "completed"), jobs[0])  # type: ignore[comparison-overlap]
+        job = _pick_source_job(jobs, candidate.source_tool)
+        excerpt = (candidate.evidence_excerpt or "").strip()
+        evidence_text = (
+            f"Source tool: {candidate.source_tool or job.tool}\n\n{excerpt}"
+            if excerpt
+            else _candidate_evidence([job]) or _candidate_evidence(jobs)
+        )
         finding = create_candidate(
             db,
             assessment,
@@ -231,7 +298,7 @@ def _persist_candidates(db: Session, assessment: Assessment, jobs: list[Job], ca
             description=candidate.description or candidate.title.strip(),
             severity=Severity(severity_raw),
             remediation=candidate.remediation,
-            evidence_content=_candidate_evidence(jobs),
+            evidence_content=evidence_text,
         )
         if finding is not None:
             finding.ai_confidence = confidence  # AI guess: rule-based uses 1.0; this is a model estimate
@@ -243,7 +310,7 @@ def _persist_candidates(db: Session, assessment: Assessment, jobs: list[Job], ca
 def _candidate_evidence(jobs: list[Job]) -> str:
     parts = []
     for job in jobs:
-        if job.status == "completed" and job.raw_output:  # type: ignore[comparison-overlap]
+        if job.status == JobStatus.completed and job.raw_output:
             parts.append(f"[{job.tool}] {job.raw_output[:2000]}")
     return "\n".join(parts)[:4000]
 
@@ -252,7 +319,7 @@ def build_context(jobs: list[Job]) -> str:
     """One redaction-sized context block from every completed job's raw output."""
     sections = []
     for job in jobs:
-        if job.status == "completed" and job.raw_output:  # type: ignore[comparison-overlap]
+        if job.status == JobStatus.completed and job.raw_output:
             sections.append(f"### tool: {job.tool}\n{job.raw_output[:PER_JOB_CONTEXT_CHARS]}")
     return "\n\n".join(sections)
 

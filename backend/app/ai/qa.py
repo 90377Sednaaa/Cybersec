@@ -162,6 +162,7 @@ def answer_finding_question(
     audit_row = AIOutput(
         task=LLMTask.qa,
         assessment_id=finding.assessment_id,
+        finding_id=finding.id,
         model=result.model,
         content=json.dumps(audit_payload),
     )

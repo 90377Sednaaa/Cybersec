@@ -19,8 +19,9 @@ from app.core.deps import get_current_user, require_role
 from app.database import get_db
 from app.models import Assessment, AssessmentStatus, Job, JobStatus, Role, ScanIntensity, Target, User
 from app.models.user import utcnow
-from app.schemas.assessment import AssessmentCreate, AssessmentDetail, AssessmentOut, JobOut, ScanEvent
-from app.scanner.orchestrator import EVENT_QUEUE_SIZE, pipelines, request_cancel, start_pipeline
+from app.schemas.assessment import AssessmentCreate, AssessmentDetail, AssessmentOut, InterpretResult, JobOut, ScanEvent
+from app.scanner.orchestrator import EVENT_QUEUE_SIZE, INTRUSIVE_TOOLS, pipelines, plan_tools, request_cancel, start_pipeline
+from app.scanner.registry import registered_tools
 
 router = APIRouter(prefix="/assessments", tags=["assessments"])
 
@@ -69,6 +70,29 @@ async def create_assessment(
     if not categories:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Select at least one assessment category.")
 
+    # Resolve tool plan: optional explicit subset or default plan for intensity.
+    if payload.tools is not None:
+        known_tools = set(registered_tools())
+        selected_tools: list[str] = []
+        for raw_tool in payload.tools:
+            name = (raw_tool or "").strip().lower()
+            if name not in known_tools:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    f"Unknown scan tool '{raw_tool}'. Supported tools: {', '.join(sorted(known_tools))}.",
+                )
+            if name not in selected_tools:
+                selected_tools.append(name)
+        if not selected_tools:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Select at least one scan tool.")
+        if requested != ScanIntensity.full_intrusive and any(t in INTRUSIVE_TOOLS for t in selected_tools):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Intensity gate: intrusive tools (zap) require full_intrusive intensity.",
+            )
+    else:
+        selected_tools = plan_tools(requested)
+
     assessment = Assessment(
         target_id=target.id,
         intensity=requested,
@@ -81,9 +105,7 @@ async def create_assessment(
     db.flush()
     # Create the Job rows synchronously so the 201 payload already shows the
     # full run plan (the pipeline picks up existing pending jobs).
-    from app.scanner.orchestrator import plan_tools
-
-    for tool in plan_tools(requested):
+    for tool in selected_tools:
         db.add(Job(assessment_id=assessment.id, tool=tool, status=JobStatus.pending))
     db.commit()
     db.refresh(assessment)
@@ -183,29 +205,105 @@ async def import_scan(
 
     # Deterministic normalization (M1)
     created_norm = normalize_job(db, assessment, job)
+    job_id = job.id
+    assessment_id_val = assessment.id
+    deny_list = target_deny_list(target)
+    existing_notes = (assessment.notes or "").strip() if assessment_id is not None else ""
 
-    # AI interpretation (M2) - runs over the newly imported job
+    # AI interpretation (M2) - run off the asyncio event loop so a slow LLM
+    # response never stalls concurrent requests or SSE streams.
     created_ai = 0
     try:
-        created_ai = interpret_assessment(
-            db,
-            assessment,
-            [job],
-            deny_list=target_deny_list(target),
-        )
+        from app.database import SessionLocal
+
+        def _run_import_ai() -> int:
+            with SessionLocal() as ai_db:
+                ai_assessment = ai_db.get(Assessment, assessment_id_val)
+                ai_job = ai_db.get(Job, job_id)
+                if ai_assessment is None or ai_job is None:
+                    return 0
+                return interpret_assessment(ai_db, ai_assessment, [ai_job], deny_list=deny_list)
+
+        created_ai = await asyncio.to_thread(_run_import_ai)
     except Exception:
         pass  # Provider errors never break scan imports
 
+    db.expire_all()
+    assessment = db.get(Assessment, assessment_id_val, options=(joinedload(Assessment.jobs),))
+    assert assessment is not None
     notes_parts = [f"Imported manual {tool_lower.upper()} scan from '{file.filename}'."]
     if created_norm:
         notes_parts.append(f"{created_norm} candidate finding(s) emitted by rule-based normalizer.")
     if created_ai:
         notes_parts.append(f"{created_ai} candidate finding(s) added by AI interpretation.")
-    assessment.notes = " ".join(notes_parts)
+    import_note = " ".join(notes_parts)
+    assessment.notes = f"{existing_notes} {import_note}".strip() if existing_notes else import_note
 
     db.commit()
     db.refresh(assessment)
     return _detail(db, assessment)
+
+
+@router.post("/{assessment_id}/interpret", response_model=InterpretResult)
+async def rerun_interpretation(
+    assessment_id: int,
+    _: User = Depends(require_role(Role.admin, Role.assessor)),
+    db: Session = Depends(get_db),
+) -> InterpretResult:
+    """Re-run AI interpretation over completed jobs of a finished assessment.
+
+    Useful when an assessor configures or switches an AI model in Settings after
+    scans already completed or were imported, without re-running the scan tools.
+    """
+    from app.ai import client as ai_client
+    from app.ai.interpret import interpret_assessment
+    from app.database import SessionLocal
+    from app.models import LLMTask
+    from app.scanner.orchestrator import target_deny_list
+
+    assessment = db.get(Assessment, assessment_id, options=(joinedload(Assessment.jobs),))
+    if assessment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Assessment not found")
+    if assessment.status == AssessmentStatus.running:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Assessment is still running. Wait for it to finish before re-running AI interpretation.",
+        )
+    completed_jobs = [j for j in assessment.jobs if j.status == JobStatus.completed and j.raw_output]
+    if not completed_jobs:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "No completed job outputs are available to interpret for this assessment.",
+        )
+
+    try:
+        ai_client.resolve_task_config(db, LLMTask.interpretation)
+    except ai_client.NoProviderConfigured as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "No AI provider or model is configured for scan interpretation. Configure one in AI Settings.",
+        ) from exc
+
+    deny_list = target_deny_list(assessment.target)
+
+    def _run_ai() -> tuple[int, str]:
+        with SessionLocal() as ai_db:
+            ai_assessment = ai_db.get(Assessment, assessment_id, options=(joinedload(Assessment.jobs),))
+            if ai_assessment is None:
+                return 0, ""
+            created = interpret_assessment(
+                ai_db,
+                ai_assessment,
+                list(ai_assessment.jobs),
+                deny_list=deny_list,
+            )
+            note = f"AI re-interpretation added {created} candidate finding(s)."
+            ai_assessment.notes = f"{(ai_assessment.notes or '').strip()} {note}".strip()
+            ai_db.commit()
+            return created, ai_assessment.notes
+
+    created, notes = await asyncio.to_thread(_run_ai)
+    return InterpretResult(assessment_id=assessment_id, created=created, notes=notes)
 
 
 @router.get("", response_model=list[AssessmentOut])

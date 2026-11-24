@@ -20,7 +20,7 @@ import time
 
 from app.ai.interpret import interpret_assessment
 from app.database import SessionLocal
-from app.models import Assessment, AssessmentStatus, Job, JobStatus, ScanIntensity
+from app.models import Assessment, AssessmentStatus, Job, JobStatus, ScanIntensity, Target
 from app.models.user import utcnow
 from app.scanner.base import RunnerError, ScanContext, format_exception
 from app.scanner.normalize import normalize_assessment
@@ -152,7 +152,28 @@ async def run_pipeline(assessment_id: int, handle: PipelineHandle) -> None:
                 db.add(jobs[-1])
             db.commit()
 
-        for job in jobs:
+        # Stage 1: independent non-intrusive jobs (dns, nmap, prober) run
+        # concurrently, each on its own SQLAlchemy session so coroutines never
+        # share a Session. Stage 2: intrusive jobs (zap) run sequentially after.
+        stage1 = [j for j in jobs if j.tool not in INTRUSIVE_TOOLS]
+        stage2 = [j for j in jobs if j.tool in INTRUSIVE_TOOLS]
+
+        if stage1 and not handle.cancel_event.is_set():
+            if len(stage1) == 1:
+                await _run_job(db, handle, assessment, target, stage1[0], effective)
+            else:
+                await asyncio.gather(
+                    *(
+                        _run_job_isolated(handle, assessment.id, target.id, job.id, effective)
+                        for job in stage1
+                    )
+                )
+                db.expire_all()
+                assessment = db.get(Assessment, assessment_id)
+                target = assessment.target
+                jobs = list(assessment.jobs)
+
+        for job in stage2:
             if handle.cancel_event.is_set():
                 break
             if job.tool in INTRUSIVE_TOOLS and effective != ScanIntensity.full_intrusive:
@@ -271,6 +292,24 @@ class _CommitBatcher:
         self._db.commit()
         self._pending = 0
         self._last_flush = time.monotonic()
+
+
+async def _run_job_isolated(
+    handle: PipelineHandle,
+    assessment_id: int,
+    target_id: int,
+    job_id: int,
+    effective: ScanIntensity | None = None,
+) -> None:
+    """Run one job with its own SQLAlchemy Session so parallel Stage 1 jobs
+    never share session state across coroutines."""
+    with SessionLocal() as job_db:
+        assessment = job_db.get(Assessment, assessment_id)
+        target = job_db.get(Target, target_id)
+        job = job_db.get(Job, job_id)
+        if assessment is None or target is None or job is None:
+            return
+        await _run_job(job_db, handle, assessment, target, job, effective)
 
 
 async def _run_job(

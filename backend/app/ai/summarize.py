@@ -18,10 +18,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai import client as ai_client
-from app.ai.interpret import _strip_fences
+from app.ai.interpret import extract_json_text
 from app.models import AIOutput, Assessment, Finding, FindingStatus, LLMTask
 
 CAP_FINDINGS = 30
+SUMMARY_RETRY_LIMIT = 1
 
 
 def summarize_assessment(
@@ -40,19 +41,35 @@ def summarize_assessment(
     verified = [f for f in findings if f.status == FindingStatus.verified][:CAP_FINDINGS]
     if not verified:
         return None
-    result = ai_client.chat(
-        db,
-        LLMTask.summary,
-        _build_messages(assessment, verified),
-        deny_list=deny_list or [],
-        transport=transport,
-        max_tokens=3000,
-        timeout=120.0,
-    )
-    summary = _parse_summary(result.content)
+    base_messages = _build_messages(assessment, verified)
+    feedback: str | None = None
+    last_model = ""
+    summary: dict | None = None
+    for attempt in range(SUMMARY_RETRY_LIMIT + 1):
+        turn = list(base_messages)
+        if feedback is not None:
+            turn.append({"role": "user", "content": feedback})
+        result = ai_client.chat(
+            db,
+            LLMTask.summary,
+            turn,
+            deny_list=deny_list or [],
+            transport=transport,
+            max_tokens=3000,
+            timeout=120.0,
+        )
+        last_model = result.model
+        summary = _parse_summary(result.content)
+        if summary is not None:
+            break
+        if attempt < SUMMARY_RETRY_LIMIT:
+            feedback = (
+                "Your previous response was not valid JSON with an 'executive_summary' field. "
+                "Return ONLY the JSON object matching the requested schema."
+            )
     if summary is None:
         raise ai_client.LLMRequestError("Summary output was not valid JSON")
-    _store(db, assessment, verified, result.model, summary)
+    _store(db, assessment, verified, last_model, summary)
     if emit_log is not None:
         emit_log(f"AI summary generated over {len(verified)} verified finding(s)")
     return summary
@@ -100,11 +117,10 @@ def _build_messages(assessment: Assessment, verified: list[Finding]) -> list[dic
 
 
 def _parse_summary(content: str) -> dict | None:
-    # Models commonly wrap JSON in a ```json ... ``` fence despite being told
-    # "JSON only". The old code stripped only the opening fence, leaving the
-    # closing ``` behind so json.loads failed with "Extra data". Reuse the
-    # interpreter's stripper so both AI tasks tolerate the same shapes.
-    text = _strip_fences(content)
+    # Models commonly wrap JSON in fences or prose preamble despite being told
+    # "JSON only". Reuse the interpreter's extractor so both AI tasks tolerate
+    # the same shapes.
+    text = extract_json_text(content)
     if not text.startswith("{"):
         return None
     try:

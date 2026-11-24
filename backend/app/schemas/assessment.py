@@ -34,6 +34,15 @@ class AssessmentCreate(BaseModel):
     # intensity than the target allows is a 409 (gate enforced server-side).
     intensity: ScanIntensity | None = None
     categories: list[str] = Field(default_factory=lambda: list(KNOWN_CATEGORIES))
+    # Optional explicit subset of tools (dns, nmap, prober, zap). When omitted,
+    # defaults to plan_tools(intensity). Intrusive tools stay intensity-gated.
+    tools: list[str] | None = None
+
+
+class InterpretResult(BaseModel):
+    assessment_id: int
+    created: int
+    notes: str
 
 
 class JobOut(BaseModel):

@@ -189,12 +189,9 @@ def ask_finding_qa(
             "No AI provider or model is configured for Finding Q&A. Configure one in Settings.",
         ) from exc
 
-    deny_list: list[str] = []
-    if finding.assessment and finding.assessment.target:
-        target = finding.assessment.target
-        deny_list = [target.name, target.base_url]
-        if target.authorization_ref:
-            deny_list.append(target.authorization_ref)
+    from app.scanner.orchestrator import target_deny_list
+
+    deny_list = target_deny_list(finding.assessment.target) if finding.assessment else []
 
     try:
         result = answer_finding_question(

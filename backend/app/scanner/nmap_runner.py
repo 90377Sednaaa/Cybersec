@@ -55,6 +55,22 @@ def build_nmap_target_args(base_url: str) -> list[str]:
     return args
 
 
+def build_nmap_argv(binary: str, base_url: str, *, is_full: bool) -> list[str]:
+    """Assemble the nmap argv, avoiding the fatal `--top-ports` + `-p` clash.
+
+    Nmap exits with code 1 ("Only one of --top-ports or -p can be specified")
+    whenever both flags appear together. Targets with an explicit port in
+    `base_url` (e.g. `http://localhost:3000` for OWASP Juice Shop) supply `-p`,
+    so `--top-ports <N>` is stripped from the profile in that case.
+    """
+    profile = list(PROFILES["full_intrusive" if is_full else "passive_safe"])
+    target_args = build_nmap_target_args(base_url)
+    if "-p" in target_args and "--top-ports" in profile:
+        idx = profile.index("--top-ports")
+        del profile[idx : idx + 2]
+    return [binary, *profile, "-oX", "-", *target_args]
+
+
 def parse_nmap_xml(xml_text: str) -> dict:
     """Parse `nmap -oX -` output into {hosts: [...], summary}.
 
@@ -78,15 +94,20 @@ def parse_nmap_xml(xml_text: str) -> dict:
                 service = port.find("service")
                 if state_el is None or state_el.get("state") != "open":
                     continue
-                ports_out.append(
-                    {
-                        "port": int(port.get("portid", "0")),
-                        "protocol": port.get("protocol", "tcp"),
-                        "service": (service.get("name") if service is not None else "") or "",
-                        "product": (service.get("product") if service is not None else "") or "",
-                        "version": (service.get("version") if service is not None else "") or "",
-                    }
-                )
+                cpes = [c.text.strip() for c in service.findall("cpe") if c.text and c.text.strip()] if service is not None else []
+                port_entry: dict = {
+                    "port": int(port.get("portid", "0")),
+                    "protocol": port.get("protocol", "tcp"),
+                    "service": (service.get("name") if service is not None else "") or "",
+                    "product": (service.get("product") if service is not None else "") or "",
+                    "version": (service.get("version") if service is not None else "") or "",
+                }
+                extrainfo = (service.get("extrainfo") if service is not None else "") or ""
+                if extrainfo:
+                    port_entry["extrainfo"] = extrainfo
+                if cpes:
+                    port_entry["cpe"] = cpes
+                ports_out.append(port_entry)
         if ports_out:
             hosts_out.append(
                 {
@@ -115,8 +136,7 @@ class NmapRunner(BaseRunner):
 
         hostguard.check_target(ctx.target)
 
-        profile = PROFILES["full_intrusive" if ctx.is_full else "passive_safe"]
-        argv = [binary, *profile, "-oX", "-", *build_nmap_target_args(str(ctx.target.base_url))]
+        argv = build_nmap_argv(binary, str(ctx.target.base_url), is_full=ctx.is_full)
         ctx.job.command = " ".join(argv)
         ctx.log(f"$ {ctx.job.command}")
         ctx.progress(0.1)
@@ -135,7 +155,10 @@ class NmapRunner(BaseRunner):
                     process.kill()
                     await process.wait()
                     raise RunnerError("Cancelled")
-                chunk = await process.stdout.read(65536)
+                try:
+                    chunk = await asyncio.wait_for(process.stdout.read(65536), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
                 if not chunk:
                     break
                 chunks.append(chunk)

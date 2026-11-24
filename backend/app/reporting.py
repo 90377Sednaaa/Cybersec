@@ -124,7 +124,10 @@ def ensure_ai_summary(db: Session, assessment: Assessment) -> None:
             return
 
     try:
-        summarize_assessment(db, assessment, verified)
+        from app.scanner.orchestrator import target_deny_list
+
+        target = db.get(Target, assessment.target_id)
+        summarize_assessment(db, assessment, verified, deny_list=target_deny_list(target))
     except Exception as exc:  # noqa: BLE001 - AI is optional, the report must render
         logger.warning("AI summary unavailable for assessment %s: %s", assessment.id, exc)
         db.rollback()

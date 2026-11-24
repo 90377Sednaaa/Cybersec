@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from urllib.parse import urlsplit
 
 import httpx
@@ -23,6 +24,7 @@ from app.scanner.registry import register
 
 USER_AGENT = "AletheiaProber/0.1"
 REQUEST_TIMEOUT = 10.0
+PROBE_CONCURRENCY = 6
 
 
 @register("prober")
@@ -73,18 +75,61 @@ class ProberRunner(BaseRunner):
                 skipped = len(checks.PROBE_PATHS) - len(probe_paths)
                 if skipped:
                     ctx.log(f"Scope filter: {skipped} probe path(s) skipped (out of scope)")
+
+                # Capture a baseline for a random nonexistent route so SPAs
+                # (like OWASP Juice Shop) returning HTTP 200 index.html do not
+                # trigger false positives on every wordlist entry.
+                baseline: dict | None = None
+                base_root = ctx.target.base_url.rstrip("/")
+                try:
+                    not_found_resp = await client.get(f"{base_root}/__aletheia_404_{uuid.uuid4().hex[:10]}")
+                    if not_found_resp.status_code < 400:
+                        body = not_found_resp.content
+                        baseline = {
+                            "status_code": not_found_resp.status_code,
+                            "content_type": not_found_resp.headers.get("content-type", "").split(";", 1)[0].strip().lower(),
+                            "length": len(body),
+                            "prefix": body[:128],
+                        }
+                        ctx.log(
+                            f"Soft-404 baseline detected (HTTP {baseline['status_code']}, "
+                            f"{baseline['content_type'] or 'unknown'}, {baseline['length']} bytes)"
+                        )
+                except httpx.HTTPError:
+                    baseline = None
+
                 ctx.log(f"Probing {len(probe_paths)} common paths (full intensity)")
-                for i, (path, _sev, _why) in enumerate(probe_paths):
-                    if ctx.cancelled():
-                        raise RunnerError("Cancelled")
-                    try:
-                        probe = await client.get(ctx.target.base_url.rstrip("/") + path)
-                        if probe.status_code < 400:
-                            probes.append((path, probe.status_code))
-                            ctx.log(f"  hit: {path} -> {probe.status_code}")
-                    except httpx.HTTPError:
-                        continue
-                    ctx.progress(0.6 + 0.35 * (i + 1) / max(1, len(probe_paths)))
+                sem = asyncio.Semaphore(PROBE_CONCURRENCY)
+                completed = 0
+                total_paths = max(1, len(probe_paths))
+
+                async def probe_one(path: str) -> tuple[str, int] | None:
+                    nonlocal completed
+                    async with sem:
+                        if ctx.cancelled():
+                            raise RunnerError("Cancelled")
+                        hit: tuple[str, int] | None = None
+                        try:
+                            probe = await client.get(base_root + path)
+                            if probe.status_code < 400:
+                                ct = probe.headers.get("content-type", "")
+                                body = probe.content
+                                if not checks.is_soft_404(
+                                    baseline,
+                                    status_code=probe.status_code,
+                                    content_type=ct,
+                                    body=body,
+                                ) and checks.matches_expected_content(path, ct, body):
+                                    hit = (path, probe.status_code)
+                                    ctx.log(f"  hit: {path} -> {probe.status_code}")
+                        except httpx.HTTPError:
+                            pass
+                        completed += 1
+                        ctx.progress(0.6 + 0.35 * completed / total_paths)
+                        return hit
+
+                results = await asyncio.gather(*(probe_one(path) for path, _sev, _why in probe_paths))
+                probes = [item for item in results if item is not None]
             exposed_findings = checks.check_exposed_paths(ctx.target.base_url, probes)
 
         candidate_findings = header_findings + cookie_findings + disclosure_findings + tls_findings + exposed_findings

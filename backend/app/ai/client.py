@@ -117,7 +117,9 @@ def chat(
         choice = response_json["choices"][0]
         message = choice["message"]
         content = message.get("content") or ""
-        reasoning = message.get("reasoning_content") or ""
+        # Direct DeepSeek/vLLM use `reasoning_content`; OpenRouter returns
+        # thinking traces under `reasoning` for Gemini, Claude, and DeepSeek.
+        reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
         finish = choice.get("finish_reason") or ""
     except (KeyError, IndexError, TypeError) as exc:
         raise LLMRequestError(f"Unexpected response shape from provider: {exc}") from exc
